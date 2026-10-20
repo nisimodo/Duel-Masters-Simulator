@@ -29,6 +29,8 @@ interface RawCard {
   img: string;
   f: RawFace[];
   tw?: 1;
+  /** カード名の読み */
+  y?: string[];
 }
 
 export interface Face {
@@ -58,6 +60,8 @@ export interface Card {
   twin: boolean;
   civs: Civ[];
   zone: DeckZone;
+  /** カード名の読み (Wiki のルビから) */
+  readings: string[];
   /** 全テキスト(検索用) */
   search: string;
 }
@@ -106,6 +110,7 @@ function toCard(r: RawCard): Card {
     twin: !!r.tw,
     civs: CIVS.filter((c) => civSet.has(c)),
     zone,
+    readings: r.y ?? [],
     search: [r.n, ...faces.flatMap((f) => [f.type, ...f.races, ...f.text])].join('\n'),
   };
 }

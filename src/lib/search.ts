@@ -47,9 +47,17 @@ export const CARD_TYPES: { label: string; test: (t: string) => boolean }[] = [
   { label: 'ツインパクト', test: () => true },
 ];
 
-const nz = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[\s　]/g, '');
 const hira2kata = (s: string) => s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
-const key = (s: string) => hira2kata(nz(s));
+/** 検索用に正規化: 全角半角・大小文字・ひらがな/カタカナを揃え、空白と記号 (・ = ー以外の区切り) を除く */
+export const searchKey = (s: string) =>
+  hira2kata(
+    s
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[∑Σ]/g, 'σ')
+      .replace(/ゔ/g, 'ヴ'),
+  ).replace(/[\s・･=＝\-‐－/／《》「」『』()（）\[\]【】、。,.!！?？'’"“”:：~～&＆+＋☆★♪#＃]/g, '');
+const key = searchKey;
 
 const numOr = (s: string, d: number) => (s.trim() === '' || isNaN(Number(s)) ? d : Number(s));
 
@@ -70,7 +78,8 @@ export function searchCards(db: CardDB, q: SearchQuery): Card[] {
     if (q.zone && c.zone !== q.zone) return false;
     if (name) {
       let k = nameKey.get(c);
-      if (k == null) nameKey.set(c, (k = key(c.name + c.faces.map((f) => f.name).join(''))));
+      // 名前 + 各面の名前 + 読み (Wiki のルビ) で検索できる。区切り文字は無視
+      if (k == null) nameKey.set(c, (k = [c.name, ...c.faces.map((f) => f.name), ...c.readings].map(key).join('\n')));
       if (!k.includes(name)) return false;
     }
     if (text) {

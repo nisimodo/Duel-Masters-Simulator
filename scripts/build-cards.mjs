@@ -44,6 +44,30 @@ function face(f, name) {
   };
 }
 
+// カード名の読み (scripts/scrape-readings.mjs で Wiki のルビから取得)。
+// Wiki で見つからない名前は、名前中の (カタカナ) 表記、それも無ければ形態素解析 (kuromoji) の推定読みで補う。
+import kuromoji from 'kuromoji';
+
+const readings = fs.existsSync('data/raw/readings.json') ? JSON.parse(fs.readFileSync('data/raw/readings.json', 'utf8')) : {};
+const tokenizer = await new Promise((res, rej) =>
+  kuromoji.builder({ dicPath: 'node_modules/kuromoji/dict' }).build((e, t) => (e ? rej(e) : res(t))),
+);
+const HAS_KANJI = /[㐀-鿿々〆]/;
+let fallbackCount = 0;
+function readingOf(name) {
+  if (readings[name]) return readings[name];
+  if (!HAS_KANJI.test(name)) return null;
+  // 「神拳の超人(アヴァランチ・ジャイアント)」のように読みが名前に含まれている
+  const paren = name.match(/[(（]([^()（）]+)[)）]/);
+  if (paren && !HAS_KANJI.test(paren[1])) return paren[1];
+  fallbackCount++;
+  return tokenizer
+    .tokenize(name)
+    .map((t) => (t.reading && t.reading !== '*' ? t.reading : t.surface_form))
+    .join('');
+}
+const readingsOf = (names) => [...new Set(names.map(readingOf).filter(Boolean))];
+
 const cards = [];
 const seenNames = new Set();
 for (const c of raw) {
@@ -57,6 +81,8 @@ for (const c of raw) {
   const img = c.faces[0].img.replace('/wp-content/card/cardimage/', '');
   const card = { id: c.id, n: fullName, img, f: faces };
   if (twin) card.tw = 1;
+  const y = readingsOf([fullName, ...c.faces.map((f) => norm(f.name)), ...(parts ?? [])]);
+  if (y.length) card.y = y;
   cards.push(card);
 }
 
@@ -65,4 +91,4 @@ fs.writeFileSync('public/data/cards.json', JSON.stringify({ builtAt: new Date().
 fs.copyFileSync('data/regulation.json', 'public/data/regulation.json');
 fs.copyFileSync('data/presets.json', 'public/data/presets.json');
 const size = fs.statSync('public/data/cards.json').size;
-console.log(`cards=${cards.length} size=${(size / 1024 / 1024).toFixed(1)}MB`);
+console.log(`cards=${cards.length} withReading=${cards.filter((c) => c.y).length} fallback=${fallbackCount} size=${(size / 1024 / 1024).toFixed(1)}MB`);

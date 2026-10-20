@@ -161,7 +161,7 @@ export default function DeckEditor() {
       <div className="col search-col">
         <div className={`panel col filters${narrow && !moreFilters ? ' collapsed' : ''}`} style={{ gap: 6 }}>
           <div className="row">
-            <input className="grow" placeholder="カード名" value={q.name} onChange={(e) => setQv('name', e.target.value)} />
+            <input className="grow" placeholder="カード名・読み (ひらがな可)" value={q.name} onChange={(e) => setQv('name', e.target.value)} />
             <input className="grow" placeholder="テキスト" value={q.text} onChange={(e) => setQv('text', e.target.value)} />
             <input className="grow" placeholder="種族" list="races" value={q.race} onChange={(e) => setQv('race', e.target.value)} />
             <datalist id="races">
