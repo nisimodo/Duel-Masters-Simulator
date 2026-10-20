@@ -1,12 +1,12 @@
-// Firebase の設定。README の手順で作った Firebase プロジェクトの値を貼り付けてください。
+// Firebase の設定 (Firebase コンソール → プロジェクトの設定 → マイアプリ で確認できます)。
 // apiKey 等は公開されても問題ない値です (アクセス制御は database.rules.json で行います)。
-// 空のままだと「ローカルモード」(同じブラウザのタブ間でのみ動作) になります。
+// 空にすると「ローカルモード」(同じブラウザのタブ間でのみ動作) になります。
 export const firebaseConfig = {
-  apiKey: '',
-  authDomain: '',
-  databaseURL: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyDMVXIFNmq1h-LwIFJIRUpNbHJSNdZNuL8',
+  authDomain: 'duema-online.firebaseapp.com',
+  databaseURL: 'https://duema-online-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'duema-online',
+  storageBucket: 'duema-online.firebasestorage.app',
+  messagingSenderId: '718907138544',
+  appId: '1:718907138544:web:ea0cecf3d898edc94d3d35',
 };
