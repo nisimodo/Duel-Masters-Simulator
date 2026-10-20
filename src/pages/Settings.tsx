@@ -60,7 +60,8 @@ export default function Settings() {
           <div
             style={{
               width: 320,
-              height: 180,
+              maxWidth: '100%',
+              aspectRatio: '16 / 9',
               borderRadius: 8,
               border: '1px solid var(--line)',
               background: profile?.playmat ? `center/cover url(${profile.playmat})` : 'var(--bg3)',

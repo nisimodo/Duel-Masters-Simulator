@@ -52,7 +52,7 @@ function Shell({ children }: { children: ReactNode }) {
         <Link to="/play/duepa">デュエパ対戦</Link>
         <Link to="/settings">設定</Link>
         <span className="grow" />
-        <span className="muted">{user?.name}</span>
+        <span className="muted uname">{user?.name}</span>
         <button className="small" onClick={() => backend.signOut()}>
           ログアウト
         </button>

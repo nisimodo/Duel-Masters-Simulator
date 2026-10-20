@@ -11,6 +11,7 @@ import { attackTargets, canAttackWith, decider, faceOf, nameOf, power, untappedM
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { useGameSync } from './useGameSync';
+import { NARROW, useMedia } from '../lib/useMedia';
 
 interface MenuItem {
   label: string;
@@ -41,6 +42,12 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const [breakPicks, setBreakPicks] = useState<number[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [note, setNote] = useState('');
+  const narrow = useMedia(NARROW);
+  // 縦が短い画面 (タブレット横向き・ノートPC) でも相手側をコンパクトにして手札を見えるようにする
+  const short = useMedia('(max-height: 820px)');
+  /** スマホ等で下から引き出すパネル */
+  const [drawer, setDrawer] = useState<'none' | 'detail' | 'log'>('none');
+  const [detailModal, setDetailModal] = useState<{ card: Card; face?: number } | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const me = s && user ? s.players.findIndex((p) => p.uid === user.uid) : -1;
@@ -298,7 +305,10 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       setBreakPicks(breakPicks.includes(iid) ? breakPicks.filter((x) => x !== iid) : [...breakPicks, iid].slice(-myPending.count));
       return;
     }
-    openMenu(e, c.zone === 'hand' && c.owner !== me ? 'カード' : nameOf(s, L, iid), cardMenu(iid));
+    const card = cardAt(iid);
+    const face = c.zone === 'battle' || c.zone === 'hyper' ? c.face : undefined;
+    setHover({ card, face });
+    openMenu(e, nameOf(s, L, iid), [{ label: '🔍 カードの詳細', onClick: () => setDetailModal({ card, face }) }, ...cardMenu(iid)]);
   };
 
   const runHint = async (h: EffectHint, targets?: number[]) => {
@@ -409,7 +419,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       </div>
     );
     const shields = (
-      <div className="row" style={{ gap: 3 }}>
+      <div className="row shields-row" style={{ gap: 3 }}>
         {pl.shield.map((i, k) => (
           <CardBack
             key={i}
@@ -428,7 +438,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     );
     const graveTop = pl.grave[pl.grave.length - 1];
     const piles = (
-      <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
+      <div className="row piles-row" style={{ gap: 6, alignItems: 'flex-end' }}>
         {pile('山札', pl.deck.length, <CardBack sleeve={sleeve} width={40} />, (e) => openMenu(e, '山札', deckMenu(p)))}
         {pile('墓地', pl.grave.length, graveTop != null ? <CardImg card={cardAt(graveTop)} width={40} /> : <div className="card" style={{ width: 40, background: '#0004' }} />, () =>
           setViewer({ kind: 'grave', player: p }),
@@ -558,7 +568,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   return (
     <div className="game" onClick={() => setMenu(null)}>
       <div className="board">
-        {others.length === 1 ? renderPlayer(others[0], 'top') : others.map((p) => renderPlayer(p, 'compact'))}
+        {others.length === 1 && !narrow && !short ? renderPlayer(others[0], 'top') : others.map((p) => renderPlayer(p, 'compact'))}
         {(mode.kind !== 'none' || myPending?.kind === 'breakSel') && (
           <div className="banner">
             {mode.kind === 'attack' && (
@@ -604,7 +614,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         {renderPlayer(order[0], 'bottom')}
       </div>
 
-      <div className="side" onClick={(e) => e.stopPropagation()}>
+      <div className={`side${narrow ? ' side-narrow' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="col" style={{ padding: 8, gap: 6 }}>
           <div className="row">
             <b className="grow">
@@ -701,10 +711,30 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
               )}
             </div>
           )}
+        {narrow && (
+            <div className="row">
+              <button className={`small${drawer === 'detail' ? ' primary' : ''}`} onClick={() => setDrawer(drawer === 'detail' ? 'none' : 'detail')}>
+                🔍 詳細
+              </button>
+              <button className={`small${drawer === 'log' ? ' primary' : ''}`} onClick={() => setDrawer(drawer === 'log' ? 'none' : 'log')}>
+                📜 ログ
+              </button>
+              <span className="grow" />
+              <button className="small" onClick={onLeave}>
+                退出
+              </button>
+            </div>
+          )}
         </div>
+        {(!narrow || drawer === 'detail') && (
+          <>
         <div style={{ padding: 8, borderTop: '1px solid var(--line)', maxHeight: '42vh', overflow: 'auto' }}>
           <CardDetail db={db} card={hover?.card ?? null} face={hover?.face} />
         </div>
+          </>
+        )}
+        {(!narrow || drawer === 'log') && (
+          <>
         <div className="log" ref={logRef}>
           {s.log.map((l, i) => (
             <div key={i} style={{ color: l.m.startsWith('──') ? 'var(--accent)' : undefined }}>
@@ -726,11 +756,15 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             <button className="small">送信</button>
           </form>
         )}
+          </>
+        )}
+        {!narrow && (
         <div className="row" style={{ padding: 6 }}>
           <button className="small" onClick={onLeave}>
             ルームから退出
           </button>
         </div>
+        )}
       </div>
 
       {myPending && myPending.kind !== 'breakSel' && myPending.kind !== 'ability' && (
@@ -760,6 +794,11 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         />
       )}
       {viewerNode}
+      {detailModal && (
+        <Modal title="カードの詳細" onClose={() => setDetailModal(null)}>
+          <CardDetail db={db} card={detailModal.card} face={detailModal.face} />
+        </Modal>
+      )}
       {menu && (
         <div className="ctx" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           <div className="head">{menu.title}</div>

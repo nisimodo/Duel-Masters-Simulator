@@ -19,6 +19,8 @@ import {
   type DeckType,
 } from '../lib/deck';
 import { CARD_TYPES, emptyQuery, searchCards, type SearchQuery } from '../lib/search';
+import { Modal } from '../game/dialogs';
+import { NARROW, useMedia } from '../lib/useMedia';
 
 const PAGE = 60;
 const ZONE_LABEL: Record<DeckZone, string> = { main: 'メインデッキ', hyper: '超次元ゾーン', gr: '超GRゾーン' };
@@ -34,6 +36,10 @@ export default function DeckEditor() {
   const [hover, setHover] = useState<Card | null>(null);
   const [msg, setMsg] = useState<{ text: string; warn?: string[] } | null>(null);
   const [dirty, setDirty] = useState(false);
+  const narrow = useMedia(NARROW);
+  const [tab, setTab] = useState<'search' | 'deck'>('search');
+  const [detail, setDetail] = useState<Card | null>(null);
+  const [moreFilters, setMoreFilters] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -63,10 +69,14 @@ export default function DeckEditor() {
   const rules = DEFAULT_RULES[deck.type];
   const issues = validateDeck(db, deck);
 
+  // 連続タップでも取りこぼさないよう、常に最新のデッキに対して変更する
   const update = (fn: (d: Deck) => void) => {
-    const d = structuredClone(deck);
-    fn(d);
-    setDeck(d);
+    setDeck((prev) => {
+      if (!prev) return prev;
+      const d = structuredClone(prev);
+      fn(d);
+      return d;
+    });
     setDirty(true);
   };
 
@@ -139,9 +149,17 @@ export default function DeckEditor() {
   const pages = Math.ceil(results.length / PAGE);
 
   return (
-    <div className="editor">
-      <div className="col">
-        <div className="panel col" style={{ gap: 6 }}>
+    <div className={`editor show-${tab}`}>
+      <div className="editor-tabs">
+        <button className={tab === 'search' ? 'primary' : ''} onClick={() => setTab('search')}>
+          🔍 カード検索
+        </button>
+        <button className={tab === 'deck' ? 'primary' : ''} onClick={() => setTab('deck')}>
+          📋 デッキ ({mainSize(deck)}){issues.length ? ' ⚠' : ''}
+        </button>
+      </div>
+      <div className="col search-col">
+        <div className={`panel col filters${narrow && !moreFilters ? ' collapsed' : ''}`} style={{ gap: 6 }}>
           <div className="row">
             <input className="grow" placeholder="カード名" value={q.name} onChange={(e) => setQv('name', e.target.value)} />
             <input className="grow" placeholder="テキスト" value={q.text} onChange={(e) => setQv('text', e.target.value)} />
@@ -152,7 +170,12 @@ export default function DeckEditor() {
               ))}
             </datalist>
           </div>
-          <div className="row">
+          {narrow && (
+            <button className="small" onClick={() => setMoreFilters(!moreFilters)}>
+              {moreFilters ? '▲ 絞り込みを閉じる' : '▼ 文明・コスト・種類で絞り込む'}
+            </button>
+          )}
+          <div className="row filter-more">
             {(['L', 'W', 'D', 'F', 'N', 'Z'] as const).map((c) => (
               <label key={c} className="row" style={{ gap: 3 }}>
                 <input type="checkbox" checked={q.civs.includes(c)} onChange={() => toggleCiv(c)} />
@@ -166,7 +189,7 @@ export default function DeckEditor() {
               <option value="exact">完全一致</option>
             </select>
           </div>
-          <div className="row">
+          <div className="row filter-more">
             コスト
             <input style={{ width: 60 }} value={q.costMin} onChange={(e) => setQv('costMin', e.target.value)} placeholder="下限" />～
             <input style={{ width: 60 }} value={q.costMax} onChange={(e) => setQv('costMax', e.target.value)} placeholder="上限" />
@@ -203,7 +226,9 @@ export default function DeckEditor() {
             ▶
           </button>
         </div>
-        <div className="small muted">クリックで追加 / 右クリックで1枚減らす{deck.type === 'duepa' ? ' / Shift+クリックでパートナーに設定' : ''}</div>
+        <div className="small muted">
+          タップ(クリック)で追加 / −で1枚減らす / iで詳細{deck.type === 'duepa' ? ' / デッキ画面の「P」でパートナーに設定' : ''}
+        </div>
         <div className="result-grid">
           {pageCards.map((c) => {
             const n = totalOf(c.id);
@@ -226,6 +251,29 @@ export default function DeckEditor() {
                 title={c.name}
               >
                 {n > 0 && <span className="count" style={{ color: n > lim ? 'var(--danger)' : undefined }}>{n}</span>}
+                <button
+                  className="mini info"
+                  title="詳細"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDetail(c);
+                  }}
+                >
+                  i
+                </button>
+                {n > 0 && (
+                  <button
+                    className="mini minus"
+                    title="1枚減らす"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (deck.partner === c.id && !deck[c.zone][c.id]) update((d) => (d.partner = null));
+                      else remove(c, c.zone);
+                    }}
+                  >
+                    −
+                  </button>
+                )}
                 {(lim === 0 || wrongZone) && <span className="tag error">使用不可</span>}
                 {db.regStatus.get(c.id) === 'hof' && lim > 0 && <span className="tag">殿堂</span>}
               </CardImg>
@@ -234,7 +282,7 @@ export default function DeckEditor() {
         </div>
       </div>
 
-      <div className="col">
+      <div className="col deck-col">
         <div className="panel col" style={{ gap: 6 }}>
           <input value={deck.name} onChange={(e) => update((d) => (d.name = e.target.value))} style={{ fontWeight: 'bold' }} />
           <div className="row">
@@ -315,7 +363,9 @@ export default function DeckEditor() {
                       {mainFace(card).cost}
                     </span>
                     <CivDots card={card} />
-                    <span className="grow small">{card.name}</span>
+                    <span className="grow small" onClick={() => setDetail(card)} style={{ cursor: 'pointer' }}>
+                      {card.name}
+                    </span>
                     <RegBadge db={db} card={card} />
                     {deck.type === 'duepa' && mainFace(card).isCreature && (
                       <button className="small" title="パートナーに設定" onClick={() => setPartner(card)}>
@@ -340,10 +390,23 @@ export default function DeckEditor() {
           ),
         )}
 
-        <div className="panel">
-          <CardDetail db={db} card={hover} />
-        </div>
+        {!narrow && (
+          <div className="panel">
+            <CardDetail db={db} card={hover} />
+          </div>
+        )}
       </div>
+      {detail && (
+        <Modal title="カードの詳細" onClose={() => setDetail(null)}>
+          <CardDetail db={db} card={detail} />
+          <div className="row">
+            <button className="primary" onClick={() => add(detail)}>
+              ＋ デッキに追加 ({totalOf(detail.id)}枚)
+            </button>
+            {deck.type === 'duepa' && mainFace(detail).isCreature && <button onClick={() => setPartner(detail)}>パートナーに設定</button>}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -552,13 +552,247 @@ input[type='radio'] {
 .dot.on {
   background: var(--ok);
 }
-@media (max-width: 900px) {
-  .editor,
+/* ---------- スマホ・タブレット ---------- */
+button,
+.card,
+.player-name,
+.pile {
+  touch-action: manipulation;
+}
+/* マウスがある端末だけホバー演出 */
+@media (hover: none) {
+  .hand .card:hover {
+    transform: none;
+  }
+}
+.side-narrow {
+  border-left: none;
+  border-top: 1px solid var(--line);
+  max-height: 55dvh;
+  overflow: auto;
+}
+.side-narrow .log {
+  max-height: 30dvh;
+}
+.editor-tabs {
+  display: none;
+}
+
+@media (max-width: 900px) and (orientation: portrait), (max-width: 600px) {
+  :root {
+    --card-w: 52px;
+  }
+  .page {
+    padding: 10px;
+  }
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 6px 10px;
+  }
+  .topbar .logo {
+    font-size: 16px;
+    width: 100%;
+  }
+  .topbar .uname {
+    display: none;
+  }
+  /* 対戦画面: 盤面 + 下部パネルの縦並び */
   .game {
-    grid-template-columns: 1fr;
-    height: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  .board {
+    flex: 1;
+    min-height: 0;
+    padding: 4px;
   }
   .side {
-    max-height: 50vh;
+    flex: none;
+  }
+  .hand.zone {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    min-height: calc(var(--card-w) * 1.4 + 10px);
+  }
+  .hand .card {
+    --w: 60px;
+  }
+  .zone.mana .card {
+    --w: 38px;
+  }
+  .pile .card {
+    --w: 36px;
+  }
+  .opp-compact .card {
+    --w: 36px;
+  }
+  /* シールドは重ねて省スペース */
+  .shields-row {
+    flex-wrap: nowrap;
+    gap: 0 !important;
+  }
+  .shields-row .card {
+    --w: 34px;
+  }
+  .shields-row .card + .card {
+    margin-left: -12px;
+  }
+  .piles-row {
+    flex-wrap: nowrap;
+    gap: 4px !important;
+  }
+  .piles-row .pile {
+    font-size: 10px;
+  }
+  .player-area {
+    padding: 4px;
+    gap: 3px;
+  }
+  .zone {
+    min-height: calc(var(--card-w) * 1.4 + 4px);
+  }
+  .zone.mana {
+    min-height: 40px;
+  }
+  /* メニューは画面下から出るシートに */
+  .ctx {
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: 0;
+    min-width: 0;
+    max-height: 60dvh;
+    border-radius: 14px 14px 0 0;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  }
+  .ctx button {
+    padding: 11px 12px;
+    font-size: 15px;
+  }
+  .modal {
+    max-width: 100vw;
+    width: 100vw;
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+    align-self: flex-end;
+  }
+  .modal-back {
+    align-items: flex-end;
+  }
+  button.small {
+    padding: 5px 10px;
+  }
+  /* デッキ編集: タブで検索とデッキを切り替え */
+  .editor {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: 8px;
+  }
+  .editor > * {
+    overflow: visible;
+  }
+  .editor-tabs {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg);
+    padding: 6px 0;
+    gap: 6px;
+  }
+  .editor-tabs button {
+    flex: 1;
+  }
+  .editor.show-search > .deck-col,
+  .editor.show-deck > .search-col {
+    display: none;
+  }
+  .result-grid {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 6px;
+  }
+  .filters.collapsed .filter-more {
+    display: none;
+  }
+}
+/* タブレット縦向き: 余裕があるのでカードを大きめに */
+@media (min-width: 601px) and (max-width: 900px) and (orientation: portrait) {
+  :root {
+    --card-w: 64px;
+  }
+  .hand .card {
+    --w: 76px;
+  }
+  .zone.mana .card {
+    --w: 46px;
+  }
+  .opp-compact .card {
+    --w: 48px;
+  }
+  .shields-row .card,
+  .pile .card {
+    --w: 42px;
+  }
+}
+@media (max-width: 480px) {
+  :root {
+    --card-w: 44px;
+  }
+  .hand .card {
+    --w: 54px;
+  }
+}
+/* 結果グリッドのカード上のボタン */
+.card .mini {
+  position: absolute;
+  top: 2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid #fff6;
+  color: #fff;
+}
+.card .mini.minus {
+  right: 2px;
+}
+.card .mini.info {
+  top: auto;
+  bottom: 2px;
+  right: 2px;
+}
+
+/* スマホ横向きなど縦が短い画面: 右パネルを細くしてカードを小さく */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --card-w: 38px;
+  }
+  .game {
+    grid-template-columns: 1fr 220px;
+  }
+  .hand .card {
+    --w: 46px;
+  }
+  .zone.mana .card,
+  .pile .card,
+  .shields-row .card,
+  .opp-compact .card {
+    --w: 30px;
+  }
+  .zone.mana {
+    min-height: 32px;
+  }
+  .side .log {
+    min-height: 60px;
+  }
+  .player-area {
+    padding: 3px;
+    gap: 2px;
   }
 }

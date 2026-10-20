@@ -71,7 +71,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
   const chosen = options.find((o) => o.id === sel);
   return (
     <div className="row">
-      <select value={sel} onChange={(e) => setSel(e.target.value)}>
+      <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ maxWidth: '100%' }}>
         <option value="">CPUのデッキを選択…</option>
         {options.map((o) => (
           <option key={o.id} value={o.id} disabled={!o.ok}>
@@ -173,7 +173,7 @@ export default function RoomPage() {
         </div>
       )}
       <div className="row" style={{ alignItems: 'flex-start' }}>
-        <div className="panel col grow">
+        <div className="panel col" style={{ flex: '2 1 320px', minWidth: 0 }}>
           <b>
             対戦するプレイヤー ({count}/{max})
           </b>
@@ -210,7 +210,7 @@ export default function RoomPage() {
           {enough && allReady && <div className="ok">まもなく対戦開始…</div>}
         </div>
 
-        <div className="panel col" style={{ width: 300 }}>
+        <div className="panel col" style={{ flex: '1 1 240px', minWidth: 0 }}>
           <b>観戦</b>
           {Object.entries(room.members)
             .filter(([, m]) => m.role === 'spectator')
@@ -239,7 +239,7 @@ export default function RoomPage() {
           {me.role === 'player' && (
             <>
               <div className="row">
-                <select value={me.deckId ?? ''} onChange={(e) => selectDeck(e.target.value)}>
+                <select value={me.deckId ?? ''} onChange={(e) => selectDeck(e.target.value)} style={{ maxWidth: '100%' }}>
                   <option value="">デッキを選択…</option>
                   {myDecks.map((d) => {
                     const issues = validateDeck(db, d, room.rules);
