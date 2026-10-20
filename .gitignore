@@ -1,0 +1,7 @@
+node_modules
+dist
+*.log
+.env*
+data/raw/*.html
+.claude/settings.local.json
+scrape.log

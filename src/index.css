@@ -1,0 +1,564 @@
+:root {
+  --bg: #12141c;
+  --bg2: #1b1e2a;
+  --bg3: #252a3a;
+  --line: #343a50;
+  --text: #e8eaf2;
+  --muted: #9aa0b8;
+  --accent: #f0b429;
+  --accent2: #4f8cff;
+  --danger: #e5484d;
+  --ok: #3fb950;
+  --card-w: 64px;
+  font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  min-height: 100vh;
+}
+a {
+  color: var(--accent2);
+}
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5em;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent2);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.primary {
+  background: var(--accent2);
+  border-color: var(--accent2);
+  color: #fff;
+  font-weight: bold;
+}
+button.gold {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #222;
+  font-weight: bold;
+}
+button.danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+input,
+select,
+textarea {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent2);
+}
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.wide {
+  max-width: none;
+}
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grow {
+  flex: 1;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.warn {
+  color: #ffb454;
+}
+.error {
+  color: var(--danger);
+}
+.ok {
+  color: var(--ok);
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .logo {
+  font-weight: bold;
+  font-size: 18px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.menu-card {
+  display: block;
+  padding: 20px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--bg3), var(--bg2));
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+}
+.menu-card:hover {
+  border-color: var(--accent);
+}
+.menu-card h3 {
+  color: var(--accent);
+}
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+}
+.badge.hof {
+  background: #8a5a00;
+  border-color: #c88a00;
+}
+.badge.premium {
+  background: #7a1020;
+  border-color: #c0283c;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.tabs button {
+  border-radius: 6px 6px 0 0;
+  border-bottom: none;
+}
+.tabs button.active {
+  background: var(--accent2);
+  color: #fff;
+}
+.modal-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  max-width: min(900px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  border: 1px solid var(--danger);
+  padding: 8px 16px;
+  border-radius: 8px;
+  z-index: 300;
+}
+
+/* ---------- カード ---------- */
+.card {
+  position: relative;
+  width: var(--w, var(--card-w));
+  aspect-ratio: 5 / 7;
+  border-radius: 5px;
+  overflow: hidden;
+  flex: none;
+  background: #000;
+  border: 1px solid #000;
+  cursor: pointer;
+  transition: transform 0.12s;
+  user-select: none;
+}
+.card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.card.tapped {
+  transform: rotate(90deg) scale(0.86);
+  margin: 0 calc(var(--w, var(--card-w)) * 0.2);
+}
+.card.selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+.card.target {
+  outline: 3px solid var(--danger);
+  outline-offset: 1px;
+  animation: pulse 1s infinite;
+}
+@keyframes pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+.card .count {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-weight: bold;
+  font-size: 13px;
+}
+.card .tag {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.card .pw {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.7);
+}
+.card .pw.mod {
+  color: var(--accent);
+}
+.textcard {
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  text-shadow: 0 0 2px #000;
+}
+.textcard .tn {
+  font-weight: bold;
+}
+.textcard .tc {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+}
+.cardback {
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 6px, #172554 6px, #172554 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #93c5fd;
+  font-weight: bold;
+  font-size: 10px;
+}
+.cardback img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- デッキ編集 ---------- */
+.editor {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 12px;
+  height: calc(100vh - 54px);
+  padding: 12px;
+}
+.editor > * {
+  min-height: 0;
+  overflow: auto;
+}
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+.result-grid .card {
+  --w: 100%;
+  width: 100%;
+}
+.deck-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.deck-list-row:hover {
+  background: var(--bg3);
+}
+.civdot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 1px;
+  border: 1px solid #0006;
+}
+.detail {
+  display: flex;
+  gap: 12px;
+}
+.detail-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+/* ---------- 対戦画面 ---------- */
+.game {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  height: 100vh;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+.board {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+  gap: 4px;
+}
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: rgba(20, 22, 30, 0.92);
+  border-left: 1px solid var(--line);
+}
+.player-area {
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(18, 20, 28, 0.6);
+  background-size: cover;
+  background-position: center;
+  border: 1px solid transparent;
+}
+.player-area.active {
+  border-color: var(--accent);
+}
+.player-area.lost {
+  opacity: 0.4;
+}
+.zone {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: calc(var(--card-w) * 1.4 + 6px);
+  flex-wrap: wrap;
+  padding: 3px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.zone.mana {
+  min-height: calc(var(--card-w) * 0.8);
+}
+.zone.mana .card {
+  --w: 48px;
+}
+.zone-label {
+  font-size: 10px;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  min-width: 14px;
+}
+.pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 11px;
+  gap: 2px;
+}
+.pile .card {
+  --w: 46px;
+}
+.player-name {
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+.player-name.target {
+  outline: 3px solid var(--danger);
+  cursor: pointer;
+  animation: pulse 1s infinite;
+}
+.ctx {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.ctx button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 5px 10px;
+}
+.ctx button:hover:not(:disabled) {
+  background: var(--bg3);
+}
+.ctx .sep {
+  border-top: 1px solid var(--line);
+  margin: 3px 0;
+}
+.ctx .head {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 10px;
+}
+.log {
+  flex: 1;
+  overflow: auto;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+}
+.log div {
+  padding: 1px 0;
+  border-bottom: 1px dotted #ffffff10;
+}
+.banner {
+  padding: 6px 10px;
+  background: #3b2f00;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  text-align: center;
+  font-weight: bold;
+}
+.hand .card {
+  --w: 72px;
+}
+.hand .card:hover {
+  transform: translateY(-6px);
+}
+.opp-compact .card {
+  --w: 44px;
+}
+.opp-compact .zone {
+  min-height: 66px;
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg3);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.dot.on {
+  background: var(--ok);
+}
+@media (max-width: 900px) {
+  .editor,
+  .game {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .side {
+    max-height: 50vh;
+  }
+}

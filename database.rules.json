@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        "sleeve": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length < 400000)" },
+        "playmat": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length < 1500000)" }
+      }
+    },
+    "decks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "rooms": {
+      "$room": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "games": {
+      "$game": {
+        ".read": "auth != null",
+        "init": { ".write": "auth != null && !data.exists()" },
+        "actions": {
+          "$n": { ".write": "auth != null && !data.exists()" }
+        },
+        ".write": "auth != null && !newData.exists()"
+      }
+    }
+  }
+}
