@@ -102,7 +102,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
     changed ||= take(/^、?(?:進化ではない|進化以外の|進化クリーチャーではない|進化クリーチャーでない|進化クリーチャー以外の|進化でない)/, () => (sel.nonEvolution = true));
     changed ||= take(/^(?:このクリーチャーよりパワーが小さい|パワーがこのクリーチャーより小さい|このクリーチャーよりパワーの小さい)/, () => (sel.powerLtSelf = true));
-    changed ||= take(/^(?:そのクリーチャーよりパワーが小さい|そのクリーチャーよりパワーの小さい|パワーがそのクリーチャーより小さい)/, () => (sel.powerLtIt = true));
+    changed ||= take(/^(?:そのクリーチャーよりパワーが小さい|そのクリーチャーよりパワーの小さい|パワーがそのクリーチャーより小さい|それよりパワーが小さい|それよりパワーの小さい)/, () => (sel.powerLtIt = true));
     changed ||= take(/^、?パワーが一番小さい/, () => (sel.extreme = 'minPower'));
     changed ||= take(/^、?(?:パワーが一番大きい|一番パワーの大きい)/, () => (sel.extreme = 'maxPower'));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
