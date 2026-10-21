@@ -177,6 +177,16 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  // 「自分のアンノウンの召喚コストを1、ゼニスの召喚コストを1少なくしてもよい」
+  if ((m = t0.match(/^自分の(.+?)の召喚コストを(\d+)、(.+?)の召喚コストを(\d+)少なく(?:する|してもよい)(?:[、。]?ただし.*)?$/))) {
+    const a = parseSel(m[1], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
+    const b = parseSel(m[3], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
+    if (a && b)
+      return [
+        { s: 'cost', side: 'self', sel: { ...a, kind: 'creature' }, action: 'summon', delta: -m[2], floor: floorOf(full) },
+        { s: 'cost', side: 'self', sel: { ...b, kind: 'creature' }, action: 'summon', delta: -m[4], floor: floorOf(full) },
+      ];
+  }
   if ((m = full.replace(/\s+/g, '').match(/^バズレンダ\[[a-z]*(\d+)\]/))) return [{ s: 'buzz', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ビビッドロー\[[a-z]*(\d+)\]/))) return [{ s: 'vivid', cost: +m[1] }];
   if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];

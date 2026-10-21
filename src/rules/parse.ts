@@ -196,6 +196,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/(\d+)枚ずつ/g, '$1枚')
     .replace(/(\d+)体ずつ/g, '$1体')
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
+    .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^このターンの終わりまで、/, 'このターン、')
     .replace(/バトルゾーンにある、?(自分|相手)の/g, '$1の')
     .replace(/(自分|相手)の、/g, '$1の')
@@ -478,6 +479,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // ガチンコ・ジャッジ
   if (/^相手とガチンコ・ジャッジする$/.test(s)) return [{ op: 'gachinko' }];
   if (/^相手とパワー・ガチンコ・ジャッジする$/.test(s)) return [{ op: 'gachinko', power: true }];
+  if (/^相手(プレイヤー)?とジャンケン(して|で|をして)勝敗を決める$/.test(s)) return [{ op: 'janken' }];
   {
     const gl = s.match(/^(?:自分が負けるか中止するまで、)?相手と(?:(\d+)回)?(パワー・)?ガチンコ・ジャッジする$/);
     if (gl && (gl[1] || /負けるか/.test(s))) return [{ op: 'gachinkoLoop', power: !!gl[2], times: gl[1] ? +gl[1] : undefined }];

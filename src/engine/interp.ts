@@ -56,6 +56,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (k === 'spell' && !f.isSpell) return false;
   if (k === 'psychic' && !t.includes('サイキック')) return false;
   if (k === 'dragheart' && !t.includes('ドラグハート')) return false;
+  if (k === 'duelist' && !t.includes('デュエリスト')) return false;
   if (k === 'gr' && !t.includes('GR')) return false;
   if (k === 'crossgear' && !t.includes('クロスギア')) return false;
   if (k === 'field' && !t.includes('フィールド')) return false;
@@ -886,6 +887,11 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           (c.grants ??= []).push({ kws: op.kws, until: op.until === 'turn' ? -1 : op.until === 'perm' ? -2 : ex.player });
           log(s, ex.player, `${q(nameOf(s, L, i))} に${op.kws.map((k) => `「${k}」`).join('')}を与えた`);
         }
+        break;
+      }
+      case 'janken': {
+        ex.did = rand(s) < 0.5;
+        log(s, ex.player, `ジャンケン → ${ex.did ? '勝ち' : '負け'}`);
         break;
       }
       case 'payLater': {

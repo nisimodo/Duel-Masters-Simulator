@@ -19,6 +19,7 @@ const KINDS: [RegExp, Sel['kind'], Partial<Sel>?][] = [
   [/オーラ$/, 'aura'],
   [/城$/, 'castle'],
   [/ドラグハート(・ウエポン|・フォートレス)?$/, 'dragheart'],
+  [/デュエリスト$/, 'duelist'],
   [/カード$/, 'card'],
 ];
 

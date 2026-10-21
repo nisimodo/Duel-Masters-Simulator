@@ -10,7 +10,7 @@ export interface Sel {
   owner: 'self' | 'opp' | 'any';
   zones: SelZone[];
   /** カードの種類 */
-  kind: 'creature' | 'spell' | 'card' | 'element' | 'crossgear' | 'field' | 'tamaseed' | 'aura' | 'castle' | 'psychic' | 'dragheart' | 'gr';
+  kind: 'creature' | 'spell' | 'card' | 'element' | 'crossgear' | 'field' | 'tamaseed' | 'aura' | 'castle' | 'psychic' | 'dragheart' | 'gr' | 'duelist';
   civs?: Civ[];
   /** この文明を持たない (「闇以外の」) */
   civNot?: Civ[];
@@ -148,6 +148,8 @@ export type Op =
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */
   | { op: 'payLater'; cost: number }
+  /** 相手とジャンケンで勝敗を決める (勝てば did) */
+  | { op: 'janken' }
   /** 負けるまで (times: N回) ガチンコ・ジャッジし、勝った数を数える */
   | { op: 'gachinkoLoop'; power?: boolean; times?: number }
   /** 勝った数だけ body を繰り返す */
