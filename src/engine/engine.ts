@@ -1354,8 +1354,8 @@ function blockStep(s: GameState, L: Lookup) {
 
 export function battle(s: GameState, L: Lookup, att: number, def: number) {
   const blocking = s.attack?.blocked === def;
-  const pa = power(s, L, att, s.attack?.attacker === att, { inBattle: true });
-  const pd = power(s, L, def, false, { inBattle: true, blocking });
+  const pa = power(s, L, att, s.attack?.attacker === att, { inBattle: true, foe: def });
+  const pd = power(s, L, def, false, { inBattle: true, blocking, foe: att });
   const na = nameOf(s, L, att);
   const nd = nameOf(s, L, def);
   log(s, null, `バトル: ${q(na)}(${pa}) vs ${q(nd)}(${pd})`);

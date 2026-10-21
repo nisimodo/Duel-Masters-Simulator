@@ -34,7 +34,7 @@ export type StaticCond =
   | { c: 'linked' };
 
 export type StaticSpec =
-  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond }
+  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond; vs?: Sel }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
   | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number }
   | { s: 'untargetable'; bySpellOnly: boolean }
@@ -499,7 +499,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // ---- パワー ----
   let when: StaticWhen = 'always';
   let body = t;
-  if ((m = t.match(/^(バトル|攻撃|ブロック)中、(.+)$/))) {
+  let vs: Sel | undefined;
+  if ((m = t.match(/^(「[^」]+」を持つクリーチャー|[^、「]+?)とバトル(?:する時|する間|している間|中)、(.+)$/)) && parseSel(m[1])) {
+    when = 'battle';
+    vs = parseSel(m[1])!;
+    body = m[2];
+  } else if ((m = t.match(/^(バトル|攻撃|ブロック)中、(.+)$/))) {
     when = m[1] === 'バトル' ? 'battle' : m[1] === '攻撃' ? 'attack' : 'block';
     body = m[2];
   } else if ((m = t.match(/^(相手|自分)のターン中、(.+)$/))) {
@@ -522,7 +527,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = body.match(/^(.+?)のパワー(?:を|は)([+-])(\d+)(?:する|される|し|され)(?:、((?:「[^」]+」(?:と|、)?)+)を(?:与える|得る))?$/))) {
     const tg = target(m[1]);
     if (tg) {
-      const out: StaticSpec[] = [{ s: 'power', target: tg, delta: (m[2] === '-' ? -1 : 1) * +m[3], when, cond }];
+      const out: StaticSpec[] = [{ s: 'power', target: tg, delta: (m[2] === '-' ? -1 : 1) * +m[3], when, cond, vs }];
       if (m[4]) out.push({ s: 'grant', target: tg, kws: [...m[4].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when, cond });
       return out;
     }

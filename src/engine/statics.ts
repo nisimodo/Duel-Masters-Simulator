@@ -107,6 +107,8 @@ export interface PowerCtx {
   attacking?: boolean;
   inBattle?: boolean;
   blocking?: boolean;
+  /** バトルの相手 */
+  foe?: number;
 }
 
 function whenOk(s: GameState, a: ActiveStatic, when: StaticWhen, ctx: PowerCtx): boolean {
@@ -186,6 +188,7 @@ export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx 
     if (sp.s !== 'power') continue;
     if (!whenOk(s, a, sp.when, ctx) || !targetMatch(s, L, a, sp.target, iid)) continue;
     if (sp.cond && sp.cond.c !== 'powerAtLeast' && !condOk(s, L, a, sp.cond, iid)) continue;
+    if (sp.vs && (ctx.foe == null || !matchesSel(s, L, ctx.foe, { ...sp.vs, zones: ['battle'] }))) continue;
     d += sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
   }
   return d;
