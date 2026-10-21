@@ -2,7 +2,7 @@
 // エンジン (src/engine/interp.ts) がこれを実行し、選択が必要な時はプレイヤー (CPU) に問い合わせる。
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
-export type SelZone = 'battle' | 'hand' | 'mana' | 'grave' | 'shield' | 'deck' | 'hyper' | 'gr' | 'deckTop';
+export type SelZone = 'battle' | 'hand' | 'mana' | 'grave' | 'shield' | 'deck' | 'hyper' | 'gr' | 'deckTop' | 'underSelf';
 
 /** カードの選択条件 */
 export interface Sel {
@@ -67,6 +67,10 @@ export interface Sel {
   extreme?: 'minPower' | 'maxPower';
   /** it (選んだクリーチャー) よりパワーが小さい */
   powerLtIt?: boolean;
+  /** it よりコストが小さい */
+  costLtIt?: boolean;
+  /** コストが it のコスト + N */
+  costItPlus?: number;
   /** このクリーチャーよりコストが小さい */
   costLtSelf?: boolean;
   evolution?: boolean;

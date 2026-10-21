@@ -146,7 +146,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -156,13 +156,15 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
   const out: number[] = [];
   for (const o of owners)
     for (const z of sel.zones) {
-      const arr = z === 'deckTop' ? s.players[o].deck.slice(-1) : (s.players[o][z as ZoneName] as number[] | undefined);
+      const arr = z === 'deckTop' ? s.players[o].deck.slice(-1) : z === 'underSelf' ? (o === s.cards[ex.src]?.owner ? s.cards[ex.src].under : []) : (s.players[o][z as ZoneName] as number[] | undefined);
       if (!arr) continue;
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
         if (sel.self && iid !== ex.src) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
+        if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);

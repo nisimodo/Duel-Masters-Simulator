@@ -511,6 +511,17 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  // 「このクリーチャーの下にある(〇〇)カードをN枚選び、〜」
+  {
+    const us = s.match(/^(?:かわりに、?)?このクリーチャーの下に(?:ある|重ねた)、?(.*?)(?:カード)?を(\d+)枚(まで)?(?:選び|、)、?(.+)$/);
+    const sel = us && (us[1] ? parseSel(us[1].replace(/、$/, '').replace(/^(.+?)$/, '$1カード').replace(/クリーチャーではないカードカード$/, 'クリーチャーではないカード')) : ({ owner: 'any', zones: ['battle'], kind: 'card' } as Sel));
+    const ops = us && verbOps(us[4].replace(/置いてもよい$/, '置く').replace(/出してもよい$/, '出す').replace(/戻してもよい$/, '戻す').replace(/加えてもよい$/, '加える'), { ref: 'it' });
+    if (us && sel && ops) {
+      const t: Target = { ref: 'sel', sel: { ...sel, owner: 'self', zones: ['underSelf'] }, count: { n: +us[2], upTo: !!us[3] }, chooser: 'self' };
+      const body: Op[] = [{ op: 'choose', target: t, purpose: 'benefit', prompt: s0 }, ...ops];
+      return /てもよい$/.test(us[4]) ? [{ op: 'optional', body, prompt: s0 }] : body;
+    }
+  }
   if (/^このクリーチャーの下にあるカードをすべて(?:相手に)?見せ(?:る|てもよい)$/.test(s)) return [];
   if (/^相手は、?その中から、?〈名前〉のカードをすべて捨てる$/.test(s))
     return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'card', nameRef: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }];

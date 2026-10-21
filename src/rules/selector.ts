@@ -106,6 +106,8 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^、?パワーが一番小さい/, () => (sel.extreme = 'minPower'));
     changed ||= take(/^、?(?:パワーが一番大きい|一番パワーの大きい)/, () => (sel.extreme = 'maxPower'));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
+    changed ||= take(/^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストが小さい|^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストの小さい/, () => (sel.costLtIt = true));
+    changed ||= take(/^(?:それ|そのクリーチャー)よりコストが(\d+)(?:だけ)?大きい/, (m) => (sel.costItPlus = +m[1]));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
       sel.civs = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);
       if (/と/.test(m[1])) sel.civAll = true;
