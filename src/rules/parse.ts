@@ -290,6 +290,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/攻撃またはブロックできない$/, '攻撃もブロックもできない')
+    .replace(/^(このターン、[^、]+?)は、/, '$1は')
+    .replace(/^なければ、/, 'それ以外なら、')
+    .replace(/^((?:光|水|闇|火|自然)の(?:カード|クリーチャー|呪文))であれば、/, 'それが$1であれば、')
     .replace(/^(?:好きな数字|数)を(?:ひとつ|1つ)選(?:んで言う|んでもよい|ぶ)$/, '数字を1つ選ぶ')
     .replace(/^そのカードのコストが、?選んだ数(?:字)?と同じ(であれば|なら)、/, 'それが〈数字コスト〉のカード$1、')
     .replace(/につき(\d+)枚、カードを引(く|いてもよい)$/, 'につき、カードを$1枚引$2')
@@ -737,6 +741,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const hit = nl && map.find(([re]) => re.test(nl[3]));
     const tgt: Target | null = nl ? (nl[2] === 'この' ? { ref: 'self' } : nl[2] === 'その' ? { ref: 'it' } : { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }) : null;
     if (nl && hit && tgt) return [{ op: 'grant', target: tgt, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+    // 「次の相手のターン中、自分の〇〇は攻撃されない」など (種族つき)
+    const nr = s.match(/^(次の(?:自分|相手)のターン(?:のはじめまで|中)|このターン)、(自分の[^、]+?)は、?(?:すべて、?)?(.+)$/);
+    const hr = nr && map.find(([re]) => re.test(nr[3]));
+    const sel = nr && parseSel(nr[2]);
+    if (nr && hr && sel) return [{ op: 'grant', target: { ref: 'sel', sel, count: { all: true }, chooser: 'self' }, kws: hr[1], until: nr[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
   if (/^このターンの後に(自分の)?ターンを(追加する|もう一度行う)$/.test(s) || /^このターンの後にもう一度自分のターンを行う$/.test(s)) return [{ op: 'extraTurn' }];
   // 「その中から〇〇をすべて手札に加え、それ以外のカードを好きな順序で山札の一番下に戻す」
