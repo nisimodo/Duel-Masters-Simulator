@@ -268,6 +268,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^このターン(?=(?:その|この|自分の|相手の)(?:クリーチャー|[^、]*クリーチャー)は)/, 'このターン、')
+    .replace(/^(?:このターンが終わるまで|このターンの終わりまで|そのターンの終わりまで|このターン中|そのターン中)、/, 'このターン、')
+    .replace(/^自分の手札を、?好きな枚数捨てる$/, '自分の手札を99枚まで捨てる')
     .replace(/^それ以外のカード(?:であれば|なら)、/, 'それ以外なら、')
     .replace(/^自分の山札のカードを上から(\d+)枚(?:を)?見る$/, '自分の山札の上から$1枚を見る')
     .replace(/^([゠-ヿー・]+)以外をすべて/, '$1以外のクリーチャーをすべて')
@@ -458,6 +461,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^このターン、(?:すべての)?クリーチャーは攻撃(?:することが)?できない$/.test(s))
+    return [{ op: 'restrict', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, what: 'attack' }];
+  if (/^相手は、?自身のシールドをすべて(?:自身の)?手札に加える$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'move', target: { ref: 'it' }, to: 'hand' }];
   {
     const ab = s.match(/^(?:その)?バトルの後(?:で|、)(.+)$/) ?? s.match(/^このクリーチャーのバトルの後、(.+)$/);
     const body = ab && sentence(ab[1], ctx);
