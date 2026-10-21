@@ -36,6 +36,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const { state: s, submit, L, error } = useGameSync(room.gameId, db);
   const [hover, setHover] = useState<{ card: Card; face?: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null);
+  // Esc でメニューを閉じる
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menu]);
   const [mode, setMode] = useState<Mode>({ kind: 'none' });
   const [pay, setPay] = useState<{ iid: number; face: number } | null>(null);
   /** カードを何枚か選ぶダイアログ (ハイパー化でタップするクリーチャー等) */
