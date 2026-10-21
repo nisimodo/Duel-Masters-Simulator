@@ -115,6 +115,10 @@ export type Op =
   | { op: 'swap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  /** ゲーム中に一度だけ (2回目以降は「そうしたら」が成立しない) */
+  | { op: 'oncePerGame' }
+  /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */
+  | { op: 'stackUnder'; what: 'it' | 'self' }
   /** マナゾーンのカードを裏向き/表向きにする */
   | { op: 'faceDown' | 'faceUp'; target: Target }
   /** タップしていればアンタップ、していなければタップ */

@@ -174,6 +174,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** 「ゲーム中に一度」を使ったカード */
+  onceGame?: number[];
   /** このターンにシールドをブレイクしたクリーチャー (ターボラッシュ用) */
   brokeThisTurn?: number[];
   mode: DeckType;

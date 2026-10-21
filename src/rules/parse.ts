@@ -204,6 +204,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/(\d+枚目?)を、/g, '$1を')
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/》(\d+)(つ|体|枚)を/, '》を$1$2')
     .replace(/^バトルゾーンにある、/, '')
     .replace(/クリーチャーすべてを/, 'クリーチャーをすべて')
     .replace(/を表向きにして手札に/, 'を手札に')
@@ -234,6 +235,30 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: down ? 'faceDown' : 'faceUp', target: { ref: 'it' } },
       ];
     }
+  }
+  // Jトルネード: 自分の他のジョーカーズを1体、手札に戻す
+  if (/^Jトルネードする$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ジョーカーズ'], other: true }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'Jトルネード: 手札に戻すジョーカーズを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // Dスイッチ 「このD2フィールドをゲーム中で一度上下逆さまにする」
+  if (/^この(D2|DN|D)?フィールドをゲーム中で一度上下逆さまにする$/.test(s)) return [{ op: 'oncePerGame' }];
+  // 超魂レイド 「その中からこのクリーチャーの進化元になれるカードを1枚、この下に置く」
+  {
+    const su = s.match(/^その中から(?:このクリーチャーの)?進化元になれるカードを(\d+)枚、?この(?:クリーチャーの)?下に置く$/);
+    if (su)
+      return [
+        { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'creature' }, count: { n: +su[1], upTo: false } }, purpose: 'benefit', prompt: '下に置くカードを選ぶ' },
+        { op: 'stackUnder', what: 'it' },
+      ];
+    const sv = s.match(/^この(?:タマシード|カード|クリーチャー)を(自分の.+?)(\d+)体の下に置く$/);
+    const sel = sv && parseSel(sv[1]);
+    if (sv && sel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '下に置くクリーチャーを選ぶ' },
+        { op: 'stackUnder', what: 'self' },
+      ];
   }
   // 唱えた後、墓地に置くかわりに山札の下 (呪文を出す処理で行う)
   if (/^(この呪文を(自分の手札から)?)?唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く$/.test(s)) return [];

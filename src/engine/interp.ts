@@ -580,6 +580,34 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
         break;
       }
+      case 'oncePerGame': {
+        const used = (s.onceGame ??= []);
+        if (used.includes(ex.src)) {
+          ex.did = false;
+          log(s, ex.player, 'ゲーム中に一度だけの能力はもう使った');
+        } else used.push(ex.src);
+        break;
+      }
+      case 'stackUnder': {
+        const self = s.cards[ex.src];
+        const other = ex.it.find((i) => s.cards[i].zone !== 'gone' && i !== ex.src);
+        if (other == null || !self) break;
+        const [top, bottom] = op.what === 'it' ? [ex.src, other] : [other, ex.src];
+        const tc = s.cards[top];
+        const bc = s.cards[bottom];
+        if (tc.zone !== 'battle') break;
+        // 元の場所から取り除いて下に置く
+        if (bc.zone === 'under' && bc.parent != null) s.cards[bc.parent].under = s.cards[bc.parent].under.filter((u) => u !== bottom);
+        else if (bc.zone !== 'gone') {
+          const arr = s.players[bc.owner][bc.zone as 'deck'] as number[] | undefined;
+          if (arr) arr.splice(arr.indexOf(bottom), 1);
+        }
+        bc.zone = 'under';
+        bc.parent = top;
+        tc.under.push(bottom);
+        log(s, ex.player, `${q(nameOf(s, L, bottom))} を ${q(nameOf(s, L, top))} の下に置いた`);
+        break;
+      }
       case 'faceDown':
       case 'faceUp': {
         for (const i of resolveRef(s, ex, op.target) ?? []) {
