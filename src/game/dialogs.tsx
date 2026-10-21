@@ -1,3 +1,4 @@
+import { matchesSel } from '../engine/interp';
 import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
@@ -91,6 +92,8 @@ export function PayDialog({
     if (!bf) return false;
     if (showAll) return true;
     if (isAura) return bf.isCreature && /GR/.test(bf.type);
+    const em = statics.find((x) => x.s === 'evoMulti');
+    if (em && em.s === 'evoMulti') return bf.isCreature && matchesSel(s, L, b, em.sel);
     const bc = L(s.cards[b].cid)!;
     return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
   });

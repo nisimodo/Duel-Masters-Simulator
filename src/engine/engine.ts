@@ -424,7 +424,9 @@ export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
     if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack')) return false;
     if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
     const tg = attackTargets(s, L, b);
-    return tg.players.length > 0 || tg.cards.length > 0;
+    // 実際に攻撃を宣言できるか (挑発などの制限も含めて) 確かめる
+    const tries = [...tg.cards.map((c) => ({ player: s.cards[c].owner, card: c as number | null })), ...tg.players.map((pl) => ({ player: pl, card: null }))];
+    return tries.some((t) => !applyAction(s, p, { t: 'attack', attacker: b, player: t.player, card: t.card }, L).error);
   });
 }
 
@@ -1629,6 +1631,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === baseZone && s.cards[b].owner === p && b !== a.iid);
       // NEO進化・G-NEO進化は進化元なしでも召喚できる
       if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
+      // 進化GV / 超無限進化: 必要な数の進化元
+      const em = (face.statics ?? []).find((x) => x.s === 'evoMulti');
+      if (em && em.s === 'evoMulti' && !a.force) {
+        if (bases.length < em.min || (em.exact && bases.length !== em.min)) return `進化元を${em.min}体${em.exact ? '' : '以上'}選んでください`;
+        if (bases.some((b) => !matchesSel(s, L, b, em.sel))) return '進化元の条件に合わないクリーチャーがあります';
+      }
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);

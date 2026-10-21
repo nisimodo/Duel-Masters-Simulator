@@ -29,7 +29,7 @@ import {
 } from './engine';
 import { matchesCond } from './cond';
 import { costOf } from './statics';
-import { mainOpp, programOf } from './interp';
+import { mainOpp, matchesSel, programOf } from './interp';
 import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
 
@@ -374,7 +374,13 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       const rv = removalValue(card, fi);
       if (f.isCreature) {
         let evo: number[] | undefined;
-        if (f.isEvolution) {
+        const em = (f.statics ?? []).find((x) => x.s === 'evoMulti');
+        if (f.isEvolution && em && em.s === 'evoMulti') {
+          // 進化GV / 超無限進化: 条件に合う弱いクリーチャーから必要な数だけ
+          const bases = me.battle.filter((b) => faceOf(s, L, b)?.isCreature && matchesSel(s, L, b, em.sel)).sort((a, b) => threatOf(s, L, a) - threatOf(s, L, b));
+          if (bases.length < em.min) return;
+          evo = bases.slice(0, em.exact ? em.min : Math.max(em.min, bases.length));
+        } else if (f.isEvolution) {
           const base = [...me.battle]
             .filter((b) => {
               const bf = faceOf(s, L, b);

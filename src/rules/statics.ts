@@ -102,6 +102,8 @@ export type StaticSpec =
   | { s: 'noUntapStart' }
   /** 封印が付いていれば離れない */
   | { s: 'sealStay' }
+  /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
+  | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel }
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
   | { s: 'soulShift' }
   /** NEO進化クリーチャーとして召喚するならコストをN少なく */
@@ -169,6 +171,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
+    const words = m[3].replace(/のいずれか$/, '');
+    const list = words.split('、');
+    let sel: Sel | null;
+    if (list.length > 1) sel = { owner: 'self', zones: ['battle'], kind: 'creature', races: list };
+    else sel = parseSel('自分の' + (m[2] ?? '') + words);
+    if (sel) return [{ s: 'evoMulti', min: +m[4], exact: m[1] === '進化GV' && !m[5], sel }];
+  }
   if (/^封印が付いていれば、この(タマシード|クリーチャー|カード|フィールド)は(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'sealStay' }];
   if ((m = t0.match(/^NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ウラ・ニンジャ・ストライク(\d+)(?:\((光|水|闇|火|自然)\))?/))) return [{ s: 'uraNinja', n: +m[1], civ: m[2] }];

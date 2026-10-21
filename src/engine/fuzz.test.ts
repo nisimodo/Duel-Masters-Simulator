@@ -45,6 +45,8 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
           }
         }
         if (!ok) {
+          const errs = [...cpuPlan(s, p, L), ...fb].map((a) => `${a.t}: ${applyAction(s, p, a as never, L).error}`);
+          console.log('STUCK', g, errs, s.players[p].battle.map((b) => `${L(s.cards[b].cid)?.name}${s.cards[b].tapped ? '(T)' : ''}${s.cards[b].sick ? '(酔)' : ''}`));
           stuck++;
           break;
         }
