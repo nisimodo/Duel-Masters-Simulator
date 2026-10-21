@@ -70,6 +70,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
   if (m(/^(裏向きにして|裏向きのまま)、?(自分の)?シールド(ゾーン)?に(加える|置く)$/)) return [{ op: 'move', target, to: 'shield' }];
+  if (m(/^(自分の)?手札から捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
   if (m(/^(好きな順序で)?(自身の|持ち主の|自分の)?山札の上か下(のどちらか)?に(置く|戻す)$/)) return [{ op: 'topOrBottom', target, chooser: 'self' }];
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
@@ -225,6 +226,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^そうしない場合、/, 'そうしなかった場合、')
+    .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
     .replace(/^(龍?マナ武装|レインボーナス)\d*[:：]/, '')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
     .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
@@ -578,6 +580,26 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (kd) return [{ op: 'drawItPlus', plus: 0, mult: +kd[2] / +kd[1] }];
     const bs = s.match(/^そのうちの(\d+)(?:枚|つ)をブレイクする$/);
     if (bs) return [{ op: 'breakShield', n: +bs[1] }];
+  }
+  // 「それが〇〇なら手札に加え、それ以外なら山札の一番下に置く」(1文の中の else)
+  {
+    const ie = s.match(/^(.+?)(?:なら|であれば)、?(.+?)、それ以外なら、?(.+)$/);
+    if (ie) {
+      const cond = parseCond(ie[1]);
+      const term = (v: string) => v.replace(/加え$/, '加える').replace(/置き$/, '置く').replace(/戻し$/, '戻す').replace(/出し$/, '出す').replace(/唱え$/, '唱える');
+      const body = cond && (sentence(term(ie[2]), ctx) ?? verbOps(term(ie[2]), { ref: 'it' }));
+      const els = cond && (sentence(ie[3], ctx) ?? verbOps(ie[3], { ref: 'it' }));
+      if (cond && body && els) return [{ op: 'if', cond, body, else: els }];
+    }
+  }
+  if (/^(その後、)?(それ|そのシールド|それら)を(元の場所に|元に)戻す$/.test(s)) return [];
+  {
+    const sg = s.match(/^裏向きのまま(\d+)枚選び、(?:自分の)?(墓地に置く|手札に加える)$/);
+    if (sg)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card' }, count: { n: +sg[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '自分のシールドを選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: /墓地/.test(sg[2]) ? 'grave' : 'hand' },
+      ];
   }
   // 自分のマナゾーン/手札/墓地から選んで〜
   {
