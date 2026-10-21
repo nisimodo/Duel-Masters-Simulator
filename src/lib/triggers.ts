@@ -231,5 +231,5 @@ export const RECAST = /^(xB)?\s*この呪文を自分の手札から唱えた後
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !/^この呪文を(自分の)?(マナゾーン|墓地)から唱えてもよい。?$/.test(l));
 }

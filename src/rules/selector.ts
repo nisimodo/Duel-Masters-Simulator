@@ -80,13 +80,14 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^「([^」]+)」を持つ/, (m) => (sel.hasKw = m[1]));
     changed ||= take(/^(タップされていない|タップしていない)/, () => (sel.tapped = false));
     changed ||= take(/^(タップされている|タップしている|タップ状態の)/, () => (sel.tapped = true));
-    changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)以外の/, (m) => {
+    changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)(?:ではない|以外の)/, (m) => {
       sel.civNot = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);
     });
     changed ||= take(/^(アンタップされている|アンタップしている|アンタップ状態の)/, () => (sel.tapped = false));
     changed ||= take(/^無色ではない/, () => (sel.notColorless = true));
     changed ||= take(/^クリーチャー(ではない|以外の)/, () => (sel.notCreature = true));
     changed ||= take(/^サイキックではない/, () => (sel.notPsychic = true));
+    changed ||= take(/^([゠-ヿー・]{2,})(?:ではない|以外の)/, (m) => (sel.racesNot = [m[1]]));
     changed ||= take(/^無色の?/, () => (sel.colorless = true));
     changed ||= take(/^多色ではない/, () => (sel.monocolor = true));
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));
@@ -104,16 +105,20 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
   if (!zoneSet && defaults.zones) sel.zones = defaults.zones;
 
   // 末尾の種類
+  let kindSet = false;
   for (const [re, kind, extra] of KINDS) {
     const m = p.match(re);
     if (m) {
       sel.kind = kind;
       Object.assign(sel, extra);
       p = p.slice(0, m.index);
+      kindSet = true;
       break;
     }
   }
   p = p.replace(/の$/, '').replace(/・$/, '');
+  // 「自身の手札」「自分のマナゾーン」のようにゾーンだけなら、そこにあるカード
+  if (!kindSet && !p && zoneSet && /(手札|マナゾーン|墓地|山札)(にある)?$/.test(phrase.replace(/\s+/g, ''))) sel.kind = 'card';
   if (p) {
     // 残りは種族 (「ドラゴン」「ジャイアントまたはコマンド」等)
     const races = p.split(/または|か|、|・(?=[^゠-ヿ])/).filter(Boolean);

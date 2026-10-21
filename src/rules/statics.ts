@@ -249,6 +249,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0)) return [{ s: 'noBreak' }];
   if (/^相手のクリーチャーが攻撃する場合、可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^このクリーチャーを、自分の墓地から召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'grave' }];
+  if ((m = t0.match(/^この呪文を(?:自分の)?(マナゾーン|墓地)から唱えてもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : 'mana' }];
   if (/^(バトルゾーンに置く時、このカードはタップして置く|このクリーチャーはタップして出る)$/.test(t0)) return [{ s: 'entersTapped' }];
   if (/^飛行$/.test(t0)) return [{ s: 'note' }];
   if (/^∞パワーアタッカー$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['パワーアタッカー+999999'], when: 'attack' }];

@@ -101,6 +101,8 @@ export interface PlayerState {
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
+  /** このターンに攻撃した回数 */
+  attacks?: { turn: number; n: number };
   /** このターンにブレイクされたシールドの数 */
   broken?: { turn: number; n: number };
   /** 「次の自分のターンのはじめまで、相手は各ターンN度しか攻撃もブロックもできない」 (until のプレイヤーのターンのはじめまで) */

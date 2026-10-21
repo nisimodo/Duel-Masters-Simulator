@@ -1564,6 +1564,8 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
       countAct(s, p, 'atk');
+      const me0 = s.players[p];
+      me0.attacks = me0.attacks?.turn === s.turn ? { turn: s.turn, n: me0.attacks.n + 1 } : { turn: s.turn, n: 1 };
       fireSelf(s, L, a.attacker, c.face, ['tapped']);
       s.phase = 'attack';
       s.attack = { attacker: a.attacker, owner: p, targetPlayer, targetCard: a.card ?? null, blocked: null, step: 'opt' };
@@ -1787,7 +1789,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const fromOk =
     c.zone === 'hand' ||
     c.zone === 'partner' ||
-    (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
+    ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
     (face.isCreature && c.zone === 'mana' && manaSummonLeft(s, L, p) > 0) ||
     (a.alt === 'mugen' && c.zone === 'grave') ||

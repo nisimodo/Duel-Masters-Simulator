@@ -105,6 +105,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   }
   if (sel.mono && civs.length !== 1) return false;
   if (sel.races?.length && !sel.races.some((r) => f.races.some((x) => x.includes(r)))) return false;
+  if (sel.racesNot?.length && sel.racesNot.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.nameHas && !f.name.includes(sel.nameHas) && !card.name.includes(sel.nameHas)) return false;
   if (sel.costMin != null && f.cost < sel.costMin) return false;
   if (sel.costMax != null && f.cost > sel.costMax) return false;
@@ -131,7 +132,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -192,6 +193,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
     case 'not':
       return !evalCond(s, L, ex, c.a);
+    case 'firstAttack':
+      return !!s.attack && me.attacks?.turn === s.turn && me.attacks.n === 1;
     case 'brokenGE': {
       const b = me.broken?.turn === s.turn ? me.broken.n : 0;
       return (b >= c.n) !== !!c.neg;
@@ -623,7 +626,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           prompt: `${ex.name}: 次のうちいずれか${op.pick}つを選ぶ${all ? ' (すべて選んでもよい)' : ''}`,
           options: [],
           labels: op.options.map((o) => o.label),
-          min: Math.min(op.pick, op.options.length),
+          min: op.optional ? 0 : Math.min(op.pick, op.options.length),
           max: all ? op.options.length : Math.min(op.pick, op.options.length),
           purpose: 'benefit',
         });

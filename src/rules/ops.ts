@@ -43,6 +43,8 @@ export interface Sel {
   faceDown?: boolean;
   mono?: boolean;
   races?: string[];
+  /** この種族ではない */
+  racesNot?: string[];
   nameHas?: string;
   costMin?: number;
   costMax?: number;
@@ -98,6 +100,8 @@ export type Cond =
   | { c: 'and'; a: Cond; b: Cond }
   | { c: 'or'; a: Cond; b: Cond }
   | { c: 'not'; a: Cond }
+  /** 今の攻撃がこのターン最初の攻撃 */
+  | { c: 'firstAttack' }
   /** このターンにN枚以上自分のシールドがブレイクされている */
   | { c: 'brokenGE'; n: number; neg?: boolean }
   /** これを装備/クロスしたクリーチャーがタップしている */
@@ -134,7 +138,7 @@ export type Op =
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }
   | { op: 'optional'; body: Op[]; prompt: string }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
-  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond }
+  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean }
   | { op: 'repeat'; n: number; body: Op[] }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }

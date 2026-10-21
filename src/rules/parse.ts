@@ -187,6 +187,7 @@ function parseCond(c: string): Cond | null {
   }
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
+  if (/^それが(この|その)ターン(最初|はじめて)の攻撃(であ|で)?$/.test(c)) return { c: 'firstAttack' };
   if ((m = c.match(/^このターンに(\d+)つ以上自分のシールドがブレイクされてい(な(?:け)?)?$/))) return { c: 'brokenGE', n: +m[1], neg: !!m[2] };
   if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
@@ -257,6 +258,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(.+?)をパワーの合計が(\d+)以下になるよう(?:に)?好きな数選び、/, '$1を、パワーの合計が$2以下になるように好きな数選び、')
     .replace(/^(クリーチャー|呪文|カード)(なら|であれば)、/, 'それが$1なら、')
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
+    .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
+    .replace(/^各相手は/, '相手は')
+    .replace(/^相手は手札を(\d+)枚捨てる$/, '相手は自身の手札を$1枚選び、捨てる')
+    .replace(/^すべての(クリーチャー|自分のクリーチャー|相手のクリーチャー)を/, '$1をすべて')
+    .replace(/^バトルゾーンにある(?=[^、]+をすべて)/, '')
     .replace(/^→/, '')
     .replace(/^相手の手札を(\d+)枚、?見ないで選び/, '相手の手札から$1枚見ないで選び')
     .replace(/、コストを支払わずに自分の(手札|墓地|マナゾーン)から(唱え|召喚し|出し)/, '、自分の$1からコストを支払わずに$2')
@@ -295,7 +301,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/好きな順番で/g, '好きな順序で')
     .replace(/マナゾーンにタップして置く$/, 'タップしてマナゾーンに置く')
     .replace(/^(.+?)は、?このターンの終わりまで((?:「[^」]+」(?:と|、)?)+)を得る$/, 'このターン、$1は$2を得る')
-    .replace(/^(?!そうし|その後)(.+?)を(\d+)(枚|体)、自分の(墓地|手札|マナゾーン)から(.+)$/, '自分の$4から$1を$2$3$5')
+    .replace(/^(?!そうし|その後|このターン、クリーチャーを)(.+?)を(\d+)(枚|体)、自分の(墓地|手札|マナゾーン)から(.+)$/, '自分の$4から$1を$2$3$5')
     .replace(/^(?!そうし|その後)(.+?(?:クリーチャー|カード))(\d+)(体|枚)を(?!選)(.+)$/, '$1を$2$3、$4')
     .replace(/^自分の手札にある(?=.+を\d+(枚|体)、)/, '自分の手札から');
   if (!s) return [];
@@ -423,10 +429,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (al) return [{ op: 'actLimit', n: +al[1] }];
   if (/^(相手の手札とシールドを見る|自分の手札を\d+枚見せる)$/.test(s)) return [];
   {
-    const ep = s.match(/^(各プレイヤーは|相手は)、?バトルゾーンにある(?:自身の)?パワー(\d+)以下のクリーチャーすべてを、?(?:それぞれの|持ち主の)墓地に置く$/);
+    const ep = s.match(/^(各プレイヤーは|相手は)、?(?:バトルゾーンにある)?(?:自身の)?パワー(\d+)以下のクリーチャー(?:すべてを|をすべて)、?(?:それぞれの|持ち主の)墓地に置く$/);
     if (ep)
       return [{ op: 'move', target: { ref: 'sel', sel: { owner: ep[1] === '相手は' ? 'opp' : 'any', zones: ['battle'], kind: 'creature', powerMax: +ep[2] }, count: { all: true }, chooser: 'self' }, to: 'grave' }];
-    const dp = s.match(/^バトルゾーンにある(相手|自分)のクリーチャーと同じ枚数のカードを引く$/);
+    const dp = s.match(/^(?:バトルゾーンにある)?(相手|自分)のクリーチャーと同じ枚数のカードを引く$/);
     if (dp) return [{ op: 'drawPer', sel: { owner: dp[1] === '相手' ? 'opp' : 'self', zones: ['battle'], kind: 'creature' } }];
   }
   const jb = s.match(/^Jビッグ(\d+)する$/);
@@ -1523,7 +1529,7 @@ function parseEffectRaw(text: string): Program {
     };
   }
   // 選択肢 「次のうちいずれかひとつを選ぶ。▼A ▼B」
-  const modal = t.match(/^(.*?)次の(?:うちいずれか|中から)(ひとつ|1つ|\d+つ|\d+回)(?:を|まで)?選ぶ。?(.*)$/);
+  const modal = t.match(/^(.*?)次の(?:うちいずれか|中から)(ひとつ|1つ|\d+つ|\d+回)(?:を|まで)?選(?:ぶ|んでもよい)。?(.*)$/);
   if (modal) {
     const pre: Program = modal[1].trim() ? parseEffect(modal[1]) : { ops: [], complete: true, unparsed: [] };
     const pick = modal[2] === 'ひとつ' ? 1 : +modal[2].replace(/つ|回/, '');
@@ -1539,7 +1545,7 @@ function parseEffectRaw(text: string): Program {
         ...pre.ops,
         ...(same
           ? Array.from({ length: pick }, (): Op => ({ op: 'modal', pick: 1, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }))
-          : [{ op: 'modal' as const, pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }]),
+          : [{ op: 'modal' as const, pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })), optional: /選んでもよい/.test(t) || undefined }]),
       ],
       complete: ok,
       unparsed: [...pre.unparsed, ...parsed.flatMap((p) => p.prog.unparsed)],
