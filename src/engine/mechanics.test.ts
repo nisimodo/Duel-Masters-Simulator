@@ -61,6 +61,11 @@ const db = buildDB(
     { id: 'ex2', n: 'ex2', img: '', f: [{ n: '暴剣王B', t: 'エグザイル・クリーチャー', c: 'F', co: 1, p: '1000', r: [], x: ['自分の他の、名前に《暴剣》とあるエグザイル・クリーチャーをバトルゾーンに出すことはできない。'] }] },
     { id: 'chance', n: 'chance', img: '', f: [{ n: 'chance', t: '呪文', c: 'F', co: 9, p: null, r: [], x: ['アタック・チャンス-テスト(自分のテストが攻撃する時、この呪文をコストを支払わずに唱えてもよい)', 'カードを2枚引く。'] }] },
     cr('space', 1, 1000, ['スペース・チャージ:火(自分のマナゾーンに火のカードが置かれた時、このクリーチャーの q 能力を使ってもよい)', 'q カードを1枚引く。']),
+    cr('ddd', 6, 6000, ['D・D・D [ff02](自分のクリーチャーが攻撃する時、このカードを [ff02]支払って自分の手札から実行してもよい)']),
+    cr('must', 1, 2000, ['スピードアタッカー', 'このクリーチャーは、可能であれば毎ターン攻撃する。']),
+    cr('lure', 1, 1000, ['相手のクリーチャーは、可能ならこのクリーチャーを攻撃する。']),
+    { id: 'jc', n: 'jc', img: '', f: [{ n: 'jc', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['ジョーカーズ'], x: ['このクリーチャーが攻撃する時、このクリーチャーと自分のマナゾーンにあるコスト5以下のジョーカーズ1体を入れ替えてもよい。', 'スピードアタッカー'] }] },
+    { id: 'jm', n: 'jm', img: '', f: [{ n: 'jm', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['ジョーカーズ'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -358,5 +363,49 @@ describe('named mechanics', () => {
       s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
     }
     expect(s.players[0].hand.length).toBe(hand);
+  });
+
+  it('D・D・D: can be used from hand by paying its cost when a creature attacks', () => {
+    let s = setup([
+      { p: 0, cid: 'sa', zone: 'battle' },
+      { p: 0, cid: 'ddd', zone: 'hand' },
+    ]);
+    const d = find(s, 0, 'hand', 'ddd')!;
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+    for (let k = 0; k < 6 && s.cards[d].zone === 'hand' && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.player !== 0) break;
+      s = act(s, 0, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: null });
+    }
+    expect(s.cards[d].zone).toBe('battle');
+    expect(s.players[0].mana.filter((m) => s.cards[m].tapped).length).toBe(2);
+  });
+
+  it('可能なら攻撃する / 可能ならこのクリーチャーを攻撃する', () => {
+    const s = setup([
+      { p: 0, cid: 'must', zone: 'battle' },
+      { p: 1, cid: 'lure', zone: 'battle', tapped: true },
+    ]);
+    const m = find(s, 0, 'battle', 'must')!;
+    expect(applyAction(s, 0, { t: 'endTurn' }, L).error).toMatch(/攻撃しなければ/);
+    expect(applyAction(s, 0, { t: 'attack', attacker: m, player: 1 }, L).error).toMatch(/攻撃しなければ/);
+    expect(applyAction(s, 0, { t: 'attack', attacker: m, player: 1, card: find(s, 1, 'battle', 'lure')! }, L).error).toBeNull();
+  });
+
+  it('Jチェンジ: swaps with a joker in the mana zone', () => {
+    let s = setup([
+      { p: 0, cid: 'jc', zone: 'battle' },
+      { p: 0, cid: 'jm', zone: 'mana' },
+    ]);
+    const jc = find(s, 0, 'battle', 'jc')!;
+    const jm = find(s, 0, 'mana', 'jm')!;
+    s = act(s, 0, { t: 'attack', attacker: jc, player: 1 });
+    for (let k = 0; k < 8 && s.cards[jm].zone !== 'battle' && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.player !== 0) break;
+      s = act(s, 0, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: [jm] }) : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: null });
+    }
+    expect(s.cards[jm].zone).toBe('battle');
+    expect(s.cards[jc].zone).toBe('mana');
   });
 });

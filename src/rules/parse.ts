@@ -29,6 +29,8 @@ function unOptional(s: string): string | null {
     [/行ってもよい$/, '行う'],
     [/([一-鿿゠-ヿー]+)してもよい$/, '$1する'],
     [/してもよい$/, 'する'],
+    // 下一段の動詞 「入れ替えてもよい」「与えてもよい」「止めてもよい」
+    [/([えけげせぜてねべめれ])てもよい$/, '$1る'],
     [/(し|て)もよい$/, ''],
   ];
   for (const [re, rep] of rules) if (re.test(s)) return s.replace(re, rep);
@@ -73,12 +75,13 @@ function verbOps(verb: string, target: Target): Op[] | null {
     return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(持ち主の)?シールド化する$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^タップする$/)) return [{ op: 'tap', target }];
+  if (m(/^タップまたはアンタップする$/)) return [{ op: 'toggleTap', target }];
   if (m(/^アンタップする$/)) return [{ op: 'untap', target }];
   if (m(/^(自分の)?(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   if (m(/^タップして(自分の)?バトルゾーンに出す$/)) return [{ op: 'play', target, mode: 'put' }, { op: 'tap', target: { ref: 'it' } }];
   if (m(/^(コストを支払わずに|コストを支払ったものとして)召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
   if (m(/^コストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
-  if (m(/^コストを支払わずに(使う|実行する|プレイする)$/)) return [{ op: 'play', target, mode: 'use' }];
+  if (m(/^コストを支払わずに(使う|実行する|プレイする|ジェネレートする)$/)) return [{ op: 'play', target, mode: 'use' }];
   if (m(/^捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^コストの大きいほうに裏返す$/)) return [{ op: 'flip', target, to: 'big' }];
   if (m(/^コストの小さいほうに裏返す$/)) return [{ op: 'flip', target, to: 'small' }];
@@ -194,8 +197,32 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/裏向きのまま(自分の)?シールドに加える$/, '裏向きのまま$1シールドゾーンに加える')
     .replace(/クリーチャーはすべて「/, 'クリーチャーすべてに「')
     .replace(/のパワーは([+-]\d+)される$/, 'のパワーを$1する')
-    .replace(/(\d+枚目?)を、/g, '$1を');
+    .replace(/(\d+枚目?)を、/g, '$1を')
+    .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
+    .replace(/^自分の手札にある(?=.+を\d+(枚|体)、)/, '自分の手札から');
   if (!s) return [];
+
+  // コストの下限 (直前の軽減の注記)
+  if (/^ただし、?コストは\d+(以下に(は)?ならない|より少なくならない)$/.test(s)) return [];
+  // D・D・D など 「このカードを [ll02] 支払って自分の手札から実行してもよい」
+  {
+    const pp = s.match(/^このカードを\[[a-z]*(\d+)\]支払って(?:自分の手札から)?(?:実行|召喚|使用)する$/);
+    if (pp) return [{ op: 'payPlay', cost: +pp[1] }];
+  }
+  // Jチェンジ 「このクリーチャーと自分のマナゾーンにあるコスト5以下のジョーカーズ1体を入れ替える」
+  {
+    const sw = s.match(/^(?:このクリーチャー|これ)と自分の(マナゾーン|墓地)にある(.+?)(\d+)体を入れ替える$/);
+    if (sw) {
+      const sel = parseSel(sw[2], { zones: [sw[1] === '墓地' ? 'grave' : 'mana'] });
+      if (sel) {
+        sel.owner = 'self';
+        sel.zones = [sw[1] === '墓地' ? 'grave' : 'mana'];
+        return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: +sw[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: s0 }, { op: 'swap' }];
+      }
+    }
+  }
+  // 表向きにした/残りのカードを山札の下へ
+  if (/^(表向きにした|残りの|見た)カードをすべて、?(好きな順序で)?(自分の)?山札の(一番)?下に(戻す|置く)$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
 
   // 記号つきの能力を使う 「このクリーチャーの q 能力を使ってもよい」「このクリーチャーと自分の他のクリーチャー1体の oP 能力を使う」
   {
@@ -629,6 +656,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const ops = sel && verbOps(m[3], { ref: 'it' });
     if (sel && ops)
       return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: 99, upTo: true, sumPowerMax: +m[2] }, chooser: 'self' }, purpose: purposeOf(sel, m[3]), prompt: `パワーの合計が${m[2]}以下になるように選ぶ` }, ...ops];
+  }
+
+  // ---- 「その〇〇を〜」 (直前に表向きにした/選んだカード) ----
+  if ((ctx.chosen || ctx.looked) && (m = s.match(/^その([^、をのに]{1,15})を、?(.+)$/))) {
+    const ops = verbOps(m[2], { ref: 'it' });
+    if (ops) return ops;
   }
 
   // ---- 単独の動詞 「破壊する」「アンタップする」: 直前に選んだカード、何も選んでいなければこのクリーチャー ----

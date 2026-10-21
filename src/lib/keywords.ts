@@ -128,7 +128,7 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
     powerAttacker: paM ? Number(paM[1]) : 0,
     cantAttack: /このクリーチャーは、?攻撃(することが)?できない/.test(all),
     cantAttackPlayer: /このクリーチャーは、?(相手)?プレイヤーを攻撃できない/.test(all),
-    unblockable: /このクリーチャーは(相手に)?ブロックされない/.test(all),
+    unblockable: /このクリーチャーは、?(相手に)?ブロックされない/.test(all),
     revChange,
     invasion,
     evoCond,

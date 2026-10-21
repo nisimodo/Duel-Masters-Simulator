@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { ALL_CIVS, costOf, effGroups, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { activeStatics, ALL_CIVS, costOf, effGroups, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 
@@ -333,6 +333,22 @@ export function moveCard(
   return dest;
 }
 
+/** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
+export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
+  return s.players[p].battle.filter((b) => {
+    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack')) return false;
+    if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
+    const tg = attackTargets(s, L, b);
+    return tg.players.length > 0 || tg.cards.length > 0;
+  });
+}
+
+/** 「相手のクリーチャーは可能ならこのクリーチャーを攻撃する」で、このクリーチャーが攻撃しなければならない相手 */
+export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
+  const tg = attackTargets(s, L, attacker);
+  return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure'));
+}
+
 /** クロスギアをクロスするコスト (「〜にクロスする時、コストを少なく」を含む) */
 export function crossCost(s: GameState, L: Lookup, gear: number, onto: number): number {
   const gf = faceOf(s, L, gear);
@@ -418,6 +434,7 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
 function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | null, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null = exclude) {
+  fireHand(s, L, actor, ownEv, oppEv, subject);
   const n = s.players.length;
   for (let k = 0; k < n; k++) {
     const p = (s.active + k) % n;
@@ -429,11 +446,12 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
       const f = faceOf(s, L, iid);
       if (!f) continue;
       for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
-        if (!spec.events.includes(ev)) continue;
+        if (!spec.events.includes(ev) || spec.fromHand) continue;
         // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
         if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
         pushAbility(s, L, iid, s.cards[iid].face, spec, ev);
       }
+      // (手札から使う能力は下でまとめて)
       // 下にあるリンクしたゴッド・装備したドラグハート・クロスギアの能力 (龍解など)
       for (const u of s.cards[iid].under) {
         const uc = s.cards[u];
@@ -447,6 +465,25 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
       }
     }
   }
+}
+
+/** 手札にあるカードの「〜時、このカードを手札から使ってもよい」 */
+function fireHand(s: GameState, L: Lookup, actor: number, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null) {
+  s.players.forEach((pl, p) => {
+    if (pl.lost) return;
+    const ev = p === actor ? ownEv : oppEv;
+    if (!ev) return;
+    for (const h of pl.hand) {
+      const card = L(s.cards[h].cid);
+      card?.faces.forEach((f, fi) => {
+        for (const spec of f.triggers ?? []) {
+          if (!spec.fromHand || !spec.events.includes(ev)) continue;
+          if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
+          pushAbility(s, L, h, fi, spec, ev);
+        }
+      });
+    }
+  });
 }
 
 /** 自動で実行できる効果を実行する */
@@ -1177,10 +1214,13 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
         if (f?.kw.cantAttack) return 'このクリーチャーは攻撃できません (テキスト)';
         const tg = attackTargets(s, L, a.attacker);
         if (a.card != null ? !tg.cards.includes(a.card) : !tg.players.includes(a.player)) return 'その対象は攻撃できません';
+        const lures = luresFor(s, L, a.attacker);
+        if (lures.length && !(a.card != null && lures.includes(a.card))) return `可能なら ${q(nameOf(s, L, lures[0]))} を攻撃しなければなりません`;
       }
       const targetPlayer = a.card != null ? s.cards[a.card].owner : a.player;
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
+      fireSelf(s, L, a.attacker, c.face, ['tapped']);
       s.phase = 'attack';
       s.attack = { attacker: a.attacker, owner: p, targetPlayer, targetCard: a.card ?? null, blocked: null, step: 'opt' };
       log(
@@ -1241,6 +1281,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (c.tapped) return 'タップしているクリーチャーは使えません';
       if (c.sick && !kwOf(s, L, a.iid).speedAttacker) return '召喚酔いしているので使えません';
       c.tapped = true;
+      fireSelf(s, L, a.iid, c.face, ['tapped']);
       log(s, p, `${q(f.name)} をタップして能力を使った`);
       pushAbility(s, L, a.iid, c.face, { events: ['tapAbility'], text: f.tapAbility, effect: f.tapAbility, optional: false, auto: false }, 'tapAbility');
       return null;
@@ -1248,6 +1289,8 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
     case 'endTurn': {
       if (s.attack) return '攻撃の処理中です';
       if (s.turnStep !== 'main') return '今はターンを終了できません';
+      const must = mustAttackers(s, L, p);
+      if (must.length) return `${q(nameOf(s, L, must[0]))} は可能なら攻撃しなければなりません`;
       log(s, p, 'ターン終了');
       beginEndTurn(s, L);
       return null;
@@ -1457,6 +1500,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     if (me.spellLockUntil != null || me.spellLockTurn === s.turn) {
       if (!a.force) return 'このターンは呪文を唱えられません';
     }
+    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock')) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger;
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);
@@ -1584,6 +1628,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       if (a.blocker != null) {
         if (!top.blockers.includes(a.blocker) || s.cards[a.blocker].zone !== 'battle') return 'ブロックできないクリーチャーです';
         s.cards[a.blocker].tapped = true;
+        fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['tapped']);
         at.blocked = a.blocker;
         log(s, p, `${q(nameOf(s, L, a.blocker))} でブロック`);
         fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['block']);

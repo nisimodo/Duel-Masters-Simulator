@@ -37,7 +37,8 @@ export type TrigEvent =
   | 'ownManaPut' // 自分のマナゾーンに〇〇が置かれた時
   | 'toManaSelf' // このカードをマナゾーンに置いた時
   | 'toShieldFaceUp' // このクリーチャーが表向きでシールドゾーンに置かれた時
-  | 'attached'; // これをクリーチャーに付けた時
+  | 'attached' // これをクリーチャーに付けた時
+  | 'tapped'; // このクリーチャーがタップした時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -73,6 +74,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   toManaSelf: 'マナゾーンに置いた時',
   toShieldFaceUp: '表向きでシールドゾーンに置かれた時',
   attached: 'クリーチャーに付けた時',
+  tapped: 'タップした時',
   spell: '呪文の効果',
 };
 
@@ -89,6 +91,8 @@ export interface TriggerSpec {
   optional: boolean;
   /** 選択や条件がなく、自動で実行できる */
   auto: boolean;
+  /** 手札にある時に使う能力 (「このカードを自分の手札から実行してもよい」など) */
+  fromHand?: boolean;
 }
 
 const SKIP = /^(ブロッカー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|S・トリガー|シールド・トリガー|スーパー・S・トリガー|G・ストライク|スピードアタッカー|マッハファイター|ジャストダイバー|スレイヤー|[WTQ]・ブレイカー|ワールド・ブレイカー|EXライフ|チャージャー|G・ゼロ|シンパシー|パワーアタッカー)/;
@@ -169,6 +173,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/この(カード|クリーチャー)を(自分の)?(手札から)?マナゾーンに置いた時/.test(clause)) ev.add('toManaSelf');
     if (/表向きで(自分の)?シールドゾーンに置かれた時/.test(clause) && self) ev.add('toShieldFaceUp');
     if (/^これを(クリーチャーに)?付けた時/.test(clause)) ev.add('attached');
+    if (/タップ(した|された)時/.test(clause) && self && !/攻撃/.test(clause)) ev.add('tapped');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
       else if (/自分が/.test(clause)) ev.add('spellOwn');
@@ -190,7 +195,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       if (ms) subject = { ...ms, zones: ['mana'] };
     }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause);
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn });
+    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(effect.replace(/\s+/g, ''));
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || undefined });
   }
   return out;
 }

@@ -103,6 +103,12 @@ export type Op =
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
   | { op: 'useMarked'; key: string; others?: number }
+  /** このカードを [コスト] 支払って手札から使う (D・D・D 等) */
+  | { op: 'payPlay'; cost: number }
+  /** このクリーチャーと it を入れ替える (it はバトルゾーンへ、このクリーチャーは it がいたゾーンへ) */
+  | { op: 'swap' }
+  /** タップしていればアンタップ、していなければタップ */
+  | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn' }
   /** ガチンコ・ジャッジ (勝てば did = true) */

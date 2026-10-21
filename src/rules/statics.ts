@@ -75,7 +75,13 @@ export type StaticSpec =
   /** アタック・チャンス: 条件に合う自分のクリーチャーが攻撃する時、手札からコストを支払わずに唱えてもよい */
   | { s: 'attackChance'; sel: Sel }
   /** 表向きでシールドゾーンを離れる時、かわりに墓地に置く */
-  | { s: 'faceUpShieldToGrave' };
+  | { s: 'faceUpShieldToGrave' }
+  /** 可能なら毎ターン攻撃する */
+  | { s: 'mustAttack' }
+  /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
+  | { s: 'lure' }
+  /** 相手は呪文を唱えることができない */
+  | { s: 'oppSpellLock' };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -133,6 +139,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^ギャラクシールド\[[a-z]*(\d+)\]/))) return [{ s: 'galaxy', cost: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
+  if (/^このクリーチャーは、?可能(であれば|なら(ば)?)、?毎ターン攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
+  if (/^相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
+  if (/^相手は呪文を唱えることができない$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if ((m = t0.match(/^自分の他の、?名前に《(.+?)》とある(?:エグザイル・)?クリーチャーをバトルゾーンに出すことはできない$/))) return [{ s: 'exileLimit', name: m[1] }];
   if ((m = t0.match(/^アタック・チャンス[-ー―:：]?(.+)$/))) {
     const sel = parseSel(m[1].replace(/^ハイパーモード状態の/, ''));

@@ -17,6 +17,8 @@ import {
   autoPay,
   canAttackWith,
   crossCost,
+  luresFor,
+  mustAttackers,
   playCost,
   cardCivs,
   faceOf,
@@ -663,8 +665,19 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
     }
   }
 
-  // 3. 攻撃
-  const atk = chooseAttack(s, p, L);
+  // 3. 攻撃 (「可能なら攻撃する」「可能ならこのクリーチャーを攻撃する」に従う)
+  let atk = chooseAttack(s, p, L);
+  if (!atk) {
+    const must = mustAttackers(s, L, p)[0];
+    if (must != null) {
+      const tg = attackTargets(s, L, must);
+      atk = tg.players.length ? { t: 'attack', attacker: must, player: tg.players[0] } : { t: 'attack', attacker: must, player: s.cards[tg.cards[0]].owner, card: tg.cards[0] };
+    }
+  }
+  if (atk && atk.t === 'attack') {
+    const lures = luresFor(s, L, atk.attacker);
+    if (lures.length && !(atk.card != null && lures.includes(atk.card))) atk = { t: 'attack', attacker: atk.attacker, player: s.cards[lures[0]].owner, card: lures[0] };
+  }
   if (atk) return atk;
 
   return { t: 'endTurn' };

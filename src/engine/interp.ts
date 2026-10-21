@@ -509,6 +509,40 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
       case 'save':
         ex.saved = [...ex.it];
         break;
+      case 'payPlay': {
+        const c = s.cards[ex.src];
+        const card = c && L(c.cid);
+        if (!card || c.zone !== 'hand') break;
+        const fi = Math.max(0, card.faces.findIndex((f) => f.isCreature || f.isSpell));
+        const pay = autoPay(s, L, c.owner, card.faces[fi].civs, op.cost);
+        if (!pay) {
+          log(s, ex.player, `${q(card.name)}: マナが足りないので使えない`);
+          break;
+        }
+        for (const m of pay) s.cards[m].tapped = true;
+        log(s, ex.player, `${q(card.faces[fi].name)} をコスト${op.cost}で手札から使う`);
+        playCard(s, c.owner, { t: 'play', iid: ex.src, face: fi, pay: [], free: true, force: true }, L);
+        break;
+      }
+      case 'swap': {
+        const self = s.cards[ex.src];
+        const other = ex.it.find((i) => s.cards[i].zone === 'mana' || s.cards[i].zone === 'grave');
+        if (other == null || self?.zone !== 'battle') break;
+        const zone = s.cards[other].zone as 'mana' | 'grave';
+        log(s, ex.player, `${q(nameOf(s, L, ex.src))} と ${q(nameOf(s, L, other))} を入れ替えた`);
+        moveCard(s, L, other, 'battle');
+        moveCard(s, L, ex.src, zone);
+        break;
+      }
+      case 'toggleTap': {
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        for (const i of ids) {
+          if (s.cards[i].zone !== 'battle') continue;
+          s.cards[i].tapped = !s.cards[i].tapped;
+          log(s, ex.player, `${q(nameOf(s, L, i))} を${s.cards[i].tapped ? 'タップ' : 'アンタップ'}`);
+        }
+        break;
+      }
       case 'useMarked': {
         const root = s.cards[ex.src]?.linkedTo ?? ex.src;
         const push = (iid: number) => {
