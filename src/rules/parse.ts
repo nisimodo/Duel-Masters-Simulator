@@ -261,6 +261,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/選び(?=(?:破壊|タップ|持ち主|手札に|墓地に|マナゾーンに))/g, '選び、')
+    .replace(/を(\d+)(体|枚)、バトルゾーンから選び、/, 'を$1$2選び、')
+    .replace(/(この|その)クリーチャーはパワーを([+-]\d+)される$/, '$1クリーチャーのパワーを$2する')
     .replace(/(クリーチャー)はすべて、(攻撃|ブロック)/, '$1すべては$2')
     .replace(/^自分のマナゾーンにあるカードの(?:数|枚数)と同じ枚数のカードを引く$/, '自分のマナゾーンにあるカード1枚につき、カードを1枚引く')
     .replace(/^このクリーチャーがリンクしている場合、/, 'このクリーチャーがリンクしていれば、')
@@ -1475,6 +1478,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const body = sentence(m[2], ctx);
     if (sel !== null && body?.length) return [{ op: 'repeatIt', sel: sel ? { ...sel, owner: 'any' } : undefined, body }];
   }
+  // 龍覇「コストN以下のドラグハート1枚、または、コストM以下の光のドラグハートを1枚、自分の超次元ゾーンからバトルゾーンに出す」
+  if ((m = s.match(/^(コスト\d+以下の(?:[^、]+の)?ドラグハート(?:・フォートレス|・ウエポン)?)を?(\d+)枚(まで)?、?または、?((?:コスト\d+以下の)?[^、]*?ドラグハート(?:・フォートレス|・ウエポン)?)を?(\d+)枚(まで)?、?を?自分の超次元ゾーンからバトルゾーンに出す$/))) {
+    const a = sentence(`${m[1]}を${m[2]}枚${m[3] ?? ''}、自分の超次元ゾーンからバトルゾーンに出す`, ctx);
+    const b = sentence(`${m[4]}を${m[5]}枚${m[6] ?? ''}、自分の超次元ゾーンからバトルゾーンに出す`, ctx);
+    if (a && b) return [{ op: 'modal', pick: 1, options: [{ label: `${m[1]}を${m[2]}枚`, body: a }, { label: `${m[4]}を${m[5]}枚`, body: b }] }];
+  }
+  if (/^(?:相手は)?山札をシャッフルする$/.test(s) && /^相手は/.test(s0.replace(/^その後、/, ''))) return [{ op: 'shuffle', who: 'opp' }];
   // 「各プレイヤーは(自身の)〜」: プレイヤーごとに行う
   if ((m = s.match(/^各プレイヤーは、?(.+)$/))) {
     const rest = m[1].replace(/^バトルゾーンにある自身の/, '自分の').replace(/自身の/g, '自分の').replace(/それぞれの/g, '自分の').replace(/(\d+)(体|枚)ずつ/g, '$1$2');
@@ -1486,6 +1496,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = parseSel(m[1]);
     const body = sentence(m[2], ctx);
     if (sel && body?.length) return [{ op: 'repeatPer', sel, body }];
+  }
+  // 「このターン、AをNし、Bする」: 期間をそろえて2つの文に分ける
+  if ((m = s.match(/^((?:このターン|次の自分のターンのはじめまで)、)(.+?)(し|され|を得|を与え)、(.+)$/))) {
+    const END: Record<string, string> = { し: 'する', され: 'される', を得: 'を得る', を与え: 'を与える' };
+    const ra = sentence(m[1] + m[2] + END[m[3]], ctx);
+    const subj = m[2].match(/^((?:この|その)クリーチャー)(?:は|の)/)?.[1];
+    const rb = ra && (sentence(m[1] + m[4], ctx) ?? (subj ? sentence(`${m[1]}${subj}は${m[4]}`, ctx) : null));
+    if (ra && rb) return [...ra, ...rb];
   }
   return null;
 }

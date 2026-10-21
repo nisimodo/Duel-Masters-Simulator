@@ -87,6 +87,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^無色ではない/, () => (sel.notColorless = true));
     changed ||= take(/^クリーチャー(ではない|以外の)/, () => (sel.notCreature = true));
     changed ||= take(/^サイキックではない/, () => (sel.notPsychic = true));
+    changed ||= take(/^、?((?:光|水|闇|火|自然)(?:、(?:光|水|闇|火|自然))+)いずれかの/, (m) => (sel.civs = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]])));
     changed ||= take(/^([゠-ヿー・]{2,})(?:ではない|以外の)/, (m) => (sel.racesNot = [m[1]]));
     changed ||= take(/^無色の?/, () => (sel.colorless = true));
     changed ||= take(/^多色ではない/, () => (sel.monocolor = true));
