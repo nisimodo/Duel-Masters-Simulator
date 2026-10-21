@@ -286,6 +286,11 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.shift();
     ex.did = !!answer.yes;
     if (answer.yes) ex.ops.unshift(...op.body);
+  } else if (op.op === 'topOrBottom') {
+    ex.ops.shift();
+    const top = (answer.options ?? [1])[0] === 0;
+    for (const i of ex.pendingIds ?? []) moveTo(s, L, ex, i, top ? 'deckTop' : 'deckBottom');
+    ex.pendingIds = undefined;
   } else if (op.op === 'chooseValue') {
     ex.ops.shift();
     const v = (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
@@ -889,6 +894,14 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           log(s, ex.player, `${q(nameOf(s, L, i))} に${op.kws.map((k) => `「${k}」`).join('')}を与えた`);
         }
         break;
+      }
+      case 'topOrBottom': {
+        const ids = (resolveRef(s, ex, op.target) ?? []).filter((i) => s.cards[i].zone !== 'gone');
+        if (!ids.length) break;
+        ex.valueLabels = ['山札の上', '山札の下'];
+        ex.pendingIds = ids;
+        ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
+        return;
       }
       case 'drawPer': {
         const n = candidates(s, L, ex, op.sel).length;

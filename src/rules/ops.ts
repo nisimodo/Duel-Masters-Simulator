@@ -148,6 +148,8 @@ export type Op =
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */
   | { op: 'payLater'; cost: number }
+  /** 山札の上か下に置く (chooser が選ぶ) */
+  | { op: 'topOrBottom'; target: Target; chooser: 'self' | 'opp' }
   /** sel に合うカードの数だけ引く */
   | { op: 'drawPer'; sel: Sel }
   /** 相手とジャンケンで勝敗を決める (勝てば did) */

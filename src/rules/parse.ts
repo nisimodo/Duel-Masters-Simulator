@@ -70,6 +70,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
   if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
+  if (m(/^(好きな順序で)?(自身の|持ち主の|自分の)?山札の上か下(のどちらか)?に(置く|戻す)$/)) return [{ op: 'topOrBottom', target, chooser: 'self' }];
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
   if (m(/^(自分の)?山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle' }];
   if (m(/^新しいシールドとして(自分の|持ち主の)?シールドゾーンに表向きのまま(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
@@ -344,6 +345,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = ap && refTarget(ap[1]);
     if (ap && t) return [{ op: 'restrict', target: t, what: 'attackOpp' }];
   }
+  // 一時的に離れない
+  {
+    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、このクリーチャーは(?:バトルゾーンを)?離れない$/);
+    if (nl) return [{ op: 'grant', target: { ref: 'self' }, kws: ['離れない'], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+  }
+  if (/^相手はそれを(?:自身の)?山札の上か下に置く$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'it' }, chooser: 'opp' }];
+  if (/^(残り|見せたカードはすべて、|残りのカード)を?、?好きな順序で山札の上か下(のどちらか)?に(置く|戻す)$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'rest' }, chooser: 'self' }];
   // 効果で唱えた呪文を、唱えた後に山札の下へ
   if (/^(?:こうして呪文を唱えたなら、)?それを唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   if (/^相手は(?:自身|自分)の山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'opp' }];

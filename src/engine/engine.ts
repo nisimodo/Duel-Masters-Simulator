@@ -170,6 +170,11 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // 一時的に離れない
+    if ((c.grants ?? []).some((g) => g.kws.includes('離れない'))) {
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は離れない`);
+      return 'battle';
+    }
     // 封印が付いていれば離れない
     if (isSealed(s, iid) && own.some((x) => x.s === 'sealStay')) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は封印が付いているので離れない`);

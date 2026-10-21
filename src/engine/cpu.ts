@@ -537,6 +537,12 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   }
   if (top.mode === 'modal') {
     const op = top.exec.ops[0];
+    if (op?.op === 'topOrBottom') {
+      // 自分のカードで良いもの (コスト4以上) なら上、相手のカードや弱いカードは下
+      const ids = top.exec.pendingIds ?? [];
+      const good = ids.some((i) => s.cards[i].owner === p && (L(s.cards[i].cid)?.faces[0]?.cost ?? 0) >= 4);
+      return { t: 'choose', options: [good ? 0 : 1] };
+    }
     if (op?.op === 'chooseValue') {
       // 有利な効果なら自分の、不利な効果なら相手のクリーチャーで一番多い種族・文明・コスト
       const who = op.hostile ? s.players.filter((_, i) => i !== p).flatMap((pl) => pl.battle) : [...s.players[p].battle, ...s.players[p].hand];
