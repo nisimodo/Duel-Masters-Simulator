@@ -117,12 +117,93 @@ export function hintActions(s: GameState, p: number, L: Lookup, h: EffectHint, t
     }
     case 'grSummon':
       return Array.from({ length: h.n }, () => ({ t: 'grSummon' }) as Action);
+    case 'revealPlay':
+      return revealPlayActions(s, p, L, h);
+    case 'massBounce':
+    case 'massDestroy': {
+      // 条件に合うクリーチャーをすべて (oppOnly でなければ自分のも)
+      const all = (h.oppOnly ? opps(s, p) : s.players.map((_, i) => i))
+        .flatMap((o) => s.players[o].battle)
+        .filter((i) => {
+          const f = faceOf(s, L, i);
+          if (!f?.isCreature) return false;
+          if (h.minCost != null && f.cost < h.minCost) return false;
+          if (h.maxCost != null && f.cost > h.maxCost) return false;
+          if (h.maxPower != null && power(s, L, i) > h.maxPower) return false;
+          return true;
+        });
+      return all.map((iid) => ({ t: 'move', iid, to: h.kind === 'massBounce' ? 'hand' : 'grave' }) as Action);
+    }
     case 'breakOpp': {
       if (targets) return targets.map((iid) => ({ t: 'breakManual', iid }) as Action);
       const o = targetOpponent(s, p, L);
       return o == null ? [] : s.players[o].shield.slice(0, h.n).map((iid) => ({ t: 'breakManual', iid }) as Action);
     }
   }
+}
+
+/** 全体除去を含む面を使った時の損得 (相手の被害 - 自分の被害)。全体除去がなければ 0 */
+function massNet(s: GameState, p: number, L: Lookup, f: Face): number {
+  let net = 0;
+  for (const h of hintsFromText(f.text)) {
+    if (h.kind !== 'massBounce' && h.kind !== 'massDestroy') continue;
+    for (const a of hintActions(s, p, L, h)) {
+      const iid = (a as { iid: number }).iid;
+      net += s.cards[iid].owner === p ? -threatOf(s, L, iid) - 2 : threatOf(s, L, iid);
+    }
+  }
+  return net;
+}
+
+/**
+ * 「山札の上から N 枚を表向きにし、条件に合うものをコストを支払わずに使い、残りを○○に置く」
+ * ツインパクトはどちらの面のコストとしても扱えるので、条件 (すべて異なるコスト) を満たしつつ
+ * 一番価値が高くなる面の組み合わせを選ぶ。
+ */
+function revealPlayActions(s: GameState, p: number, L: Lookup, h: EffectHint): Action[] {
+  const deck = s.players[p].deck;
+  const top = deck.slice(-h.n).reverse();
+  if (!top.length) return [];
+  const cards = top.map((i) => L(s.cards[i].cid));
+  const playable = (f: Face) =>
+    (h.maxCost == null || f.cost <= h.maxCost) &&
+    (h.playType === 'creature' ? f.isCreature : h.playType === 'spell' ? f.isSpell : true) &&
+    massNet(s, p, L, f) >= 0;
+  // 面の選び方を総当たり (最大 2^N 通り)
+  let best: { faces: number[]; value: number } | null = null;
+  const choose = (k: number, picked: number[]) => {
+    if (k === top.length) {
+      const costs = picked.map((fi, j) => cards[j]?.faces[fi]?.cost ?? -1);
+      if (h.distinct && new Set(costs).size !== costs.length) return;
+      const value = picked.reduce((a, fi, j) => {
+        const f = cards[j]?.faces[fi];
+        return a + (f && playable(f) ? 10 + f.cost + (f.isCreature ? 3 : 0) : 0);
+      }, 0);
+      if (!best || value > best.value) best = { faces: [...picked], value };
+      return;
+    }
+    const n = cards[k]?.faces.length ?? 1;
+    for (let fi = 0; fi < n; fi++) choose(k + 1, [...picked, fi]);
+  };
+  choose(0, []);
+  const names = cards.map((c) => (c ? `《${c.name}》` : '?')).join('、');
+  const out: Action[] = [{ t: 'note', m: `山札の上から${top.length}枚を表向きにした: ${names}` }];
+  const chosen = best as { faces: number[]; value: number } | null;
+  const rest: number[] = [];
+  top.forEach((iid, j) => {
+    const fi = chosen?.faces[j] ?? 0;
+    const f = cards[j]?.faces[fi];
+    if (chosen && f && playable(f)) out.push({ t: 'play', iid, face: fi, pay: [], free: true, force: true });
+    else rest.push(iid);
+  });
+  if (!chosen) out.push({ t: 'note', m: '条件を満たさないため、使えるカードはなかった' });
+  for (const iid of rest) {
+    if (h.rest === 'mana') out.push({ t: 'move', iid, to: 'mana' });
+    else if (h.rest === 'grave') out.push({ t: 'move', iid, to: 'grave' });
+    else if (h.rest === 'hand') out.push({ t: 'move', iid, to: 'hand' });
+    else out.push({ t: 'move', iid, to: 'deck', pos: 'bottom' });
+  }
+  return out;
 }
 
 /** 攻撃・効果の主な相手 (デュエパ: シールドが少ない相手、同数なら脅威の大きい相手) */
@@ -209,7 +290,12 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
   const removalValue = (card: Card, fi: number) => {
     let v = 0;
     for (const h of effectHints(card, fi)) {
-      if (REMOVAL.includes(h.kind)) {
+      if (h.kind === 'massBounce' || h.kind === 'massDestroy') {
+        const hit = hintActions(s, p, L, h).map((a) => (a as { iid: number }).iid);
+        const theirs = hit.filter((i) => s.cards[i].owner !== p).reduce((a, i) => a + threatOf(s, L, i), 0);
+        const mine = hit.filter((i) => s.cards[i].owner === p).length * 4;
+        v += Math.max(0, theirs * 4 - mine);
+      } else if (REMOVAL.includes(h.kind)) {
         const targets = oppCreaturesByThreat(s, p, L, h.maxPower);
         if (!targets.length) continue;
         const t = threatOf(s, L, targets[0]);

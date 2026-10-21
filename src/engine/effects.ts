@@ -14,13 +14,29 @@ export type HintKind =
   | 'grSummon'
   | 'powerMinus'
   | 'breakOpp'
-  | 'mill';
+  | 'mill'
+  /** 条件に合うクリーチャーをすべて (自分のも含む場合あり) */
+  | 'massBounce'
+  | 'massDestroy'
+  /** 山札の上から N 枚を表向きにして、条件に合うものをコストを支払わずに使い、残りを別のゾーンへ */
+  | 'revealPlay';
 
 export interface EffectHint {
   kind: HintKind;
   label: string;
   n: number;
   maxPower?: number;
+  /** 全体除去の条件 */
+  minCost?: number;
+  maxCost?: number;
+  /** 相手のクリーチャーだけが対象 */
+  oppOnly?: boolean;
+  /** revealPlay: 使えるカードの種類 */
+  playType?: 'element' | 'creature' | 'spell';
+  /** revealPlay: すべて異なるコストの時だけ使える */
+  distinct?: boolean;
+  /** revealPlay: 残りの置き場所 */
+  rest?: 'mana' | 'grave' | 'deckBottom' | 'hand';
   delta?: number;
   /** 対象を選ぶ必要がある */
   target?: 'oppCreature' | 'anyCreature' | 'oppShield';
@@ -54,7 +70,37 @@ export function hintsFromText(lines: string[]): EffectHint[] {
       hints.push({ kind: 'destroy', n: +m[2], maxPower: +m[1], target: 'oppCreature', label: `相手のパワー${m[1]}以下を${m[2]}体破壊` });
     else if ((m = l.match(/相手のクリーチャーを(\d+)体(まで)?(選び、)?破壊/)))
       hints.push({ kind: 'destroy', n: +m[1], target: 'oppCreature', label: `相手のクリーチャーを${m[1]}体破壊` });
-    else if (/相手のクリーチャーをすべて破壊/.test(l)) hints.push({ kind: 'destroy', n: 99, target: 'oppCreature', label: '相手のクリーチャーをすべて破壊' });
+    // 山札の上から公開して踏み倒す (例: 《五輪の求道者 清永》)
+    const rv = l.match(/山札の上から(\d+)枚を表向きにする/);
+    const fp = l.match(/(?:コスト(\d+)以下の)?(エレメント|クリーチャー|呪文)を(?:好きな数|\d+体まで|\d+枚まで|すべて)?.{0,20}コストを支払わずに(?:使|召喚|唱え)/);
+    if (rv && fp) {
+      const restM = l.match(/残りを(?:すべて)?、?(?:好きな順序で)?(?:自分の)?(マナゾーン|墓地|山札の下|手札)/);
+      const rest = restM ? ({ マナゾーン: 'mana', 墓地: 'grave', 山札の下: 'deckBottom', 手札: 'hand' } as const)[restM[1] as 'マナゾーン'] : 'deckBottom';
+      hints.push({
+        kind: 'revealPlay',
+        n: +rv[1],
+        maxCost: fp[1] ? +fp[1] : undefined,
+        playType: fp[2] === 'クリーチャー' ? 'creature' : fp[2] === '呪文' ? 'spell' : 'element',
+        distinct: /すべて異なるコスト/.test(l),
+        rest,
+        label: `山札の上から${rv[1]}枚を見て${fp[1] ? `コスト${fp[1]}以下の` : ''}${fp[2]}をコストを支払わずに使う`,
+      });
+    }
+    // 全体除去: 「(相手の)(コストN以上/以下の)(パワーN以下の)クリーチャーをすべて、(持ち主の手札に戻す|破壊する)」
+    const mass = l.match(/(相手の)?(?:コスト(\d+)以([上下])の)?(?:パワー(\d+)以下の)?クリーチャーをすべて、?(持ち主の手札に戻す|破壊する)/);
+    if (mass) {
+      const [, opp, cost, dir, pw, what] = mass;
+      const cond = `${opp ? '相手の' : ''}${cost ? `コスト${cost}以${dir}の` : ''}${pw ? `パワー${pw}以下の` : ''}`;
+      hints.push({
+        kind: what.startsWith('破壊') ? 'massDestroy' : 'massBounce',
+        n: 99,
+        oppOnly: !!opp,
+        minCost: cost && dir === '上' ? +cost : undefined,
+        maxCost: cost && dir === '下' ? +cost : undefined,
+        maxPower: pw ? +pw : undefined,
+        label: `${cond}クリーチャーをすべて${what.startsWith('破壊') ? '破壊' : '手札に戻す'}`,
+      });
+    }
     if ((m = l.match(/(相手の)?クリーチャーを(\d+)体(まで)?選び、(持ち主の)?手札に戻/)))
       hints.push({ kind: 'bounce', n: +m[2], target: m[1] ? 'oppCreature' : 'anyCreature', label: `クリーチャーを${m[2]}体手札に戻す` });
     if ((m = l.match(/相手のクリーチャーを(\d+)体(まで)?選び、タップ/)))

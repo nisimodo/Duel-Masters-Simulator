@@ -159,3 +159,58 @@ describe('CPU priorities', () => {
     expect(cpuDecide(s, 0, L)).toEqual({ t: 'endTurn' });
   });
 });
+
+import { hintsFromText } from './effects';
+describe('mass removal', () => {
+  it('parses conditions', () => {
+    expect(hintsFromText(['コスト5以上のクリーチャーをすべて、持ち主の手札に戻す。'])[0]).toMatchObject({ kind: 'massBounce', minCost: 5, oppOnly: false });
+    expect(hintsFromText(['相手のパワー3000以下のクリーチャーをすべて破壊する。'])[0]).toMatchObject({ kind: 'massDestroy', maxPower: 3000, oppOnly: true });
+  });
+  it('CPU bounces every matching creature on both sides', () => {
+    const s = setup({ myBattle: ['big', 'cheap'], oppBattle: ['beater', 'meta'] });
+    s.pending = [
+      { kind: 'ability', player: 0, src: 0, cid: 'x', face: 0, event: 'spell', text: '', effect: 'コスト5以上のクリーチャーをすべて、持ち主の手札に戻す。', optional: false, auto: false },
+    ];
+    const moved = cpuPlan(s, 0, L)
+      .filter((a) => a.t === 'move')
+      .map((a) => cidOf(s, (a as { iid: number }).iid))
+      .sort();
+    expect(moved).toEqual(['beater', 'big']);
+  });
+});
+
+describe('reveal and play for free (清永)', () => {
+  const KIYO = 'このクリーチャーが攻撃する時、自分の山札の上から３枚を表向きにする。それらがすべて異なるコストなら、その中から、コスト９以下のエレメントを好きな数、コストを支払わずに使ってもよい。残りをすべてマナゾーンに置く。';
+  it('parses 清永', () => {
+    expect(hintsFromText([KIYO])[0]).toMatchObject({ kind: 'revealPlay', n: 3, maxCost: 9, playType: 'element', distinct: true, rest: 'mana' });
+  });
+  it('plays revealed cards with different costs, and sends the rest to mana', () => {
+    const s = setup({});
+    const deck = s.players[0].deck;
+    // 山札の上 (配列の末尾) を cheap(2), beater(5), huge(9) にする
+    const put = (cid: string) => {
+      const iid = deck.pop()!;
+      s.cards[iid].cid = cid;
+      return iid;
+    };
+    const a = put('cheap');
+    const b = put('beater');
+    const c = put('huge');
+    deck.push(a, b, c);
+    s.pending = [{ kind: 'ability', player: 0, src: 0, cid: 'x', face: 0, event: 'attack', text: '', effect: KIYO, optional: true, auto: false }];
+    const plan = cpuPlan(s, 0, L);
+    expect(plan.filter((x) => x.t === 'play').map((x) => cidOf(s, (x as { iid: number }).iid)).sort()).toEqual(['beater', 'cheap', 'huge']);
+  });
+  it('plays nothing when costs are not all different', () => {
+    const s = setup({});
+    const deck = s.players[0].deck;
+    const ids = deck.slice(-3);
+    s.cards[ids[0]].cid = 'cheap';
+    s.cards[ids[1]].cid = 'cheap';
+    s.cards[ids[2]].cid = 'beater';
+    s.pending = [{ kind: 'ability', player: 0, src: 0, cid: 'x', face: 0, event: 'attack', text: '', effect: KIYO, optional: true, auto: false }];
+    const plan = cpuPlan(s, 0, L);
+    expect(plan.filter((x) => x.t === 'play')).toEqual([]);
+    expect(plan.filter((x) => x.t === 'move' && x.to === 'mana').length).toBe(3);
+  });
+});

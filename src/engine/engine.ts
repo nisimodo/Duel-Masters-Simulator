@@ -793,6 +793,8 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
   const me = s.players[p];
   if (!me || me.lost) return '操作できません';
   if (isManual(a)) return applyManual(s, p, a, L);
+  // 「コストを支払わずに使う」は効果の処理中 (能力の解決待ち等) でも自分のカードなら使える
+  if (a.t === 'play' && a.free) return playCard(s, p, a, L);
 
   const top: Pending | undefined = s.pending[0];
   if (top) {
