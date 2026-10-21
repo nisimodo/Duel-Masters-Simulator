@@ -501,7 +501,7 @@ function countAct(s: GameState, p: number, k: 'atk' | 'blk') {
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
 export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
   return s.players[p].battle.filter((b) => {
-    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃')) && !activeStatics(s, L).some((x) => x.spec.s === 'allMustAttack')) return false;
+    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃')) && !activeStatics(s, L).some((x) => x.spec.s === 'allMustAttack' || (x.spec.s === 'oppMustAttack' && x.owner !== p))) return false;
     if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
     const tg = attackTargets(s, L, b);
     // 実際に攻撃を宣言できるか (挑発などの制限も含めて) 確かめる
@@ -1247,6 +1247,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const lim = s.players[c.owner].actLimit;
   if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
+  if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
   const k = kwOf(s, L, iid);
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'))) return false;
   return true;
@@ -1966,7 +1967,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
-  if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon')) return 'このクリーチャーは召喚できません';
+  if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');
   if (face.isCreature && !a.force && onlyIf && onlyIf.s === 'summonOnlyIf') {
@@ -2087,7 +2088,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!a.force)
         return me.spellLockCostEq != null ? `コスト${me.spellLockCostEq}の呪文は唱えられません` : me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
-    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock' && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
+    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock' && (!x.spec.ownTurn || s.active === x.owner) && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);

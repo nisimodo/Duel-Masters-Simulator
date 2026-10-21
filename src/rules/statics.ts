@@ -111,7 +111,7 @@ export type StaticSpec =
   /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
   | { s: 'lure' }
   /** 相手は呪文を唱えることができない */
-  | { s: 'oppSpellLock'; sel?: Sel }
+  | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
   /** 誰も sel のクリーチャーを召喚できない */
@@ -161,7 +161,11 @@ export type StaticSpec =
   /** G・ブレイカー: 相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする */
   | { s: 'gBreaker' }
   /** このクリーチャーは召喚できない */
-  | { s: 'noSummon' }
+  | { s: 'noSummon'; fromHand?: boolean }
+  /** 相手のクリーチャーは出たターン、攻撃できない */
+  | { s: 'oppNewNoAttackAll' }
+  /** 相手のクリーチャーは可能なら攻撃する */
+  | { s: 'oppMustAttack' }
   /** 輪廻∞: このカードの呪文側を、バトルゾーンに置いたまま (コストを支払って) 唱えてもよい。そうした時 bonus */
   | { s: 'rinne'; bonus?: string }
   /** 相手のクリーチャーは出たターン、自分を攻撃できない */
@@ -353,6 +357,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  if (/^このクリーチャーは、?自分の手札から召喚できない$/.test(t0)) return [{ s: 'noSummon', fromHand: true }];
+  if (/^自分のターン中、相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock', ownTurn: true }];
+  if (/^相手のクリーチャーは、?(?:バトルゾーンに)?出たターン(?:に|の間)?、?攻撃できない$/.test(t0)) return [{ s: 'oppNewNoAttackAll' }];
+  if (/^相手のクリーチャーは、?可能(?:なら|であれば)攻撃する$/.test(t0)) return [{ s: 'oppMustAttack' }];
+  if (/^相手はこのクリーチャーを選べない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
   if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?バトルゾーンを離れず、すべてのバトルに勝つ$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
   if ((m = t0.match(/^自分のマナゾーンにある文明(\d+)つにつき、このクリーチャーのパワーを\+(\d+)する$/)))
