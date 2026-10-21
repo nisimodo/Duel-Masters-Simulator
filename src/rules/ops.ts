@@ -143,7 +143,11 @@ export type Op =
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn' }
   /** ガチンコ・ジャッジ (勝てば did = true) */
-  | { op: 'gachinko' }
+  | { op: 'gachinko'; power?: boolean }
+  /** 負けるまで (times: N回) ガチンコ・ジャッジし、勝った数を数える */
+  | { op: 'gachinkoLoop'; power?: boolean; times?: number }
+  /** 勝った数だけ body を繰り返す */
+  | { op: 'repeatWins'; body: Op[] }
   /** 相手の手札を見る (looked に入れる) */
   | { op: 'lookHand'; who: 'opp' }
   /** 裏返す (覚醒・解除など) */

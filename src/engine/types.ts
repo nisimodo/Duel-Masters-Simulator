@@ -139,6 +139,8 @@ export interface Exec {
   did: boolean;
   /** 表示用の名前 */
   name: string;
+  /** ガチンコ・ジャッジに勝った数 */
+  wins?: number;
   /** 種族・文明・数字の選択肢 */
   valueLabels?: string[];
 }

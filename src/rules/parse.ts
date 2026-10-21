@@ -465,6 +465,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // ガチンコ・ジャッジ
   if (/^相手とガチンコ・ジャッジする$/.test(s)) return [{ op: 'gachinko' }];
+  if (/^相手とパワー・ガチンコ・ジャッジする$/.test(s)) return [{ op: 'gachinko', power: true }];
+  {
+    const gl = s.match(/^(?:自分が負けるか中止するまで、)?相手と(?:(\d+)回)?(パワー・)?ガチンコ・ジャッジする$/);
+    if (gl && (gl[1] || /負けるか/.test(s))) return [{ op: 'gachinkoLoop', power: !!gl[2], times: gl[1] ? +gl[1] : undefined }];
+    const each = s.match(/^こうして自分が(?:ガチンコ・ジャッジに)?勝つたび、(.+)$/) ?? s.match(/^こうして(?:自分が)?(?:ガチンコ・ジャッジに)?勝った(?:数|回数)、(.+)$/);
+    if (each) {
+      const body = sentence(each[1].replace(/^そのターン、/, 'このターン、'), ctx);
+      if (body) return [{ op: 'repeatWins', body }];
+    }
+  }
   if (/^相手の手札を見る$/.test(s)) {
     ctx.looked = true;
     return [{ op: 'lookHand', who: 'opp' }];

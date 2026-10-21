@@ -311,6 +311,27 @@ export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'num
   return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map((x) => x[0]);
 }
 
+/** ガチンコ・ジャッジ (power: パワー・ガチンコ・ジャッジ)。互いに山札の上を見せ、自分が相手以上なら勝ち。見せたカードは山札の下へ */
+function judge(s: GameState, L: Lookup, me: number, byPower: boolean): boolean {
+  const o = mainOpp(s, me);
+  const mine = s.players[me].deck[s.players[me].deck.length - 1];
+  const theirs = s.players[o].deck[s.players[o].deck.length - 1];
+  const val = (i: number | undefined) =>
+    i == null ? -1 : byPower ? Math.max(0, ...(L(s.cards[i].cid)?.faces.map((f) => f.power ?? 0) ?? [0])) : Math.max(...(L(s.cards[i].cid)?.faces.map((f) => f.cost) ?? [0]));
+  const win = mine != null && val(mine) >= val(theirs);
+  log(s, me, `${byPower ? 'パワー・' : ''}ガチンコ・ジャッジ: ${mine != null ? q(nameOf(s, L, mine)) : 'なし'}(${val(mine)}) vs ${theirs != null ? q(nameOf(s, L, theirs)) : 'なし'}(${val(theirs)}) → ${win ? '勝ち' : '負け'}`);
+  for (const [p2, i] of [
+    [me, mine],
+    [o, theirs],
+  ] as const) {
+    if (i == null) continue;
+    const d = s.players[p2].deck;
+    d.splice(d.indexOf(i), 1);
+    d.unshift(i);
+  }
+  return win;
+}
+
 function ask(s: GameState, ex: Exec, p: Omit<Extract<GameState['pending'][number], { kind: 'choice' }>, 'kind' | 'exec'>) {
   s.pending.unshift({ kind: 'choice', exec: ex, ...p });
 }
@@ -866,24 +887,26 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
-      case 'gachinko': {
-        // 互いに山札の上を見せ合い、自分のコストが相手以上なら勝ち。見せたカードは山札の下へ
-        const o = mainOpp(s, ex.player);
-        const mine = s.players[ex.player].deck[s.players[ex.player].deck.length - 1];
-        const theirs = s.players[o].deck[s.players[o].deck.length - 1];
-        const cost = (i: number | undefined) => (i == null ? -1 : Math.max(...(L(s.cards[i].cid)?.faces.map((f) => f.cost) ?? [0])));
-        const win = mine != null && cost(mine) >= cost(theirs);
-        log(s, ex.player, `ガチンコ・ジャッジ: ${mine != null ? q(nameOf(s, L, mine)) : 'なし'}(${cost(mine)}) vs ${theirs != null ? q(nameOf(s, L, theirs)) : 'なし'}(${cost(theirs)}) → ${win ? '勝ち' : '負け'}`);
-        for (const [p2, i] of [
-          [ex.player, mine],
-          [o, theirs],
-        ] as const) {
-          if (i == null) continue;
-          const d = s.players[p2].deck;
-          d.splice(d.indexOf(i), 1);
-          d.unshift(i);
+      case 'gachinkoLoop': {
+        let wins = 0;
+        for (let k = 0; k < (op.times ?? 40); k++) {
+          const w = judge(s, L, ex.player, !!op.power);
+          if (w) wins++;
+          else if (op.times == null) break;
         }
-        ex.did = win;
+        ex.wins = wins;
+        ex.did = wins > 0;
+        log(s, ex.player, `ガチンコ・ジャッジに${wins}回勝った`);
+        break;
+      }
+      case 'repeatWins': {
+        ex.ops.shift();
+        for (let k = 0; k < (ex.wins ?? 0); k++) ex.ops.unshift(...op.body);
+        continue;
+      }
+      case 'gachinko': {
+        ex.did = judge(s, L, ex.player, !!op.power);
+        ex.wins = ex.did ? 1 : 0;
         break;
       }
       case 'lookHand': {
