@@ -24,6 +24,8 @@ export interface Sel {
   civInMana?: boolean;
   /** 無色ではない */
   notColorless?: boolean;
+  /** クリーチャーではない */
+  notCreature?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
   raceRef?: boolean;
   civRef?: boolean;

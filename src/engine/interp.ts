@@ -72,6 +72,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.notColorless && !civs.length) return false;
+  if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
   if (sel.raceRef || sel.civRef || sel.costRef || sel.powerRef) {
     const cv = s.chosenValue ?? {};
     const f = L(s.cards[iid].cid)?.faces[s.cards[iid].face];
@@ -119,7 +120,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }

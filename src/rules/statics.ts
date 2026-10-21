@@ -102,6 +102,8 @@ export type StaticSpec =
   | { s: 'noUntapStart' }
   /** 封印が付いていれば離れない */
   | { s: 'sealStay' }
+  /** 可能であればブロックする */
+  | { s: 'mustBlock' }
   /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
   | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel }
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
@@ -171,6 +173,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];
   if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
     const words = m[3].replace(/のいずれか$/, '');
     const list = words.split('、');
