@@ -1070,7 +1070,7 @@ function advance(s: GameState, L: Lookup): boolean {
         log(s, a.owner, 'G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイク');
         breakShields(s, L, a.owner, [...s.players[a.owner].shield], a.owner);
       }
-      if (ac?.zone === 'battle' && (faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'destroyAfterAttack')) {
+      if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'destroyAfterAttack') || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後破壊')))) {
         log(s, a.owner, `攻撃の終わりに ${q(nameOf(s, L, a.attacker))} を破壊`);
         moveCard(s, L, a.attacker, 'grave');
       }

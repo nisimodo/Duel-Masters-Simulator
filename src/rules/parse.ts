@@ -182,7 +182,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'selfTapped' };
-  if ((m = c.match(/^(それ|そのカード|そのクリーチャー)が、?(.+?)でな(?:けれ|い)?$/))) {
+  if ((m = c.match(/^(それ|そのカード|そのクリーチャー)が、?(.+?)でな(?:けれ|け|い)?$/))) {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
   }
@@ -429,7 +429,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
-  if (/^自分はゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^(?:自分は)?ゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^その攻撃の後(?:で|、)このクリーチャーを破壊する$/.test(s)) return [{ op: 'grant', target: { ref: 'self' }, kws: ['攻撃後破壊'], until: 'turn' }];
+  if (/^そのGRクリーチャーはタップしてバトルゾーンに出る$/.test(s)) return [{ op: 'tap', target: { ref: 'it' } }];
+  if (/^相手はそれらを好きな順序で(?:自身の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
+  if (/^それ以外のカードを好きな順序で(?:自分の)?山札の(?:一番)?下に(?:置く|戻す)$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
+  if (/^このクリーチャーのフレーバーテキストを読(?:む|んでもよい)$/.test(s)) return [];
+  {
+    const tt = s.match(/^クリーチャーを(\d+)体(まで)?選び、それぞれタップまたはアンタップする$/);
+    if (tt)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { n: +tt[1], upTo: !!tt[2] }, chooser: 'self' }, purpose: 'neutral', prompt: s0 },
+        { op: 'toggleTap', target: { ref: 'it' } },
+      ];
+  }
   if (/^自分のツインパクト・?クリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(る|てもよい)$/.test(s))
     return [
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', twinpact: true }, count: { n: 1, upTo: /てもよい$/.test(s) }, chooser: 'self' }, purpose: 'benefit', prompt: '呪文側を唱えるツインパクト・クリーチャーを選ぶ' },
