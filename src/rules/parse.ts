@@ -261,6 +261,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/、?(自分の)?マナゾーンに加える$/, '$1マナゾーンに置く')
+    .replace(/、?(自分の)?マナゾーンに加えてもよい$/, '$1マナゾーンに置いてもよい')
+    .replace(/^その中から(\d+)枚、/, 'その中からカードを$1枚選び、')
     .replace(/選び(?=(?:破壊|タップ|持ち主|手札に|墓地に|マナゾーンに))/g, '選び、')
     .replace(/を(\d+)(体|枚)、バトルゾーンから選び、/, 'を$1$2選び、')
     .replace(/(この|その)クリーチャーはパワーを([+-]\d+)される$/, '$1クリーチャーのパワーを$2する')
@@ -1477,6 +1480,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = noun ? parseSel(noun) : undefined;
     const body = sentence(m[2], ctx);
     if (sel !== null && body?.length) return [{ op: 'repeatIt', sel: sel ? { ...sel, owner: 'any' } : undefined, body }];
+  }
+  // 「山札の上から1枚目を見て、手札に加えるかマナゾーンに置く」
+  if ((m = s.match(/^自分の山札の上から1枚目を見て、手札に加えるか(タップして)?マナゾーンに置く$/))) {
+    ctx.looked = true;
+    return [
+      { op: 'top', n: 1, to: 'look', who: 'self' },
+      {
+        op: 'modal',
+        pick: 1,
+        options: [
+          { label: '手札に加える', body: [{ op: 'move', target: { ref: 'looked' }, to: 'hand' }] },
+          { label: 'マナゾーンに置く', body: [{ op: 'move', target: { ref: 'looked' }, to: m[1] ? 'manaTapped' : 'mana' } as Op] },
+        ],
+      },
+    ];
   }
   // 龍覇「コストN以下のドラグハート1枚、または、コストM以下の光のドラグハートを1枚、自分の超次元ゾーンからバトルゾーンに出す」
   if ((m = s.match(/^(コスト\d+以下の(?:[^、]+の)?ドラグハート(?:・フォートレス|・ウエポン)?)を?(\d+)枚(まで)?、?または、?((?:コスト\d+以下の)?[^、]*?ドラグハート(?:・フォートレス|・ウエポン)?)を?(\d+)枚(まで)?、?を?自分の超次元ゾーンからバトルゾーンに出す$/))) {

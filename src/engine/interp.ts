@@ -235,6 +235,9 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       return ex.looked.filter((i) => !ex.it.includes(i));
     case 'saved':
       return (ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone');
+    case 'looked':
+      // 条件・枚数のない「見たカード」はすべて
+      return !t.sel && !t.count ? ex.looked.filter((i) => s.cards[i].zone !== 'gone') : null;
     default:
       return null;
   }
