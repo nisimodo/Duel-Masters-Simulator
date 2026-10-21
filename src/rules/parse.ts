@@ -274,6 +274,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^この攻撃中に自分が「ニンジャ」能力を使っていなければ、/, '')
     .replace(/^このターンが終わる時、/, 'このターンの終わりに、')
     .replace(/その(?:ドラゴン|[゠-ヿー・]{3,})を(?=(?:自分の|持ち主の)?(?:墓地|手札|マナゾーン|山札))/, 'そのクリーチャーを')
     .replace(/(光|水|闇|火|自然)クリーチャー/g, '$1のクリーチャー')
@@ -484,6 +485,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  {
+    const nc = s.match(/^手札にあるこのクリーチャーと、自分の(.+?)を?(\d+)体、?を?入れ替え(る|てもよい)$/);
+    const sel = nc && parseSel('自分の' + nc[1].replace(/でメカまたはシノビの/, 'のメカまたはシノビの'));
+    if (nc && sel) {
+      const ops: Op[] = [{ op: 'choose', target: { ref: 'sel', sel, count: { n: +nc[2], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: s0 }, { op: 'handSwap' }];
+      return nc[3] === 'る' ? ops : [{ op: 'optional', body: ops, prompt: s0 }];
+    }
+  }
   if (/^残り(?:のカード)?をシャッフルして(?:自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
   if (/^その持ち主は選ばれたカードを好きな順序で山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   if (/^(?:そのあと|その後、?)?(?:それ|これ|シールド)を(?:好きな順番で)?元(?:の場所)?に戻す$/.test(s)) return [];

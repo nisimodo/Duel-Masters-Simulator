@@ -721,6 +721,18 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         moveCard(s, L, ex.src, zone);
         break;
       }
+      case 'handSwap': {
+        const self = s.cards[ex.src];
+        const other = ex.it.find((i) => s.cards[i].zone === 'battle' && s.cards[i].owner === ex.player);
+        if (other == null || self?.zone !== 'hand') break;
+        const wasTapped = s.cards[other].tapped;
+        log(s, ex.player, `${q(nameOf(s, L, other))} と手札の ${q(nameOf(s, L, ex.src))} を入れ替えた`);
+        moveCard(s, L, other, 'hand');
+        moveCard(s, L, ex.src, 'battle', { tapped: wasTapped });
+        if (s.attack?.blocked === other) s.attack.blocked = ex.src;
+        if (s.attack?.targetCard === other) s.attack.targetCard = ex.src;
+        break;
+      }
       case 'superLink': {
         const root = ex.src;
         const rc = s.cards[root];
