@@ -61,6 +61,10 @@ export interface Sel {
   other?: boolean;
   /** このクリーチャーよりパワーが小さい */
   powerLtSelf?: boolean;
+  /** その中でパワーが一番小さい / 大きい */
+  extreme?: 'minPower' | 'maxPower';
+  /** it (選んだクリーチャー) よりパワーが小さい */
+  powerLtIt?: boolean;
   /** このクリーチャーよりコストが小さい */
   costLtSelf?: boolean;
   evolution?: boolean;

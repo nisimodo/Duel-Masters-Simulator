@@ -99,7 +99,10 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^単色の?/, () => (sel.mono = true));
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
     changed ||= take(/^(?:進化ではない|進化以外の|進化クリーチャーではない|進化クリーチャー以外の|進化でない)/, () => (sel.nonEvolution = true));
-    changed ||= take(/^このクリーチャーよりパワーが小さい/, () => (sel.powerLtSelf = true));
+    changed ||= take(/^(?:このクリーチャーよりパワーが小さい|パワーがこのクリーチャーより小さい|このクリーチャーよりパワーの小さい)/, () => (sel.powerLtSelf = true));
+    changed ||= take(/^(?:そのクリーチャーよりパワーが小さい|そのクリーチャーよりパワーの小さい|パワーがそのクリーチャーより小さい)/, () => (sel.powerLtIt = true));
+    changed ||= take(/^、?パワーが一番小さい/, () => (sel.extreme = 'minPower'));
+    changed ||= take(/^、?(?:パワーが一番大きい|一番パワーの大きい)/, () => (sel.extreme = 'maxPower'));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
       sel.civs = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);

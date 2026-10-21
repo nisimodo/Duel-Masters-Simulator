@@ -153,11 +153,18 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.other && iid === ex.src) continue;
         if (sel.self && iid !== ex.src) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
+        if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
     }
+  // 「パワーが一番小さい/大きい」
+  if (sel.extreme && out.length) {
+    const ps = out.map((i) => power(s, L, i));
+    const best = sel.extreme === 'minPower' ? Math.min(...ps) : Math.max(...ps);
+    return out.filter((_, k) => ps[k] === best);
+  }
   return out;
 }
 
