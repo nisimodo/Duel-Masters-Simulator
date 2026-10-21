@@ -539,6 +539,19 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   };
   const ranked = [...top.options].sort((a, b) => score(b) - score(a));
   const n = top.purpose === 'sacrifice' ? top.min : top.max;
+  if (top.sumCostMax != null) {
+    // コストの合計の上限内で、価値の高い順に詰める
+    const picks: number[] = [];
+    let sum = 0;
+    for (const i of ranked) {
+      const co = L(s.cards[i].cid)?.faces[0]?.cost ?? 0;
+      if (sum + co <= top.sumCostMax && picks.length < top.max) {
+        picks.push(i);
+        sum += co;
+      }
+    }
+    return { t: 'choose', picks };
+  }
   if (top.sumPowerMax != null) {
     // パワーの合計の上限内で、価値の高い順に詰める
     const picks: number[] = [];

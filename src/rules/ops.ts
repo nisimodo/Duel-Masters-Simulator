@@ -24,6 +24,8 @@ export interface Sel {
   civInMana?: boolean;
   /** 無色ではない */
   notColorless?: boolean;
+  /** 自分のマナゾーンにあるカードと同じ文明を持つ */
+  civShareMana?: boolean;
   /** 裏向き (true) / 表向き (false) のカードだけ */
   faceDown?: boolean;
   mono?: boolean;
@@ -47,9 +49,9 @@ export interface Sel {
   twinpact?: boolean;
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number } | { all: true };
 
-export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped';
+export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
 /** 効果の対象 */
 export type Target =

@@ -61,7 +61,7 @@ export function mergeModal(lines: string[]): string[] {
   return out;
 }
 
-export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce';
+export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce' | 'odrive';
 
 const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^ウェーブストライカー/, 'wave'],
@@ -70,6 +70,8 @@ const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^メタモーフ/, 'meta'],
   [/^ターボラッシュ/, 'turbo'],
   [/^シールド・フォース/, 'sforce'],
+  // O・ドライブ: 召喚する時に追加でマナをタップした時だけ得る能力 (追加の支払いは未対応なので使わない)
+  [/^O・ドライブ/, 'odrive'],
 ];
 /** 次の行を「このクリーチャーの能力」として使うキーワード */
 const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*)\s*[(（]/;

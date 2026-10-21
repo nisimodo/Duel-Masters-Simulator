@@ -69,6 +69,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
   if (m(/^(自分の)?山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle' }];
   if (m(/^新しいシールドとして(自分の|持ち主の)?シールドゾーンに表向きのまま(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
@@ -241,6 +242,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'self' }];
   if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?クリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'creature' }];
   if (/^(その|この)ターンの終わりに、このクリーチャーを(自分の)?山札の(一番)?下に置く$/.test(s)) return [{ op: 'endOfTurnBottom' }];
+  // 「自分の超次元ゾーンから(好きな数の)サイキック・クリーチャーをコストの合計がN以下になるように選び、バトルゾーンに出す」
+  {
+    const cs =
+      s.match(/^自分の超次元ゾーン(?:から|にある)(?:好きな数の)?(.+?)を、?(?:(\d+)体まで、?)?コストの合計が(\d+)以下になるように(?:(\d+)体まで)?選び、(?:バトルゾーンに)?出す$/) ??
+      s.match(/^自分の超次元ゾーンから(.+?)をコストの合計が(\d+)以下になるように(\d+)体まで選び、(?:バトルゾーンに)?出す$/);
+    if (cs) {
+      const sel = parseSel(cs[1], { zones: ['hyper'] });
+      if (sel) {
+        sel.owner = 'self';
+        sel.zones = ['hyper'];
+        const max = cs.length === 5 ? +(cs[2] ?? cs[4] ?? 99) : +cs[3];
+        const sum = cs.length === 5 ? +cs[3] : +cs[2];
+        return [
+          { op: 'choose', target: { ref: 'sel', sel, count: { n: max, upTo: true, sumCostMax: sum }, chooser: 'self' }, purpose: 'benefit', prompt: `コストの合計が${sum}以下になるように選ぶ` },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ];
+      }
+    }
+  }
   // Jトルネード: 自分の他のジョーカーズを1体、手札に戻す
   if (/^Jトルネードする$/.test(s))
     return [

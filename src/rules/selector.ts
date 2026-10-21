@@ -18,7 +18,7 @@ const KINDS: [RegExp, Sel['kind'], Partial<Sel>?][] = [
   [/タマシード$/, 'tamaseed'],
   [/オーラ$/, 'aura'],
   [/城$/, 'castle'],
-  [/ドラグハート$/, 'dragheart'],
+  [/ドラグハート(・ウエポン|・フォートレス)?$/, 'dragheart'],
   [/カード$/, 'card'],
 ];
 
@@ -52,6 +52,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
   for (let guard = 0; guard < 12; guard++) {
     let changed = false;
     changed ||= take(/^バトルゾーンにある/, () => ((sel.zones = ['battle']), (zoneSet = true)));
+    changed ||= take(/^自分のマナゾーンにあるカードと同じ文明を持つ、?/, () => (sel.civShareMana = true));
     changed ||= take(/^(自分|相手|各プレイヤー|すべてのプレイヤー|いずれかのプレイヤー)の/, (m) => {
       sel.owner = m[1] === '自分' ? 'self' : m[1] === '相手' ? 'opp' : 'any';
     });

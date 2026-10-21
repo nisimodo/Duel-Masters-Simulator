@@ -71,6 +71,10 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.notColorless && !civs.length) return false;
+  if (sel.civShareMana) {
+    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
+    if (!civs.some((x) => have.has(x))) return false;
+  }
   if (sel.multicolor && civs.length < 2) return false;
   if (sel.monocolor && civs.length >= 2) return false;
   if (sel.faceDown != null && !!s.cards[iid].manaDown !== sel.faceDown) return false;
@@ -106,7 +110,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.civShareMana && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -202,6 +206,7 @@ const DEST_ZONE: Record<Dest, ZoneName> = {
   mana: 'mana',
   manaTapped: 'mana',
   manaDown: 'mana',
+  hyper: 'hyper',
   shield: 'shield',
   shieldUp: 'shield',
   deckBottom: 'deck',
@@ -213,6 +218,11 @@ const DEST_ZONE: Record<Dest, ZoneName> = {
 function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal = false) {
   const c = s.cards[iid];
   if (!c || c.zone === 'gone') return;
+  // 超次元ゾーンに置けるのはサイキック・ドラグハートだけ (それ以外はその場にとどまる)
+  if (to === 'hyper' && L(c.cid)?.zone !== 'hyper') {
+    log(s, ex.player, `${q(nameOf(s, L, iid))} は超次元ゾーンに置けない`);
+    return;
+  }
   const nm = nameOf(s, L, iid);
   const multi = cardCivs(L, c.cid).length > 1;
   const zone = DEST_ZONE[to];
@@ -361,6 +371,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           max: n,
           purpose: op.purpose,
           sumPowerMax: cnt.sumPowerMax,
+          sumCostMax: cnt.sumCostMax,
         });
         return;
       }

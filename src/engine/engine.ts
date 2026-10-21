@@ -458,9 +458,16 @@ function gLink(s: GameState, L: Lookup, iid: number) {
 
 // ---------- 誘発型能力 ----------
 const MAX_PENDING = 80;
+const MAX_TURN_TRIGGERS = 300;
 
 function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec: TriggerSpec, event: TrigEvent) {
   if (s.pending.length >= MAX_PENDING) return;
+  // 無限ループ防止: 1ターンに誘発する能力の数に上限
+  s.turnTriggers = (s.turnTriggers ?? 0) + 1;
+  if (s.turnTriggers > MAX_TURN_TRIGGERS) {
+    if (s.turnTriggers === MAX_TURN_TRIGGERS + 1) log(s, null, '能力の誘発が多すぎるため、このターンはこれ以上自動で誘発しません (無限ループ防止)');
+    return;
+  }
   if (spec.oncePerTurn) {
     const key = `${src}|${spec.text}`;
     if ((s.usedOnce ??= []).includes(key)) return;
@@ -724,6 +731,7 @@ function startTurn(s: GameState, L: Lookup) {
   }
   // 「次の○○のターンのはじめまで」の制限を解除
   s.usedOnce = [];
+  s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
   for (const c of s.cards) {
     if (c.hyperUntil === p) {
@@ -1833,6 +1841,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         const picks = [...new Set(a.picks ?? [])].filter((x) => top.options.includes(x));
         if (picks.length < top.min || picks.length > top.max) return top.min === top.max ? `${top.min}枚選んでください` : `${top.min}～${top.max}枚選んでください`;
         if (top.sumPowerMax != null && picks.reduce((a2, i) => a2 + power(s, L, i), 0) > top.sumPowerMax) return `パワーの合計が${top.sumPowerMax}以下になるように選んでください`;
+        if (top.sumCostMax != null && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) > top.sumCostMax) return `コストの合計が${top.sumCostMax}以下になるように選んでください`;
         s.pending.shift();
         resumeExec(s, L, top.exec, { picks });
       } else if (top.mode === 'yesno') {

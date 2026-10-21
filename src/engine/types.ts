@@ -107,6 +107,7 @@ export type Pending =
       purpose: Purpose;
       /** 選んだクリーチャーのパワーの合計の上限 */
       sumPowerMax?: number;
+      sumCostMax?: number;
       exec: Exec;
     }
   | {
@@ -176,6 +177,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** このターンに誘発した能力の数 (無限ループ防止) */
+  turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
   /** 「ゲーム中に一度」を使ったカード */
