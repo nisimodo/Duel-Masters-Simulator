@@ -1305,7 +1305,8 @@ function blockStep(s: GameState, L: Lookup) {
   a.step = 'block';
   const def = a.targetPlayer;
   const attFace = faceOf(s, L, a.attacker);
-  const blockers = attFace && kwOf(s, L, a.attacker).unblockable
+  const stealth = (attFace?.statics ?? []).some((x) => x.s === 'stealth' && s.players[def].mana.some((m) => cardCivs(L, s.cards[m].cid).includes(x.civ)));
+  const blockers = attFace && (kwOf(s, L, a.attacker).unblockable || stealth)
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
@@ -1353,8 +1354,9 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
   if (winsAll(att)) (killA = false), (killD = true);
   if (winsAll(def)) (killD = false), (killA = true);
   if (winsAll(att) && winsAll(def)) killA = killD = false;
-  if (killA && kwOf(s, L, att).slayer) killD = true;
-  if (killD && kwOf(s, L, def).slayer) killA = true;
+  const civSlay = (i: number, foe: number) => (faceOf(s, L, i)?.statics ?? []).some((x) => x.s === 'civSlayer' && cardCivs(L, s.cards[foe].cid).some((c) => x.civs.includes(c)));
+  if (killA && (kwOf(s, L, att).slayer || civSlay(att, def))) killD = true;
+  if (killD && (kwOf(s, L, def).slayer || civSlay(def, att))) killA = true;
   void fa;
   void fd;
   s.inBattleNow = true;

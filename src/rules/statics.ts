@@ -1,5 +1,7 @@
 // 常在型能力 (パワー修正・キーワード付与・コスト増減・選ばれない 等) の解析
 import type { Civ, Sel } from './ops';
+
+const CIV_OF: Record<string, Civ> = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' };
 import { parseSel } from './selector';
 import { normText, stripReminder } from './text';
 
@@ -15,6 +17,8 @@ export type StaticCond =
   | { c: 'countAtLeast'; sel: Sel; n: number }
   /** このターン、自分が呪文をN枚以上唱えている */
   | { c: 'spellsThisTurn'; n: number }
+  /** 自分のシールドが N 枚以下 */
+  | { c: 'shieldsLE'; n: number }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -126,6 +130,10 @@ export type StaticSpec =
   | { s: 'noBreak' }
   /** G・ブレイカー: 相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする */
   | { s: 'gBreaker' }
+  /** 〇ステルス: 相手のマナゾーンにその文明のカードがあればブロックされない */
+  | { s: 'stealth'; civ: Civ }
+  /** 〇スレイヤー: その文明のクリーチャーとバトルした時、相手を破壊する */
+  | { s: 'civSlayer'; civs: Civ[] }
   /** 相手のカードはマナゾーンにタップして置かれる */
   | { s: 'oppManaTapped' }
   /** バトルに勝っても、バトルの後に破壊される */
@@ -195,6 +203,8 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
+  if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)以下(?:の時|なら|であれば)、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)があれば、(.+)$/)) && !/\d+(?:体|枚|つ)以上$/.test(m[1])) {
     const sel = parseSel('自分の' + m[1]);
     if (sel) return { cond: { c: 'countAtLeast', sel, n: 1 }, rest: m[2] };
@@ -209,7 +219,10 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
 /** 1行の常在型能力を解析 */
 export function parseStaticLine(raw: string): StaticSpec[] | null {
   const full = normText(raw);
-  const t0 = stripReminder(full).replace(/\s+/g, '').replace(/。$/, '');
+  const t0 = stripReminder(full)
+    .replace(/\s+/g, '')
+    .replace(/。$/, '')
+    .replace(/はすべて、(「)/, 'は$1');
   let m: RegExpMatchArray | null;
 
   // ---- キーワード系 ----
@@ -254,6 +267,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する$/.test(t0)) return [{ s: 'destroyAfterAttack' }];
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
+  if ((m = t0.match(/^(光|水|闇|火|自然)ステルス/))) return [{ s: 'stealth', civ: CIV_OF[m[1]] }];
+  if ((m = t0.match(/^((?:光|水|闇|火|自然)(?:・(?:光|水|闇|火|自然))*)スレイヤー/))) return [{ s: 'civSlayer', civs: m[1].split('・').map((x) => CIV_OF[x]) }];
+  if (/^このクリーチャーは、?タップしてバトルゾーンに置かれる$/.test(t0)) return [{ s: 'entersTapped' }];
   if (/^相手のクリーチャーが攻撃する場合、可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^このクリーチャーを、自分の墓地から召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'grave' }];
   if ((m = t0.match(/^この呪文を(?:自分の)?(マナゾーン|墓地)から唱えてもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : 'mana' }];
@@ -417,7 +433,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
 
   // ---- 攻撃・ブロック・選択 ----
   if (/^このクリーチャーは攻撃されない$/.test(t0)) return [{ s: 'noAttacked' }];
-  if (/^このクリーチャーは、?(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(t0)) return [{ s: 'attackUntapped' }];
+  if (/^このクリーチャーは、?(タップされていない|アンタップしている|アンタップされている)クリーチャーを攻撃できる$/.test(t0)) return [{ s: 'attackUntapped' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
   if (/^このクリーチャーは、?(このクリーチャー|これ)よりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'unblockableBy', smallerThanSelf: true }];

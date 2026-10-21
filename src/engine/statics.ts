@@ -154,6 +154,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
       return countRel(s, L, a, cond.sel) >= cond.n;
     case 'linked':
       return isLinked(s, a.src);
+    case 'shieldsLE':
+      return s.players[a.owner].shield.length <= cond.n;
     case 'spellsThisTurn': {
       const sc = s.players[a.owner].spellsCast;
       return sc?.turn === s.turn && sc.n >= cond.n;
