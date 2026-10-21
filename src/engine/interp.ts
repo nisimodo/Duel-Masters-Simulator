@@ -1007,14 +1007,14 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'castSelfSpell': {
         // このカードの呪文側の効果を、呪文として解決する (カードは今の場所のまま)
-        const c = s.cards[ex.src];
+        const c = s.cards[op.it ? (ex.it[0] ?? -1) : ex.src];
         const card = c && L(c.cid);
         const fi = card ? card.faces.findIndex((f) => f.isSpell) : -1;
         if (card && fi >= 0) {
           const lines = spellEffectLines(card.faces[fi].text);
           log(s, ex.player, `${q(card.faces[fi].name)} を唱えた (コストを支払わずに)`);
           if (lines.length)
-            s.pending.push({ kind: 'ability', player: ex.player, src: ex.src, cid: c.cid, face: fi, event: 'spell', text: lines.join('\n'), effect: lines.join('\n'), optional: false, auto: false });
+            s.pending.push({ kind: 'ability', player: ex.player, src: op.it ? ex.it[0] : ex.src, cid: c.cid, face: fi, event: 'spell', text: lines.join('\n'), effect: lines.join('\n'), optional: false, auto: false });
         }
         break;
       }

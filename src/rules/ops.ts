@@ -247,7 +247,7 @@ export type Op =
   /** キリフダッシュで召喚 (it のカードをコストを支払って) */
   | { op: 'kirifuPlay' }
   /** このカードの呪文側を唱える (ラスト・バースト等) */
-  | { op: 'castSelfSpell' }
+  | { op: 'castSelfSpell'; it?: boolean }
   /** 山札の上から条件に合うカードが出るまで表向きにする (見つかったカードが it、全部が looked) */
   | { op: 'revealUntil'; sel: Sel }
   /** 今選んでいるカードを保存 (2つ目の選択のため) */

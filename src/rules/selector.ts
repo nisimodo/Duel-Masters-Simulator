@@ -97,7 +97,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));
     changed ||= take(/^単色の?/, () => (sel.mono = true));
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
-    changed ||= take(/^進化ではない/, () => (sel.nonEvolution = true));
+    changed ||= take(/^(?:進化ではない|進化以外の|進化クリーチャーではない|進化でない)/, () => (sel.nonEvolution = true));
     changed ||= take(/^このクリーチャーよりパワーが小さい/, () => (sel.powerLtSelf = true));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
