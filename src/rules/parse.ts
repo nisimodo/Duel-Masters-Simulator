@@ -397,6 +397,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (nl && hit) return [{ op: 'grant', target: { ref: nl[2] === 'この' ? 'self' : 'it' }, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
   if (/^このターンの後に(自分の)?ターンを(追加する|もう一度行う)$/.test(s) || /^このターンの後にもう一度自分のターンを行う$/.test(s)) return [{ op: 'extraTurn' }];
+  // 「その中から〇〇をすべて手札に加え、それ以外のカードを好きな順序で山札の一番下に戻す」
+  {
+    const lh = s.match(/^その中から(.+?)を(すべて|(\d+)(?:枚|体)(まで)?)、?(?:自分の)?手札に加え、(?:それ以外のカード|残り(?:のカード)?)を(?:好きな順序で)?(?:自分の)?山札の(?:一番)?下に(?:戻す|置く)$/);
+    const sel = lh && parseSel(lh[1], { zones: ['deck'] });
+    if (lh && sel) {
+      const count: Count = lh[2] === 'すべて' ? { all: true } : { n: +lh[3], upTo: !!lh[4] };
+      return [
+        { op: 'choose', target: { ref: 'looked', sel, count }, purpose: 'benefit', prompt: s0 },
+        { op: 'move', target: { ref: 'it' }, to: 'hand' },
+        { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+      ];
+    }
+  }
   // 相手が選ぶ・各プレイヤーなど
   {
     if (/^(このターン|そのターン)、(この|その)クリーチャーは(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(s))
