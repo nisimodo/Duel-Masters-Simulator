@@ -180,6 +180,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
+  if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };

@@ -136,6 +136,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
       if (!arr) continue;
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
+        if (sel.self && iid !== ex.src) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;

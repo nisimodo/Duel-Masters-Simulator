@@ -28,6 +28,8 @@ export interface Sel {
   notCreature?: boolean;
   /** サイキックではない */
   notPsychic?: boolean;
+  /** この効果のカード自身 */
+  self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
   raceRef?: boolean;
   civRef?: boolean;

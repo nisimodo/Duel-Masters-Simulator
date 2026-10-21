@@ -364,6 +364,7 @@ export function moveCard(
   // 配列の末尾 = 山札の上 / 最新
   if (pos === 'top') arr.push(iid);
   else arr.unshift(iid);
+  if (dest === 'mana' && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppManaTapped')) c.tapped = true;
   if (dest === 'battle') {
     c.sick = true;
     if ((card?.faces[c.face]?.statics ?? []).some((x) => x.s === 'entersTapped')) c.tapped = true;
@@ -1016,9 +1017,9 @@ function advance(s: GameState, L: Lookup): boolean {
       s.attack = null;
       // 「攻撃の終わりに、アンタップする」
       const ac = s.cards[a.attacker];
-      if (ac?.zone === 'battle' && (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ'))) {
+      if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack') || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
         ac.tapped = false;
-        ac.grants = ac.grants!.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
+        ac.grants = ac.grants?.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ`);
       }
       // キリフダッシュ: シールドをブレイクした攻撃の終わりに召喚できる
@@ -1314,6 +1315,14 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
     moveCard(s, L, att, 'grave');
   }
   s.inBattleNow = false;
+  if (killD && !killA) fireWatchers(s, L, s.cards[att].owner, att, 'ownWinBattle', null, att);
+  if (killA && !killD) fireWatchers(s, L, s.cards[def].owner, def, 'ownWinBattle', null, def);
+  for (const w of [killD && !killA ? att : null, killA && !killD ? def : null]) {
+    if (w != null && s.cards[w].zone === 'battle' && (faceOf(s, L, w)?.statics ?? []).some((x) => x.s === 'dieAfterBattle')) {
+      log(s, s.cards[w].owner, `${q(nameOf(s, L, w))} はバトルの後に破壊される`);
+      moveCard(s, L, w, 'grave');
+    }
+  }
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
 }

@@ -39,6 +39,7 @@ export type TrigEvent =
   | 'toShieldFaceUp' // このクリーチャーが表向きでシールドゾーンに置かれた時
   | 'attached' // これをクリーチャーに付けた時
   | 'tapped' // このクリーチャーがタップした時
+  | 'ownWinBattle' // 自分のクリーチャーがバトルに勝った時
   | 'unsealOne' // このカードから封印が外された時
   | 'unsealedAll'; // このカードの封印がすべてなくなった時
 
@@ -77,6 +78,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   toShieldFaceUp: '表向きでシールドゾーンに置かれた時',
   attached: 'クリーチャーに付けた時',
   tapped: 'タップした時',
+  ownWinBattle: '自分のクリーチャーがバトルに勝った時',
   unsealOne: '封印が外された時',
   unsealedAll: '封印がすべてなくなった時',
   spell: '呪文の効果',
@@ -116,7 +118,7 @@ export function isAutoEffect(effect: string, optional: boolean): boolean {
 export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
   for (const raw of rawLines) {
-    const line = stripReminder(normText(raw)).trim();
+    const line = stripReminder(normText(raw)).trim().replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、');
     if (!line || SKIP_TRIG.test(line)) continue;
     // 「とどまる」「手札に加えるかわりに墓地に置く」は常在型能力として処理
     if (/(離れるかわりにとどまる|離れずにとどまる)$|^このクリーチャーがシールドをブレイクする時、相手は.*手札に加えるかわりに墓地に置く/.test(line.replace(/\s+/g, '').replace(/。$/, '')) && /^(相手の呪文(の効果で|によって))?(バトルゾーンに.+?があり、)?このクリーチャーが/.test(line)) continue;
@@ -164,6 +166,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/ブロックされた時/.test(clause) && self) ev.add('blocked');
     if (/ブロック(した|する)時/.test(clause) && self) ev.add('block');
     if (/バトルに勝った時/.test(clause) && self) ev.add('winBattle');
+    else if (/自分の(.+?)?クリーチャーがバトルに勝った時/.test(clause)) ev.add('ownWinBattle');
     if (/バトルする時/.test(clause) && self) ev.add('battle');
     // 「破壊される時」「離れる時」は置換効果だが、処理を忘れないよう発生後に提示する
     if (/破壊(された|される)時/.test(clause)) {

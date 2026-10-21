@@ -104,6 +104,16 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** 攻撃の終わりにアンタップする */
+  | { s: 'untapAfterAttack' }
+  /** 相手のカードはマナゾーンにタップして置かれる */
+  | { s: 'oppManaTapped' }
+  /** バトルに勝っても、バトルの後に破壊される */
+  | { s: 'dieAfterBattle' }
+  /** どの種族の進化クリーチャーも上に置ける */
+  | { s: 'anyEvoBase' }
+  /** 選んでよい (効果に影響しない) 注記 */
+  | { s: 'note' }
   /** 「火・自然ブロッカー」「ドラゴン・ブロッカー」: 条件に合う相手クリーチャーだけブロックできる */
   | { s: 'limitedBlocker'; sel: Sel }
   /** 離れる時、条件を満たせばかわりにとどまる */
@@ -191,7 +201,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^(J・O・E|B・A・D)(\d+)/))) return [{ s: 'discountSummon', kind: m[1] === 'J・O・E' ? 'joe' : 'bad', n: +m[2] }];
   if ((m = t0.match(/^マナ爆誕(\d+)/))) return [{ s: 'manaBakutan', cost: +m[1] }];
   if ((m = t0.match(/^キリフダッシュ(?:\[[a-z]*(\d+)\]|(\d+))/))) return [{ s: 'kirifu', cost: +(m[1] ?? m[2]) }];
-  if ((m = t0.match(/^ハイパー化[:：]自分の他のクリーチャーを(\d+)体タップする/))) return [{ s: 'hyperize', n: +m[1] }];
+  if ((m = t0.match(/^(?:OVER)?ハイパー化[:：]自分の他のクリーチャーを(\d+)体タップする/))) return [{ s: 'hyperize', n: +m[1] }];
   if (/^Zラッシュ/.test(t0)) return [{ s: 'zrush' }];
   if (/^シンカライズ/.test(t0)) return [{ s: 'sinkalize' }];
   if ((m = full.replace(/\s+/g, '').match(/^ギャラクシールド\[[a-z]*(\d+)\]/))) return [{ s: 'galaxy', cost: +m[1] }];
@@ -199,6 +209,16 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^このクリーチャーを、?(自分の)?マナゾーンから召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'mana' }];
+  if (/^このクリーチャーはタップして出て、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
+  if (/^(各ターン、)?このクリーチャーの(最初の)?攻撃の終わりに、このクリーチャーをアンタップする$/.test(t0)) return [{ s: 'untapAfterAttack' }];
+  if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'oppManaTapped' }];
+  if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
+  if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
+  if (/^このクリーチャーは、?毎ターン攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
+  if (/^相手のクリーチャーが攻撃するなら、可能ならこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
+  if (/^(どんな|どの)種族の進化クリーチャーを?、?このクリーチャーの上に置いてもよい$/.test(t0) || /^このクリーチャーの上に、?(どんな|どの)種族の進化クリーチャーを置いてもよい$/.test(t0)) return [{ s: 'anyEvoBase' }];
+  if (/^このクリーチャーをタップして(バトルゾーンに)?出してもよい$/.test(t0)) return [{ s: 'note' }];
   if ((m = t0.match(/^(.+?)・?ブロッカー$/)) && !/パワード|スーパー|ナイト|ジャスト/.test(m[1])) {
     const words = m[1].split('・');
     const civs = words.map((w) => ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' })[w as '光']).filter(Boolean) as Civ[];
@@ -315,7 +335,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^このクリーチャーは、?リンクしている(?:時|間)、?((?:「[^」]+」(?:と|、)?)+)を得る$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: [...m[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond: { c: 'linked' } }];
   if ((m = full.replace(/\s+/g, '').match(/^ムゲンクライム(\d+).*?\[[a-z]*(\d+)\]/))) return [{ s: 'mugen', n: +m[1], cost: +m[2] }];
-  if ((m = t0.match(/^このクリーチャーが破壊される時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
+  if ((m = t0.match(/^このクリーチャーが(?:破壊される|バトルゾーンから(?:自分の)?墓地に置かれる)時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
     const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
     return [{ s: 'destroyTo', zone: z }];
   }

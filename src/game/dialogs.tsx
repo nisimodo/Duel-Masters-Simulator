@@ -114,7 +114,7 @@ export function PayDialog({
     const em = statics.find((x) => x.s === 'evoMulti');
     if (em && em.s === 'evoMulti') return bf.isCreature && matchesSel(s, L, b, em.sel);
     const bc = L(s.cards[b].cid)!;
-    return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
+    return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || (bf.statics ?? []).some((x) => x.s === 'anyEvoBase') || matchesCond(f.kw.evoCond, bc, bf));
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
   // ソウルシフト・NEO進化の軽減は進化元によって変わる
