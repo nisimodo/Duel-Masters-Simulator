@@ -102,6 +102,8 @@ const db = buildDB(
     { id: 'shift', n: 'shift', img: '', f: [{ n: 'shift', t: '進化クリーチャー', c: 'F', co: 7, p: '9000', r: ['テスト'], x: ['ソウルシフト(このクリーチャーを召喚する時、このクリーチャーの進化元クリーチャーを選ぶ。このクリーチャーのコストは、その選んだクリーチャーのコストだけ少なくなる)', '進化-自分のテスト1体の上に置く。'] }] },
     { id: 'pickrace', n: 'pickrace', img: '', f: [{ n: 'pickrace', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['種族をひとつ選ぶ。自分の墓地から、その種族のクリーチャーを1体選び、自分の手札に加える。'] }] },
     { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
+    cr('sealer', 2, 2000, ['このクリーチャーが出た時、相手のクリーチャーを1体選び、相手はそれに封印をひとつ付ける。']),
+    { id: 'cmd', n: 'cmd', img: '', f: [{ n: 'cmd', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ドラゴン・コマンド'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -627,5 +629,25 @@ describe('named mechanics', () => {
       else s = act(s, 0, { t: 'resolve', use: true });
     }
     expect(s.cards[d].zone).toBe('hand');
+  });
+
+  it('封印: sealed creatures cannot attack/block; a command entering removes a seal', () => {
+    let s = setup([
+      { p: 0, cid: 'sealer', zone: 'hand' },
+      { p: 1, cid: 'guard', zone: 'battle' },
+      { p: 1, cid: 'cmd', zone: 'hand' },
+    ]);
+    const g = find(s, 1, 'battle', 'guard')!;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'sealer')!, face: 0, pay: freeMana(s, 0, 2) });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: [g] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[g].under.some((u) => s.cards[u].sealOf === g)).toBe(true);
+    s.cards[g].sick = false;
+    s.active = 1;
+    expect(applyAction(s, 1, { t: 'attack', attacker: g, player: 0 }, L).error).toBeTruthy();
+    s = act(s, 1, { t: 'play', iid: find(s, 1, 'hand', 'cmd')!, face: 0, pay: freeMana(s, 1, 1) });
+    expect(s.cards[g].under.some((u) => s.cards[u].sealOf === g)).toBe(false);
   });
 });

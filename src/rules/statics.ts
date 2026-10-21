@@ -100,6 +100,8 @@ export type StaticSpec =
   | { s: 'indestructible'; inBattle?: boolean }
   /** 自分のターンのはじめにアンタップしない */
   | { s: 'noUntapStart' }
+  /** 封印が付いていれば離れない */
+  | { s: 'sealStay' }
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
   | { s: 'soulShift' }
   /** NEO進化クリーチャーとして召喚するならコストをN少なく */
@@ -167,6 +169,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^封印が付いていれば、この(タマシード|クリーチャー|カード|フィールド)は(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'sealStay' }];
   if ((m = t0.match(/^NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ウラ・ニンジャ・ストライク(\d+)(?:\((光|水|闇|火|自然)\))?/))) return [{ s: 'uraNinja', n: +m[1], civ: m[2] }];
   if ((m = t0.match(/^(マナ|手札)進化[-ー―:：](.+?)を(\d+)体自分の(?:マナゾーン|手札)から選び、このクリーチャーをその上に重ねつつバトルゾーンに出す$/))) {

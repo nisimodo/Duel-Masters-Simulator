@@ -244,6 +244,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ];
     }
   }
+  // 封印
+  {
+    const N1 = '(\\d+|ひとつ|1つ)';
+    const num = (x: string) => (/\d/.test(x) ? +x.replace(/つ$/, '') : 1);
+    let sm = s.match(new RegExp(`^(?:相手は)?(?:それ|そのクリーチャー|それら|その\\d+体)に封印を${N1}つ?付ける$`));
+    if (sm) return [{ op: 'seal', target: { ref: 'it' }, n: num(sm[1]) }];
+    sm = s.match(new RegExp(`^(?:これ|このクリーチャー|このタマシード|このカード)?に?封印を${N1}つ?付ける$`));
+    if (sm) return [{ op: 'seal', target: { ref: 'self' }, n: num(sm[1]) }];
+    sm = s.match(new RegExp(`^相手は(?:自身|自分)のクリーチャーすべてに封印を${N1}つ?付ける$`));
+    if (sm) return [{ op: 'seal', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'opp' }, n: num(sm[1]) }];
+    sm = s.match(new RegExp(`^クリーチャーすべてに封印を${N1}つ?付ける$`));
+    if (sm) return [{ op: 'seal', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, n: num(sm[1]) }];
+    sm = s.match(new RegExp(`^(自分の|この(?:タマシード|クリーチャー|カード|フィールド|鼓動)の)封印を${N1}(?:つ|枚)(?:まで)?、?(?:自分の)?墓地に置く$`));
+    if (sm) return [{ op: 'unseal', from: sm[1] === '自分の' ? 'any' : 'self', n: num(sm[2]) }];
+  }
   // 種族・文明・数字を選ぶ
   {
     const cv = s.match(/^(?:(.+?)以外の)?(種族|文明)を(?:ひとつ|1つ)選ぶ$/);

@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { activeStatics, ALL_CIVS, costOf, effGroups, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { activeStatics, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -50,6 +50,8 @@ export function log(s: GameState, p: number | null, m: string) {
 /** 一時的に与えられたものも含めたキーワード能力 */
 export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
   const f = faceOf(s, L, iid);
+  // 封印が付いているクリーチャーは能力を持たない
+  if (s.cards[iid].zone === 'battle' && isSealed(s, iid)) return EMPTY_KW;
   const base: Keywords = f ? f.kw : EMPTY_KW;
   const g = s.cards[iid].grants;
   const extra = s.cards[iid].zone === 'battle' ? staticKws(s, L, iid) : [];
@@ -168,6 +170,11 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // 封印が付いていれば離れない
+    if (isSealed(s, iid) && own.some((x) => x.s === 'sealStay')) {
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は封印が付いているので離れない`);
+      return 'battle';
+    }
     // 破壊されない
     if (to === 'grave' && own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow))) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊されない`);
@@ -335,7 +342,8 @@ export function moveCard(
     uc.parent = null;
     uc.zone = 'gone';
     const uCard = L(uc.cid);
-    let ud: ZoneName = to === 'battle' ? 'grave' : to;
+    let ud: ZoneName = to === 'battle' || uc.sealOf != null ? 'grave' : to;
+    uc.sealOf = undefined;
     if (uCard?.zone === 'hyper') ud = 'hyper';
     if (uCard?.zone === 'gr') ud = 'gr';
     resetCard(uc);
@@ -373,6 +381,10 @@ export function moveCard(
       fireWatchers(s, L, c.owner, null, 'ownManaPut', null, iid);
     }
     if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
+    if (dest === 'battle' && from !== 'battle' && (card?.faces[c.face]?.races ?? []).some((r) => r.includes('コマンド'))) {
+      const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b));
+      if (host != null) removeSeal(s, L, host);
+    }
     if (dest === 'battle' && from !== 'battle') {
       if (card?.faces[c.face]?.groups?.some((g) => g.kind === 'sforce')) c.forceShield = s.players[c.owner].shield[s.players[c.owner].shield.length - 1];
       gLink(s, L, iid);
@@ -420,6 +432,23 @@ export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
 export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
   const tg = attackTargets(s, L, attacker);
   return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure') || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
+}
+
+/** 封印を1つ外して墓地に置く (なくなれば「封印がすべてなくなった時」) */
+export function removeSeal(s: GameState, L: Lookup, host: number) {
+  const hc = s.cards[host];
+  const seal = [...hc.under].reverse().find((u) => s.cards[u].sealOf === host);
+  if (seal == null) return;
+  hc.under = hc.under.filter((u) => u !== seal);
+  const sc = s.cards[seal];
+  sc.sealOf = undefined;
+  sc.parent = null;
+  sc.zone = 'grave';
+  sc.faceUp = true;
+  s.players[sc.owner].grave.push(seal);
+  log(s, hc.owner, `${q(nameOf(s, L, host))} の封印を1つ外した`);
+  fireSelf(s, L, host, hc.face, ['unsealOne']);
+  if (!isSealed(s, host)) fireSelf(s, L, host, hc.face, ['unsealedAll']);
 }
 
 /** クロスギアをクロスするコスト (「〜にクロスする時、コストを少なく」を含む) */
@@ -496,6 +525,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
 function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
+  if (s.cards[iid].zone === 'battle' && isSealed(s, iid) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
   for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
     const ev = spec.events.find((e) => events.includes(e));
     if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
@@ -522,7 +552,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
     const ev = p === actor ? ownEv : oppEv;
     if (!ev) continue;
     for (const iid of s.players[p].battle) {
-      if (iid === exclude) continue;
+      if (iid === exclude || isSealed(s, iid)) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
       for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
@@ -1024,7 +1054,7 @@ export const untappedMana = (s: GameState, p: number) => s.players[p].mana.filte
 export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
-  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack) return false;
+  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid)) return false;
   const k = kwOf(s, L, iid);
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer')) return false;
   return true;
@@ -1049,7 +1079,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
-      if (tc.justDive != null || ownStatics(s, L, t).some((x) => x.s === 'noAttacked')) continue;
+      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked')) continue;
       if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };

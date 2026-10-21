@@ -56,6 +56,11 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
     for (const iid of pl.battle) {
       const c = s.cards[iid];
       const f = L(c.cid)?.faces[c.face];
+      // 封印が付いているカードの能力は無視 (封印が付いていれば離れない、だけは有効)
+      if (isSealed(s, iid)) {
+        for (const spec of f?.statics ?? []) if (spec.s === 'sealStay') out.push({ src: iid, owner: p, spec });
+        continue;
+      }
       for (const spec of f?.statics ?? []) out.push({ src: iid, owner: p, spec });
       if (f?.groups || c.under.length || f?.races.some((r) => r.includes('サバイバー')))
         for (const g of effGroups(s, L, iid)) for (const spec of g.statics) out.push({ src: iid, owner: p, spec });
@@ -181,6 +186,11 @@ export function staticKws(s: GameState, L: Lookup, iid: number): string[] {
   return out;
 }
 
+/** 封印が付いているか */
+export function isSealed(s: GameState, iid: number): boolean {
+  return (s.cards[iid]?.under ?? []).some((u) => s.cards[u].sealOf === iid);
+}
+
 /** G・リンクしているか (一番上のカード / 下のカードどちらでも) */
 export function isLinked(s: GameState, iid: number): boolean {
   const c = s.cards[iid];
@@ -198,6 +208,7 @@ export function ownStatics(s: GameState, L: Lookup, iid: number): StaticSpec[] {
 /** 相手 (chooser) がこのカードを選べるか */
 export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: number, bySpell = false): boolean {
   const c = s.cards[iid];
+  if (c.zone === 'battle' && isSealed(s, iid)) return false;
   if (c.owner === chooser || c.zone !== 'battle') return true;
   if (c.justDive != null) return false;
   return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell));

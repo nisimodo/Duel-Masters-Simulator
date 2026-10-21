@@ -122,6 +122,10 @@ export type Op =
   | { op: 'swap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  /** 封印を付ける (山札の上から裏向きで) */
+  | { op: 'seal'; target: Target; n: number }
+  /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
+  | { op: 'unseal'; from: 'self' | 'any'; n: number }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
   | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number'; max?: number; exclude?: string; hostile: boolean }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */

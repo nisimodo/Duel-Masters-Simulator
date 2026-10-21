@@ -53,6 +53,8 @@ export interface CardInst {
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
   cellOf?: number;
+  /** 封印としてこのカードの上に置かれている (付いているカード) */
+  sealOf?: number;
   /** 裏向きのマナ (文明を持たない) */
   manaDown?: boolean;
   /** シールド・フォースで選んだシールド */

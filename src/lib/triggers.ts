@@ -38,7 +38,9 @@ export type TrigEvent =
   | 'toManaSelf' // このカードをマナゾーンに置いた時
   | 'toShieldFaceUp' // このクリーチャーが表向きでシールドゾーンに置かれた時
   | 'attached' // これをクリーチャーに付けた時
-  | 'tapped'; // このクリーチャーがタップした時
+  | 'tapped' // このクリーチャーがタップした時
+  | 'unsealOne' // このカードから封印が外された時
+  | 'unsealedAll'; // このカードの封印がすべてなくなった時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -75,6 +77,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   toShieldFaceUp: '表向きでシールドゾーンに置かれた時',
   attached: 'クリーチャーに付けた時',
   tapped: 'タップした時',
+  unsealOne: '封印が外された時',
+  unsealedAll: '封印がすべてなくなった時',
   spell: '呪文の効果',
 };
 
@@ -175,6 +179,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/表向きで(自分の)?シールドゾーンに置かれた時/.test(clause) && self) ev.add('toShieldFaceUp');
     if (/^これを(クリーチャーに)?付けた時/.test(clause)) ev.add('attached');
     if (/タップ(した|された)時/.test(clause) && self && !/攻撃/.test(clause)) ev.add('tapped');
+    if (/封印がすべて(なくなった|外れた)時/.test(clause)) ev.add('unsealedAll');
+    if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
       else if (/自分が/.test(clause)) ev.add('spellOwn');

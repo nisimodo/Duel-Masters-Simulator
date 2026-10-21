@@ -11,6 +11,7 @@ import {
   drawCards,
   log,
   moveCard,
+  removeSeal,
   nameOf,
   playCard,
   autoPay,
@@ -21,7 +22,7 @@ import {
   type Lookup,
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
-import { canBeChosen } from './statics';
+import { canBeChosen, isSealed } from './statics';
 import { spellEffectLines } from '../lib/triggers';
 
 // ---------- 解析結果のキャッシュ ----------
@@ -620,6 +621,34 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         rc.tapped = tapped;
         rc.sick = sick;
         log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
+        break;
+      }
+      case 'seal': {
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        for (const i of ids) {
+          const c = s.cards[i];
+          if (c.zone !== 'battle') continue;
+          const deck = s.players[c.owner].deck;
+          for (let k = 0; k < op.n && deck.length; k++) {
+            const top = deck.pop()!;
+            const tc = s.cards[top];
+            tc.zone = 'under';
+            tc.parent = i;
+            tc.sealOf = i;
+            tc.faceUp = false;
+            c.under.push(top);
+          }
+          log(s, ex.player, `${q(nameOf(s, L, i))} に封印を${op.n}つ付けた`);
+        }
+        break;
+      }
+      case 'unseal': {
+        const owner = ex.player;
+        for (let k = 0; k < op.n; k++) {
+          const host = op.from === 'self' ? ex.src : s.players[owner].battle.find((b) => isSealed(s, b));
+          if (host == null || !isSealed(s, host)) break;
+          removeSeal(s, L, host);
+        }
         break;
       }
       case 'chooseValue': {
