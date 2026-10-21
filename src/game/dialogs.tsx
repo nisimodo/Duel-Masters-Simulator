@@ -65,8 +65,9 @@ export function PayDialog({
   const fromGrave = s.cards[iid].zone === 'grave';
   const graveAlts = fromGrave ? ([mugen && 'mugen', fushigi && 'fushigi', statics.some((x) => x.s === 'abyss') && 'abyss'].filter(Boolean) as ('mugen' | 'fushigi' | 'abyss')[]) : [];
   const inGrave = fromGrave && !!mugen;
-  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | undefined>(inMana ? 'mana' : graveAlts[0]);
+  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'tapCast' | undefined>(inMana ? 'mana' : graveAlts[0]);
   const isAura = /オーラ/.test(f.type);
+  const tapCast = statics.find((x) => x.s === 'tapCast');
   const [taps, setTaps] = useState<number[]>([]);
   const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], alt, taps, ...opts }, face);
@@ -134,6 +135,42 @@ export function PayDialog({
               {{ mugen: 'ムゲンクライム', fushigi: 'フシギバース', abyss: 'アビスラッシュ' }[g]}
             </label>
           ))}
+        </div>
+      )}
+      {tapCast && tapCast.s === 'tapCast' && (
+        <div className="col" style={{ gap: 2 }}>
+          <label className="small">
+            <input
+              type="checkbox"
+              checked={alt === 'tapCast'}
+              onChange={(e) => {
+                const v = e.target.checked ? 'tapCast' : undefined;
+                setAlt(v);
+                setTaps([]);
+                refreshPay({ sasa, he, gzero, alt: v, taps: [] });
+              }}
+            />{' '}
+            コストを支払うかわりに、自分のクリーチャーを{tapCast.n}体タップする
+          </label>
+          {alt === 'tapCast' && (
+            <div className="row">
+              {tapCands.map((b) => (
+                <CardImg
+                  key={b}
+                  card={L(s.cards[b].cid)!}
+                  face={s.cards[b].face}
+                  width={50}
+                  selected={taps.includes(b)}
+                  onHover={onHover}
+                  onClick={() => {
+                    const next = taps.includes(b) ? taps.filter((x) => x !== b) : [...taps, b];
+                    setTaps(next);
+                    refreshPay({ sasa, he, gzero, alt, taps: next });
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
       {alt === 'abyss' && <div className="small">アビスラッシュ: このターンプレイヤーを攻撃でき、ターンの終わりに山札の下に置かれます</div>}
@@ -308,7 +345,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' ? taps : undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

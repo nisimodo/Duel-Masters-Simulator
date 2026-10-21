@@ -1407,6 +1407,14 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
       return `タップしていない自分のクリーチャーを${d.n}体選んでください`;
     return d.cost;
   }
+  if (a.alt === 'tapCast') {
+    const d = statics.find((x) => x.s === 'tapCast');
+    if (!d || d.s !== 'tapCast') return 'この方法では使えません';
+    const taps = [...new Set(a.taps ?? [])];
+    if (taps.length !== d.n || taps.some((b) => b === a.iid || s.cards[b].owner !== p || s.cards[b].zone !== 'battle' || s.cards[b].tapped || !matchesSel(s, L, b, d.sel)))
+      return `タップしていない条件に合う自分のクリーチャーを${d.n}体選んでください`;
+    return 0;
+  }
   if (a.alt === 'galaxy') {
     const d = statics.find((x) => x.s === 'galaxy');
     if (!d || d.s !== 'galaxy' || c.zone !== 'hand') return 'ギャラクシールドは使えません';
@@ -1514,6 +1522,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       moveCard(s, L, b, 'grave');
     }
     for (const b of a.he ?? []) s.cards[b].tapped = true;
+    if (a.alt === 'tapCast') {
+      for (const b of a.taps ?? []) s.cards[b].tapped = true;
+      log(s, p, `${(a.taps ?? []).length}体タップして、コストを支払うかわりにした`);
+    }
     if (a.alt === 'mugen') {
       for (const b of a.taps ?? []) s.cards[b].tapped = true;
       log(s, p, `ムゲンクライム: ${(a.taps ?? []).length}体タップ`);

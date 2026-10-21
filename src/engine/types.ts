@@ -218,7 +218,7 @@ export type Action =
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
       /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
-      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss';
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast';
       /** ムゲンクライムでタップする自分のクリーチャー */
       taps?: number[];
     }

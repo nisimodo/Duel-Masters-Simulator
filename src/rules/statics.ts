@@ -89,7 +89,9 @@ export type StaticSpec =
   /** 水晶ソウルN: 召喚する時、裏向きのマナはN枚分になる */
   | { s: 'crystalSoul'; n: number }
   /** このクリーチャーが破壊される/離れる時、かわりに〜 (effect を実行してとどまる) */
-  | { s: 'replaceLeave'; on: 'destroy' | 'leave'; effect: string };
+  | { s: 'replaceLeave'; on: 'destroy' | 'leave'; effect: string }
+  /** コストを支払うかわりに、自分の〇〇をN体タップして使う */
+  | { s: 'tapCast'; sel: Sel; n: number };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -148,7 +150,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
-  if ((m = t0.match(/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(?:墓地に置く|バトルゾーンを離れる)?かわりに、?(自分の.+?(?:破壊|捨て|手札に加え|墓地に置|山札の下に置|表向きに|タップ).+)$/)))
+  if ((m = t0.match(/^コストを支払うかわりに、自分の(.+?)を(\d+)体タップして、?この(呪文|クリーチャー)を(唱え|召喚し)てもよい$/))) {
+    const sel = parseSel('自分の' + m[1]);
+    return sel ? [{ s: 'tapCast', sel, n: +m[2] }] : null;
+  }
+  if ((m = t0.match(/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(?:墓地に置く|バトルゾーンを離れる)?かわりに、?(.+?(?:破壊|捨て|手札に(?:加え|戻)|墓地に置|山札の(?:一番)?下に置|表向きに|タップ).+)$/)))
     return [{ s: 'replaceLeave', on: m[1] === '破壊される' ? 'destroy' : 'leave', effect: m[2] }];
   if (/^エターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3) }];
   if ((m = t0.match(/^水晶ソウル(\d+)/))) return [{ s: 'crystalSoul', n: +m[1] }];

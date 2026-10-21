@@ -22,7 +22,7 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
     const n = mode === 'duepa' ? 3 : 2;
     let s = createGame({ mode, seed: 7 + g * 13, createdAt: 0, players: Array.from({ length: n }, (_, i) => ({ uid: 'p' + i, name: 'P' + i, cpu: true, ...expandDeck(randomDeck(db, mode)) })) }, L);
     let k = 0;
-    for (; k < 3000 && s.phase !== 'over'; k++) {
+    for (; k < 6000 && s.phase !== 'over'; k++) {
       const p = decider(s)!;
       let moved = false;
       for (const a of cpuPlan(s, p, L)) {
@@ -52,7 +52,7 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
     }
     if (s.phase !== 'over') {
       unfinished++;
-      console.log('UNFINISHED', g, JSON.stringify(s.pending).slice(0, 300), s.log.slice(-12).map((x) => x.m));
+      console.log('UNFINISHED', g, s.turn, JSON.stringify(s.log.slice(-16).map((x) => x.m)), JSON.stringify(s.pending.map((x) => x.kind)));
     }
   }
   console.error = origErr;

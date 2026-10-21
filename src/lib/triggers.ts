@@ -114,7 +114,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   for (const raw of rawLines) {
     const line = stripReminder(normText(raw)).trim();
     if (!line || SKIP_TRIG.test(line)) continue;
-    if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(墓地に置く|バトルゾーンを離れる)?かわりに、?自分の/.test(line.replace(/\s+/g, ''))) continue;
+    if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|山札の(一番)?下に置|表向きに|タップ)/.test(line.replace(/\s+/g, ''))) continue;
     const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
     let clause = m[1] + m[2];
@@ -196,15 +196,23 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       if (ms) subject = { ...ms, zones: ['mana'] };
     }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause);
-    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(effect.replace(/\s+/g, ''));
+    const eff0 = effect.replace(/\s+/g, '');
+    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
     out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || undefined });
   }
   return out;
+}
+
+/** キーワードだけの行 (「D・D・D [ll03]」「ハイパーエナジー」「アタック・チャンス:〜」など。文になっていない) */
+function isKeywordOnly(l: string): boolean {
+  const t = l.replace(/\s+/g, '');
+  if (t.length > 40 || /[をに、]/.test(t) || /^爆進ダブル/.test(t)) return false;
+  return !/(する|す|る|た|い)$/.test(t) || /^[^。]{2,20}[:：\-―]/.test(t);
 }
 
 /** 呪文の効果として解決するテキスト (キーワード行を除く) */
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l));
 }

@@ -174,7 +174,7 @@ function selTarget(phrase: string, num: string | undefined, upTo: string | undef
   return { ref: 'sel', sel, count: count(num, upTo, all), chooser };
 }
 
-const IT = /^(それらのクリーチャー|それらのカード|それら|それ|その選んだクリーチャー|選んだクリーチャー|そのクリーチャー|その選んだカード|選んだカード|そのカード|その呪文|そのシールド|そのタマシード|その\d+体|その\d+枚|そのうちの\d+(?:体|枚))/;
+const IT = /^(それらのクリーチャー|それらのカード|そのGRクリーチャー|それら|それ|その選んだクリーチャー|選んだクリーチャー|そのクリーチャー|その選んだカード|選んだカード|そのカード|その呪文|そのシールド|そのタマシード|その\d+体|その\d+枚|そのうちの\d+(?:体|枚))/;
 
 function sentence(s0: string, ctx: Ctx): Op[] | null {
   let s = s0
@@ -201,6 +201,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/のパワーは([+-]\d+)される$/, 'のパワーを$1する')
     .replace(/(\d+枚目?)を、/g, '$1を')
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
+    .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/好きな順番で/g, '好きな順序で')
+    .replace(/マナゾーンにタップして置く$/, 'タップしてマナゾーンに置く')
+    .replace(/^(.+?)は、?このターンの終わりまで((?:「[^」]+」(?:と|、)?)+)を得る$/, 'このターン、$1は$2を得る')
+    .replace(/^(.+?)を(\d+)(枚|体)、自分の(墓地|手札|マナゾーン)から(.+)$/, '自分の$4から$1を$2$3$5')
     .replace(/^(.+?(?:クリーチャー|カード))(\d+)(体|枚)を(?!選)(.+)$/, '$1を$2$3、$4')
     .replace(/^自分の手札にある(?=.+を\d+(枚|体)、)/, '自分の手札から');
   if (!s) return [];
@@ -222,6 +227,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ];
     }
   }
+  // 手札のカードを相手に見せる (コストとして)
+  {
+    const rv = s.match(/^自分の手札にある(.+?)を(\d+)枚、?相手に見せる$/) ?? s.match(/^自分の手札から(.+?)を(\d+)枚、?相手に見せる$/);
+    if (rv) {
+      const sel = parseSel(rv[1], { zones: ['hand'] });
+      if (sel) {
+        sel.owner = 'self';
+        sel.zones = ['hand'];
+        if (sel.kind === 'creature' && /カード$/.test(rv[1])) sel.kind = 'card';
+        return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: +rv[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: s0 }, { op: 'note', text: '手札のカードを見せた' }];
+      }
+    }
+  }
+  if (/^自分の山札の上から(\d+)枚を見て、好きな順序で(山札の上に)?戻す$/.test(s)) return [{ op: 'top', n: +s.match(/(\d+)枚/)![1], to: 'look', who: 'self' }, { op: 'note', text: '好きな順序で山札の上に戻した' }];
+  if (/^この呪文を唱えられなくする効果を無視する$/.test(s)) return [];
   // 置換効果・注記は常在型能力として処理する
   if (/^このクリーチャーが表向きで、?シールドゾーンを離れる時、かわりに(自分の)?墓地に置く$/.test(s)) return [];
   if (/^[(（].*$/.test(s) && /(破壊される|ブレイクする|召喚酔いしない)$/.test(s)) return [];
@@ -845,7 +865,7 @@ function parseEffectRaw(text: string): Program {
   // 選択肢 「次のうちいずれかひとつを選ぶ。▼A ▼B」
   const modal = t.match(/^(.*?)次の(?:うちいずれか|中から)(ひとつ|1つ|\d+つ|\d+回)(?:を|まで)?選ぶ。?(.*)$/);
   if (modal) {
-    const pre = parseEffect(modal[1]);
+    const pre: Program = modal[1].trim() ? parseEffect(modal[1]) : { ops: [], complete: true, unparsed: [] };
     const pick = modal[2] === 'ひとつ' ? 1 : +modal[2].replace(/つ|回/, '');
     const raw = modal[3].includes('▼') ? modal[3].split('▼') : modal[3].split('。');
     const options = raw.map((x) => x.trim()).filter(Boolean);
