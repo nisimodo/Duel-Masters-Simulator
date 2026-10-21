@@ -27,6 +27,8 @@ export interface Keywords {
   cantAttack: boolean;
   cantAttackPlayer: boolean;
   unblockable: boolean;
+  /** 攻撃されない (与えられた能力) */
+  noAttacked?: boolean;
   revChange: CondSpec | null;
   invasion: CondSpec | null;
   /** 進化元の条件 (進化－自分の◯◯1体の上に置く) */

@@ -10,6 +10,7 @@ import {
   cardCivs,
   drawCards,
   log,
+  lose,
   moveCard,
   removeSeal,
   nameOf,
@@ -189,6 +190,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return evalCond(s, L, ex, c.a) && evalCond(s, L, ex, c.b);
     case 'or':
       return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
+    case 'not':
+      return !evalCond(s, L, ex, c.a);
     case 'brokenGE': {
       const b = me.broken?.turn === s.turn ? me.broken.n : 0;
       return (b >= c.n) !== !!c.neg;
@@ -812,6 +815,48 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.cards[i].tapped = !s.cards[i].tapped;
           log(s, ex.player, `${q(nameOf(s, L, i))} を${s.cards[i].tapped ? 'タップ' : 'アンタップ'}`);
         }
+        break;
+      }
+      case 'winGame': {
+        for (let o = 0; o < s.players.length; o++) if (o !== ex.player && !s.players[o].lost) lose(s, o, `${ex.name} の効果`);
+        break;
+      }
+      case 'cancelAttack': {
+        if (s.attack) {
+          log(s, ex.player, '攻撃を中止した');
+          s.attack = null;
+        }
+        break;
+      }
+      case 'deckBottomTo': {
+        const deck = s.players[ex.player].deck;
+        const b = deck[0];
+        if (b == null) break;
+        log(s, ex.player, `山札の一番下の ${q(nameOf(s, L, b))} を${op.to === 'grave' ? '墓地' : op.to === 'mana' ? 'マナゾーン' : '手札'}へ`);
+        moveCard(s, L, b, op.to);
+        ex.it = [b];
+        break;
+      }
+      case 'putOnTop': {
+        const base = ex.it.find((i) => s.cards[i].zone === 'battle' && i !== ex.src && s.cards[i].owner === ex.player);
+        const c = s.cards[ex.src];
+        if (base == null || !c || c.zone === 'battle' || c.zone === 'under' || c.zone === 'gone') break;
+        const bc = s.cards[base];
+        const subs = [base, ...bc.under];
+        const wasTapped = bc.tapped;
+        moveCard(s, L, ex.src, 'battle');
+        if ((c.zone as string) !== 'battle') break;
+        const arr = s.players[bc.owner].battle;
+        arr.splice(arr.indexOf(base), 1);
+        bc.under = [];
+        for (const x of subs) {
+          s.cards[x].zone = 'under';
+          s.cards[x].parent = ex.src;
+        }
+        c.under.push(...subs);
+        c.tapped = wasTapped;
+        c.sick = false;
+        log(s, ex.player, `${q(nameOf(s, L, ex.src))} を ${q(nameOf(s, L, base))} の上に置いた`);
         break;
       }
       case 'attachTo': {

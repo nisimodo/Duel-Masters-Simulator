@@ -97,6 +97,7 @@ export type Cond =
   /** 両方を満たす */
   | { c: 'and'; a: Cond; b: Cond }
   | { c: 'or'; a: Cond; b: Cond }
+  | { c: 'not'; a: Cond }
   /** このターンにN枚以上自分のシールドがブレイクされている */
   | { c: 'brokenGE'; n: number; neg?: boolean }
   /** これを装備/クロスしたクリーチャーがタップしている */
@@ -153,6 +154,14 @@ export type Op =
   | { op: 'pickSameName'; n: number }
   /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */
   | { op: 'mugetsu'; each?: number; total?: number }
+  /** 自分はゲームに勝つ (相手全員が負ける) */
+  | { op: 'winGame' }
+  /** 攻撃を中止する */
+  | { op: 'cancelAttack' }
+  /** 自分の山札の一番下のカードを to に置く */
+  | { op: 'deckBottomTo'; to: 'grave' | 'mana' | 'hand' }
+  /** このカードを it (バトルゾーンのクリーチャー) の上に置く */
+  | { op: 'putOnTop' }
   /** このオーラを it のクリーチャーに付ける */
   | { op: 'attachTo' }
   /** ターンの残りをとばす */

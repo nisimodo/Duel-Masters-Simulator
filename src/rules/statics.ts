@@ -112,8 +112,14 @@ export type StaticSpec =
   | { s: 'mustBlock' }
   /** サバキZ: 裁きの紋章が自分のシールドゾーンから手札に加えられた時、それを捨ててこのクリーチャーを召喚できる */
   | { s: 'sabakiZ' }
+  /** 自分のターン中、クリーチャーをN体、自分のマナゾーンから召喚してもよい */
+  | { s: 'manaSummonTurn'; n: number }
   /** 攻撃の終わりにアンタップする */
   | { s: 'untapAfterAttack' }
+  /** このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する */
+  | { s: 'destroyAfterAttack' }
+  /** このクリーチャーはシールドをブレイクできない */
+  | { s: 'noBreak' }
   /** 相手のカードはマナゾーンにタップして置かれる */
   | { s: 'oppManaTapped' }
   /** バトルに勝っても、バトルの後に破壊される */
@@ -153,7 +159,7 @@ export type StaticSpec =
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
   | { s: 'soulShift' }
   /** NEO進化クリーチャーとして召喚するならコストをN少なく */
-  | { s: 'neoDiscount'; n: number }
+  | { s: 'neoDiscount'; n: number; from?: string }
   /** ウラ・ニンジャ・ストライクN(文明): 相手のクリーチャーが攻撃した時、手札から召喚してターンの終わりに山札の下へ */
   | { s: 'uraNinja'; n: number; civ?: string }
   /** マナ進化・手札進化: 進化元を他のゾーンから選ぶ */
@@ -183,6 +189,10 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)があれば、(.+)$/)) && !/\d+(?:体|枚|つ)以上$/.test(m[1])) {
+    const sel = parseSel('自分の' + m[1]);
+    if (sel) return { cond: { c: 'countAtLeast', sel, n: 1 }, rest: m[2] };
+  }
   if ((m = t.match(/^(?:バトルゾーンに)?自分の(.+?)が(\d+)(?:体|枚|つ)以上(?:バトルゾーンに)?あれば、(.+)$/))) {
     const sel = parseSel('自分の' + m[1]);
     return sel ? { cond: { c: 'countAtLeast', sel, n: +m[2] }, rest: m[3] } : null;
@@ -218,6 +228,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
   if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
+  if ((m = t0.match(/^自分のターン中、クリーチャーを(\d+)体、自分のマナゾーンから召喚してもよい$/))) return [{ s: 'manaSummonTurn', n: +m[1] }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
   if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/))) {
     const sel = parseSel(m[1], { zones: ['mana'] });
@@ -234,6 +245,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーを、?(自分の)?マナゾーンから召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'mana' }];
   if (/^このクリーチャーはタップして出て、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
   if (/^(各ターン、)?このクリーチャーの(最初の)?攻撃の終わりに、このクリーチャーをアンタップする$/.test(t0)) return [{ s: 'untapAfterAttack' }];
+  if (/^このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する$/.test(t0)) return [{ s: 'destroyAfterAttack' }];
+  if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0)) return [{ s: 'noBreak' }];
+  if (/^相手のクリーチャーが攻撃する場合、可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
+  if (/^このクリーチャーを、自分の墓地から召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'grave' }];
+  if (/^(バトルゾーンに置く時、このカードはタップして置く|このクリーチャーはタップして出る)$/.test(t0)) return [{ s: 'entersTapped' }];
+  if (/^飛行$/.test(t0)) return [{ s: 'note' }];
+  if (/^∞パワーアタッカー$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['パワーアタッカー+999999'], when: 'attack' }];
+  if ((m = t0.match(/^(これを(?:付けた|装備した|クロスした)クリーチャー)は、?ブロックされない$/))) return [{ s: 'grant', target: { t: 'cross' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'oppManaTapped' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
   if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
@@ -307,6 +326,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^封印が付いていれば、この(タマシード|クリーチャー|カード|フィールド)は(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'sealStay' }];
   if ((m = t0.match(/^NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[1] }];
+  if ((m = t0.match(/^(タマシード|クリーチャー)から進化するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[2], from: m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ウラ・ニンジャ・ストライク(\d+)(?:\((光|水|闇|火|自然)\))?/))) return [{ s: 'uraNinja', n: +m[1], civ: m[2] }];
   if ((m = t0.match(/^(マナ|手札)進化[-ー―:：](.+?)を(\d+)体自分の(?:マナゾーン|手札)から選び、このクリーチャーをその上に重ねつつバトルゾーンに出す$/))) {
     const sel = parseSel(m[2]);
@@ -377,6 +397,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
   if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
   if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
+  if ((m = t0.match(/^((?:自分|相手)の.+?)は、?(攻撃(?:また|も)はブロック|攻撃もブロックも|攻撃)されない$/))) {
+    const tg = target(m[1]);
+    if (tg) return [{ s: 'grant', target: tg, kws: m[2] === '攻撃' ? ['攻撃されない'] : ['攻撃されない', 'ブロックされない'], when: 'always' }];
+  }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];
   if ((m = t0.match(/^このクリーチャーを自分の(マナゾーン|墓地|超次元ゾーン)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : m[1] === '超次元ゾーン' ? 'hyper' : 'mana' }];

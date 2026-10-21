@@ -94,7 +94,7 @@ const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
 ];
 /** 次の行を「このクリーチャーの能力」として使うキーワード */
 const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*|スリリング・スリー\s*[:：][^(（]*)\s*[(（]/;
-export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわりに|代わりに)、タップして次の能力を使ってもよい/;
+export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわりに|代わりに)、(?:このクリーチャーと自分のマナゾーンのタップされていないカード(?:を)?(\d+)枚(?:を)?)?タップして、?次のt?能力を使ってもよい/;
 /** サイレントスキル: 自分のターンのはじめに、タップしていればアンタップするかわりに次の能力を使ってもよい */
 const SILENT_SKILL = /^サイレントスキル/;
 
@@ -108,6 +108,8 @@ export function splitAbilities(lines: string[]): {
   main: string[];
   groups: { kind: AbilityGroupKind; lines: string[]; n?: number }[];
   tap: string | null;
+  /** タップして使う能力で、いっしょにタップするマナの枚数 */
+  tapMana?: number;
   silent: string | null;
   marked: Record<string, string[]>;
 } {
@@ -122,6 +124,7 @@ export function splitAbilities(lines: string[]): {
   let cur: AbilityGroupKind | null = null;
   let tap: string[] | null = null;
   let inTap = false;
+  let tapMana: number | undefined;
   let silent: string[] | null = null;
   let inSilent = false;
   let nextAbility = false;
@@ -188,7 +191,7 @@ export function splitAbilities(lines: string[]): {
     }
     if (inTap) {
       if (!tap!.length) {
-        tap!.push(t.replace(/。$/, ''));
+        tap!.push(t.replace(/。$/, '').replace(/^t\s*/, ''));
         continue;
       }
       if (/^[▼▶►]/.test(t)) {
@@ -197,7 +200,9 @@ export function splitAbilities(lines: string[]): {
       }
       inTap = false;
     }
-    if (TAP_ABILITY.test(stripReminder(t).replace(/\s+/g, ''))) {
+    const tapM = stripReminder(t).replace(/\s+/g, '').match(TAP_ABILITY);
+    if (tapM) {
+      tapMana = tapM[2] ? +tapM[2] : undefined;
       main.push(raw);
       tap = [];
       inTap = true;
@@ -231,5 +236,5 @@ export function splitAbilities(lines: string[]): {
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked, tapMana };
 }

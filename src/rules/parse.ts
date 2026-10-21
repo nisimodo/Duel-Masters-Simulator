@@ -180,7 +180,11 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^自分の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'self', cmp: '<=', n: +m[1] };
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
-  if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
+  if (/^このクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'selfTapped' };
+  if ((m = c.match(/^(それ|そのカード|そのクリーチャー)が、?(.+?)でな(?:けれ|い)?$/))) {
+    const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
+    if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
+  }
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
   if ((m = c.match(/^このターンに(\d+)つ以上自分のシールドがブレイクされてい(な(?:け)?)?$/))) return { c: 'brokenGE', n: +m[1], neg: !!m[2] };
@@ -252,6 +256,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^パワーの合計が(\d+)以下になるように(.+?)を(\d+)体まで選び、/, '$2を、パワーの合計が$1以下になるように好きな数選び、')
     .replace(/^(.+?)をパワーの合計が(\d+)以下になるよう(?:に)?好きな数選び、/, '$1を、パワーの合計が$2以下になるように好きな数選び、')
     .replace(/^(クリーチャー|呪文|カード)(なら|であれば)、/, 'それが$1なら、')
+    .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
+    .replace(/^→/, '')
+    .replace(/^相手の手札を(\d+)枚、?見ないで選び/, '相手の手札から$1枚見ないで選び')
     .replace(/、コストを支払わずに自分の(手札|墓地|マナゾーン)から(唱え|召喚し|出し)/, '、自分の$1からコストを支払わずに$2')
     .replace(/^このターンの終わりまで、/, 'このターン、')
     .replace(/バトルゾーンにある、?(自分|相手)の/g, '$1の')
@@ -363,6 +370,37 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?手札に戻す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'hand' }];
   }
   if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
+  if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
+  if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
+  if (/^自分はゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
+  if (/^攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
+  {
+    const db = s.match(/^自分の山札の一番下のカードを(墓地|マナゾーン|手札)に(?:置く|加える)$/);
+    if (db) return [{ op: 'deckBottomTo', to: db[1] === '墓地' ? 'grave' : db[1] === '手札' ? 'hand' : 'mana' }];
+    if (/^次の相手のターンの終わりまで、相手は呪文を唱えられない$/.test(s)) return [{ op: 'lockSpells', until: 'nextOwnTurn' }];
+    if (/^(?:自分の)?マナゾーンに置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'mana' }];
+    const jt = s.match(/^Jトルネードを最大(\d+)回する$/);
+    if (jt)
+      return [
+        {
+          op: 'repeat',
+          n: +jt[1],
+          body: [
+            { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ジョーカーズ'], other: true }, count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'Jトルネード: 手札に戻すジョーカーズを選ぶ (しないなら選ばない)' },
+            { op: 'move', target: { ref: 'it' }, to: 'hand' },
+          ],
+        },
+      ];
+    const mp2 = s.match(/^このターン、自分のクリーチャー(\d+)体のパワーを(\d+)倍(?:に)?する$/);
+    if (mp2)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: +mp2[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `パワーを${mp2[2]}倍にするクリーチャーを選ぶ` },
+        { op: 'multPower', target: { ref: 'it' }, times: +mp2[2] },
+      ];
+  }
+  if (/^この(?:クリーチャー|カード)を(?:自分の)?手札から表向きにする$/.test(s)) return [{ op: 'note', text: '手札から表向きにした' }];
+  if (/^(?:出し、)?このクリーチャーをその上に置く$/.test(s)) return [...(/^出し/.test(s) ? [{ op: 'play', target: { ref: 'it' }, mode: 'put' } as Op] : []), { op: 'putOnTop' }];
   // 無月の門
   {
     const mg = s.match(/^自分の魔導具をバトルゾーンと墓地から(\d+)つずつ選び、このクリーチャーを自分の手札または墓地からそれら\d+枚の上にコストを支払わずに召喚(?:する|してもよい)$/);

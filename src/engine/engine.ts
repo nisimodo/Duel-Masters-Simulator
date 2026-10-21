@@ -80,6 +80,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
     else if (kw === 'ワールド・ブレイカー' || kw === '∞ブレイカー') k.breaker = 99;
     else if (kw === '攻撃できない') k.cantAttack = true;
+    else if (kw === '攻撃されない') k.noAttacked = true;
     else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
     else {
       const pa = kw.match(/^パワーアタッカー\+(\d+)$/);
@@ -443,6 +444,7 @@ export function moveCard(
 export function breakCount(s: GameState, L: Lookup, iid: number): number {
   const k = kwOf(s, L, iid);
   const powered = (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'poweredBreaker') || staticKws(s, L, iid).includes('パワード・ブレイカー') || (s.cards[iid].grants ?? []).some((g) => g.kws.includes('パワード・ブレイカー'));
+  if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noBreak')) return 0;
   return powered ? k.breaker + Math.floor(power(s, L, iid, true) / 6000) : k.breaker;
 }
 
@@ -460,6 +462,14 @@ function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('.
   }
   if (op.op === 'discard') return s.players[p].hand.length >= ('n' in op.count ? (op.count.n ?? 1) : 1);
   return true;
+}
+
+/** このターン、あと何体マナゾーンから召喚できるか (効果 + 「自分のターン中、N体マナゾーンから召喚してもよい」) */
+export function manaSummonLeft(s: GameState, L: Lookup, p: number): number {
+  const ms = s.players[p].manaSummon;
+  const cur = ms?.turn === s.turn ? ms : undefined;
+  const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' ? x.spec.n : 0), 0) : 0;
+  return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
 }
 
 /** 「各ターンN度しか攻撃もブロックもできない」の回数を数える */
@@ -1036,6 +1046,10 @@ function advance(s: GameState, L: Lookup): boolean {
         ac.grants = ac.grants?.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ`);
       }
+      if (ac?.zone === 'battle' && (faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'destroyAfterAttack')) {
+        log(s, a.owner, `攻撃の終わりに ${q(nameOf(s, L, a.attacker))} を破壊`);
+        moveCard(s, L, a.attacker, 'grave');
+      }
       // キリフダッシュ: シールドをブレイクした攻撃の終わりに召喚できる
       if (a.broke) offerKirifu(s, L, a.owner);
       // 「攻撃の後、〜」を実行
@@ -1213,7 +1227,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
-      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked') || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない'))) continue;
+      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked') || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };
@@ -1627,6 +1641,11 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (s.turnStep !== 'main' || s.attack) return '今は使えません';
       if (c.tapped) return 'タップしているクリーチャーは使えません';
       if (c.sick && !kwOf(s, L, a.iid).speedAttacker) return '召喚酔いしているので使えません';
+      if (f.tapMana) {
+        const free = s.players[p].mana.filter((m) => !s.cards[m].tapped);
+        if (free.length < f.tapMana) return `マナゾーンのタップされていないカードが${f.tapMana}枚必要です`;
+        for (const m of free.slice(0, f.tapMana)) s.cards[m].tapped = true;
+      }
       c.tapped = true;
       fireSelf(s, L, a.iid, c.face, ['tapped']);
       log(s, p, `${q(f.name)} をタップして能力を使った`);
@@ -1726,7 +1745,7 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   const base = a.evo?.find((b) => s.cards[b]?.owner === p);
   if (base != null && statics.some((x) => x.s === 'soulShift')) cost = Math.max(1, cost - (faceOf(s, L, base)?.cost ?? 0));
   const neo = statics.find((x) => x.s === 'neoDiscount');
-  if (base != null && neo && neo.s === 'neoDiscount') cost = Math.max(0, cost - neo.n);
+  if (base != null && neo && neo.s === 'neoDiscount' && (!neo.from || (faceOf(s, L, base)?.type ?? '').includes(neo.from))) cost = Math.max(neo.from ? 1 : 0, cost - neo.n);
   if (a.sasa?.length) {
     if (!statics.some((x) => x.s === 'sasageru')) return 'このクリーチャーはササゲールで召喚できません';
     const costs = new Set<number>();
@@ -1770,7 +1789,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.zone === 'partner' ||
     (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
-    (face.isCreature && c.zone === 'mana' && s.players[p].manaSummon?.turn === s.turn && s.players[p].manaSummon.left > 0) ||
+    (face.isCreature && c.zone === 'mana' && manaSummonLeft(s, L, p) > 0) ||
     (a.alt === 'mugen' && c.zone === 'grave') ||
     ((a.alt === 'fushigi' || a.alt === 'abyss') && c.zone === 'grave');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
@@ -1901,7 +1920,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     // 「次に召喚する〇〇」の軽減・「マナゾーンから召喚」の回数を使う
     const me2 = s.players[p];
     if (!a.free && me2.nextSummon?.turn === s.turn) me2.nextSummon = undefined;
-    if (c.zone === 'mana' && me2.manaSummon?.turn === s.turn && a.alt !== 'mana') me2.manaSummon.left--;
+    if (c.zone === 'mana' && a.alt !== 'mana' && manaSummonLeft(s, L, p) > 0) {
+      if (me2.manaSummon?.turn !== s.turn) me2.manaSummon = { turn: s.turn, left: 0 };
+      if (me2.manaSummon.left > 0) me2.manaSummon.left--;
+      else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
+    }
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
