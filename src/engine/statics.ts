@@ -182,6 +182,14 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
   }
 }
 
+/** 「〜なければ、このタマシードはクリーチャーとして扱わない」でクリーチャーでない */
+export function notCreatureNow(s: GameState, L: Lookup, iid: number): boolean {
+  const c = s.cards[iid];
+  const sp = (faceAt(s, L, iid)?.statics ?? []).find((x) => x.s === 'creatureOnlyIf');
+  if (!sp || sp.s !== 'creatureOnlyIf' || c.zone !== 'battle') return false;
+  return !condOk(s, L, { src: iid, owner: c.owner, spec: sp }, sp.cond, iid);
+}
+
 /** パワーへの常在型能力の修正 (攻撃中・バトル中などの文脈つき) */
 export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx = {}): number {
   let d = 0;

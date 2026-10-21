@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { activeStatics, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { activeStatics, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -1248,7 +1248,7 @@ export const untappedMana = (s: GameState, p: number) => s.players[p].mana.filte
 export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
-  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid)) return false;
+  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid) || notCreatureNow(s, L, iid)) return false;
   if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const lim = s.players[c.owner].actLimit;
   if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
@@ -1279,7 +1279,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
-      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
+      if (tc.justDive != null || isSealed(s, t) || notCreatureNow(s, L, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };
@@ -1350,6 +1350,7 @@ function blockStep(s: GameState, L: Lookup) {
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
         // 「火・自然ブロッカー」など: 条件に合う相手だけブロックできる
         const limB = !isSealed(s, b) && (f?.statics ?? []).some((x) => x.s === 'limitedBlocker' && matchesSel(s, L, a.attacker, x.sel));
+        if (notCreatureNow(s, L, b)) return false;
         if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB || limB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);

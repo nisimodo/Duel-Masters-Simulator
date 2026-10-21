@@ -114,6 +114,8 @@ export type StaticSpec =
   | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
+  /** 条件を満たさなければ、バトルゾーンにあるこのタマシードはクリーチャーとして扱わない */
+  | { s: 'creatureOnlyIf'; cond: StaticCond }
   /** 誰も sel のクリーチャーを召喚できない */
   | { s: 'noSummonSel'; sel: Sel }
   /** すべてのクリーチャーは、可能であれば攻撃する */
@@ -629,6 +631,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
       if (m[4]) out.push({ s: 'grant', target: tg, kws: [...m[4].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when, cond });
       return out;
     }
+  }
+  // ---- 条件を満たさなければクリーチャーとして扱わない ----
+  if (cond && /^バトルゾーンにあるこのタマシードはクリーチャーとして扱わない$/.test(body)) {
+    // 条件は「〜なければ」なので、満たす (countLess でない) 時だけクリーチャー
+    const pos: StaticCond = cond.c === 'countLess' ? { c: 'countAtLeast', sel: cond.sel, n: cond.n } : cond;
+    return [{ s: 'creatureOnlyIf', cond: pos }];
   }
   // ---- 条件つきで、このクリーチャーの召喚コストを増減 ----
   if (cond && (m = body.match(/^このクリーチャーの(?:召喚)?コストを(\d+)(少なく|多く)する(?:[、。]?ただし.*)?$/)))
