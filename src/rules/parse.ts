@@ -183,6 +183,7 @@ function parseCond(c: string): Cond | null {
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
+  if ((m = c.match(/^このターンに(\d+)つ以上自分のシールドがブレイクされてい(な(?:け)?)?$/))) return { c: 'brokenGE', n: +m[1], neg: !!m[2] };
   if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
@@ -191,8 +192,14 @@ function parseCond(c: string): Cond | null {
   if (/^このクリーチャーがリンクしていない$/.test(c)) return { c: 'linked', neg: true };
   if (/^このクリーチャーが表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
-    const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
-    return sel ? { c: 'itMatches', sel } : null;
+    const Z = { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] as SelZone[] };
+    const sel = parseSel(m[2], Z);
+    if (sel) return { c: 'itMatches', sel };
+    // 「それが呪文か、ブロッカーを持つクリーチャー」「進化ではないドラゴンか進化ではないヒューマノイド」
+    const or = m[2].match(/^(.+?)か、?(.+)$/);
+    const a = or && parseSel(or[1], Z);
+    const b = or && parseSel(or[2], Z);
+    return a && b ? { c: 'or', a: { c: 'itMatches', sel: a }, b: { c: 'itMatches', sel: b } } : null;
   }
   return null;
 }
@@ -348,6 +355,28 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       }
     }
   }
+  // Jビッグ: 自分の他のジョーカーズの、Jビッグ以外の出た時の能力を使う
+  {
+    const sn = s.match(/^バトルゾーンに同じ名前のクリーチャーが(\d+)体以上あれば、それらをすべて破壊する$/);
+    if (sn) return [{ op: 'pickSameName', n: +sn[1] }, { op: 'destroy', target: { ref: 'it' } }];
+    if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?手札に戻す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'hand' }];
+  }
+  const al = s.match(/^次の自分のターンのはじめまで、相手は各ターン(\d+)度しか、?クリーチャーで攻撃もブロックもできない$/);
+  if (al) return [{ op: 'actLimit', n: +al[1] }];
+  if (/^(相手の手札とシールドを見る|自分の手札を\d+枚見せる)$/.test(s)) return [];
+  {
+    const ep = s.match(/^(各プレイヤーは|相手は)、?バトルゾーンにある(?:自身の)?パワー(\d+)以下のクリーチャーすべてを、?(?:それぞれの|持ち主の)墓地に置く$/);
+    if (ep)
+      return [{ op: 'move', target: { ref: 'sel', sel: { owner: ep[1] === '相手は' ? 'opp' : 'any', zones: ['battle'], kind: 'creature', powerMax: +ep[2] }, count: { all: true }, chooser: 'self' }, to: 'grave' }];
+    const dp = s.match(/^バトルゾーンにある(相手|自分)のクリーチャーと同じ枚数のカードを引く$/);
+    if (dp) return [{ op: 'drawPer', sel: { owner: dp[1] === '相手' ? 'opp' : 'self', zones: ['battle'], kind: 'creature' } }];
+  }
+  const jb = s.match(/^Jビッグ(\d+)する$/);
+  if (jb)
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ジョーカーズ'], other: true }, count: { n: +jb[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'Jビッグ: 出た時の能力を使うジョーカーズを選ぶ' },
+      { op: 'useEnterOf', exclude: 'Jビッグ' },
+    ];
   // Jトルネード: 自分の他のジョーカーズを1体、手札に戻す
   if (/^Jトルネードする$/.test(s))
     return [
@@ -564,6 +593,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const rd = s.match(/^相手の手札から(?:カードを)?(\d+)枚見ないで選び、(?:相手は)?(?:それを)?(?:持ち主の)?(?:墓地に置く|捨てさせる|捨てる)$/);
     if (rd) return [{ op: 'discard', who: 'opp', count: { n: +rd[1], upTo: false }, how: 'random' }];
   }
+  // 「(期間)、〇〇は可能であれば攻撃する」「相手のクリーチャーが攻撃する時、可能ならクリーチャーを攻撃する」(一時的)
+  {
+    const P = '(このターン|そのターン|次のターン|次の相手のターン中?|次の自分のターンのはじめまで|自分の次のターンのはじめまで)';
+    const fa =
+      s.match(new RegExp(`^(?:${P}、)?(.+?)は、?(?:すべて、?)?(?:${P}、?)?可能(?:であれば|なら(?:ば)?)、?攻撃する$`)) ?? null;
+    if (fa) {
+      const per = fa[1] ?? fa[3] ?? '';
+      const t = refTarget(fa[2].replace(/は?すべて$/, ''));
+      if (t) return [{ op: 'grant', target: t, kws: ['強制攻撃'], until: /^(この|その)ターン$/.test(per) ? 'turn' : 'nextOwnTurn' }];
+    }
+    const fc =
+      s.match(new RegExp(`^(?:${P}、)?(.+?)(?:は|が攻撃する時)、?(?:${P}、?)?可能(?:であれば|なら(?:ば)?)、?(?:自分の|相手の)?(?:その)?クリーチャーを攻撃する$`)) ?? null;
+    if (fc) {
+      const per = fc[1] ?? fc[3] ?? '';
+      const t = refTarget(fc[2].replace(/は?すべて$/, ''));
+      if (t) return [{ op: 'grant', target: t, kws: ['強制攻撃', '攻撃先クリーチャー'], until: /^(この|その)ターン$/.test(per) ? 'turn' : 'nextOwnTurn' }];
+    }
+    if (/^可能なら(?:自分の|その)?クリーチャーを攻撃する$/.test(s)) return [{ op: 'grant', target: { ref: 'it' }, kws: ['強制攻撃', '攻撃先クリーチャー'], until: 'nextOwnTurn' }];
+  }
   // 「相手のクリーチャーは可能ならこのクリーチャーを攻撃する」(一時的)
   {
     const lu = s.match(/^(このターン|次の(?:自分|相手)のターンのはじめまで|次の相手のターンの終わりまで)?、?相手のクリーチャーは、?可能(?:であれば|なら(?:ば)?)、?このクリーチャーを攻撃する$/);
@@ -739,7 +787,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const ns = s.match(/^このターン、次に召喚する(自分の)?(.+?)の(?:召喚)?コストを(?:最大)?(\d+)少なくする$/);
     const sel = ns && parseSel(ns[2], { zones: ['hand'] });
     if (ns && sel) return [{ op: 'nextSummonDiscount', sel: { ...sel, kind: 'creature', zones: ['hand', 'mana', 'grave'] }, n: +ns[3] }];
-    const ms = s.match(/^このターン、クリーチャーを(\d+)体、自分のマナゾーンから召喚する$/);
+    const ms = s.match(/^このターン、クリーチャーを(\d+)体、自分のマナゾーンから召喚(?:する|してもよい)$/);
     if (ms) return [{ op: 'manaSummon', n: +ms[1] }];
     const ap = s.match(/^このターン、(この|その)クリーチャーは相手プレイヤーを攻撃できる$/);
     if (ap) return [{ op: 'grant', target: { ref: ap[1] === 'この' ? 'self' : 'it' }, kws: ['プレイヤー攻撃可'], until: 'turn' }];
@@ -820,6 +868,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 記号つきの能力を使う 「このクリーチャーの q 能力を使ってもよい」「このクリーチャーと自分の他のクリーチャー1体の oP 能力を使う」
   {
+    if (/^そのカードの文明に合うq能力を使(う|ってもよい)$/.test(s)) return [{ op: 'useMarked', key: 'q', byCiv: true }];
     const kc = s.match(/^(好きな数|(\d+)体)の自分のクリーチャーの(P|oP)能力を使う$/) ?? s.match(/^自分のクリーチャー(\d+)体の(P|oP)能力を使う$/);
     if (kc) return [{ op: 'useMarked', key: kc[3] ?? kc[2], others: kc[1] === '好きな数' ? 99 : +(kc[2] ?? kc[1]) }];
     const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|P|◇)能力を(?:1回)?使(う|ってもよい)$/);
@@ -1408,12 +1457,20 @@ function parseEffectRaw(text: string): Program {
   if (modal) {
     const pre: Program = modal[1].trim() ? parseEffect(modal[1]) : { ops: [], complete: true, unparsed: [] };
     const pick = modal[2] === 'ひとつ' ? 1 : +modal[2].replace(/つ|回/, '');
-    const raw = modal[3].includes('▼') ? modal[3].split('▼') : modal[3].split('。');
+    // 「(同じものを選んでもよい)」: 1つずつ選ぶのを pick 回くり返す
+    const same = /同じものを選んでもよい/.test(text);
+    const rest = modal[3].replace(/[(（]?同じものを選んでもよい[)）]?。?/, '');
+    const raw = rest.includes('▼') ? rest.split('▼') : rest.split('。');
     const options = raw.map((x) => x.trim()).filter(Boolean);
     const parsed = options.map((o) => ({ label: o, prog: parseEffect(o) }));
     const ok = pre.complete && parsed.length >= 2 && parsed.every((p) => p.prog.complete);
     return {
-      ops: [...pre.ops, { op: 'modal', pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }],
+      ops: [
+        ...pre.ops,
+        ...(same
+          ? Array.from({ length: pick }, (): Op => ({ op: 'modal', pick: 1, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }))
+          : [{ op: 'modal' as const, pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }]),
+      ],
       complete: ok,
       unparsed: [...pre.unparsed, ...parsed.flatMap((p) => p.prog.unparsed)],
     };

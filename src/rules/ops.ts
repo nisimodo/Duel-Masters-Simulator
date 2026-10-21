@@ -96,6 +96,9 @@ export type Cond =
   | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield' }
   /** 両方を満たす */
   | { c: 'and'; a: Cond; b: Cond }
+  | { c: 'or'; a: Cond; b: Cond }
+  /** このターンにN枚以上自分のシールドがブレイクされている */
+  | { c: 'brokenGE'; n: number; neg?: boolean }
   /** これを装備/クロスしたクリーチャーがタップしている */
   | { c: 'equippedTapped' }
   /** このクリーチャーがリンクしている (neg: していない) */
@@ -135,13 +138,19 @@ export type Op =
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
-  | { op: 'useMarked'; key: string; others?: number; perLooked?: Sel }
+  | { op: 'useMarked'; key: string; others?: number; perLooked?: Sel; byCiv?: boolean }
   /** ドギラゴン・ガチャ / ドキンダム・ガチャを回して、その能力を使う */
   | { op: 'gacha'; kind: 'dogiragon' | 'dokindam'; times: number }
   /** このターン、次に召喚する〇〇のコストをN少なくする */
   | { op: 'nextSummonDiscount'; sel: Sel; n: number }
   /** このターン、クリーチャーをN体マナゾーンから召喚できる */
   | { op: 'manaSummon'; n: number }
+  /** it の「出た時」の能力を使う (prefix で始まる能力は除く) */
+  | { op: 'useEnterOf'; exclude?: string }
+  /** 相手は各ターンN度しか攻撃もブロックもできない (次の自分のターンのはじめまで) */
+  | { op: 'actLimit'; n: number }
+  /** バトルゾーンに同じ名前のクリーチャーがN体以上あるものを it にする */
+  | { op: 'pickSameName'; n: number }
   /** ターンの残りをとばす */
   | { op: 'skipTurn' }
   /** 山札を一番下のN枚を残してすべて墓地に置く */

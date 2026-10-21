@@ -6,7 +6,7 @@ import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
 import { activeStatics, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
-import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
+import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
 
@@ -462,10 +462,18 @@ function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('.
   return true;
 }
 
+/** 「各ターンN度しか攻撃もブロックもできない」の回数を数える */
+function countAct(s: GameState, p: number, k: 'atk' | 'blk') {
+  const lim = s.players[p]?.actLimit;
+  if (!lim) return;
+  if (lim.turn !== s.turn) Object.assign(lim, { turn: s.turn, atk: 0, blk: 0 });
+  lim[k]++;
+}
+
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
 export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
   return s.players[p].battle.filter((b) => {
-    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack')) return false;
+    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃'))) return false;
     if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
     const tg = attackTargets(s, L, b);
     // 実際に攻撃を宣言できるか (挑発などの制限も含めて) 確かめる
@@ -477,6 +485,8 @@ export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
 /** 「相手のクリーチャーは可能ならこのクリーチャーを攻撃する」で、このクリーチャーが攻撃しなければならない相手 */
 export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
   const tg = attackTargets(s, L, attacker);
+  // 「可能ならクリーチャーを攻撃する」
+  if ((s.cards[attacker].grants ?? []).some((g) => g.kws.includes('攻撃先クリーチャー')) && tg.cards.length) return tg.cards;
   return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure') || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
 }
 
@@ -535,7 +545,7 @@ function gLink(s: GameState, L: Lookup, iid: number) {
 const MAX_PENDING = 80;
 const MAX_TURN_TRIGGERS = 300;
 
-function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec: TriggerSpec, event: TrigEvent) {
+function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec: TriggerSpec, event: TrigEvent, subject?: number | null) {
   if (s.pending.length >= MAX_PENDING) return;
   // 無限ループ防止: 1ターンに誘発する能力の数に上限
   s.turnTriggers = (s.turnTriggers ?? 0) + 1;
@@ -563,6 +573,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
     effect: spec.effect,
     optional: spec.optional,
     auto: spec.auto,
+    subject: subject ?? undefined,
   });
   log(s, owner, `⚡ ${q(card?.faces[faceIdx]?.name ?? '???')} の能力 (${EVENT_LABEL[event]})`);
 }
@@ -615,7 +626,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
         if (!spec.events.includes(ev) || spec.fromHand) continue;
         // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
         if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
-        pushAbility(s, L, iid, s.cards[iid].face, spec, ev);
+        pushAbility(s, L, iid, s.cards[iid].face, spec, ev, subject);
       }
       // (手札から使う能力は下でまとめて)
       // 下にあるリンクしたゴッド・装備したドラグハート・クロスギアの能力 (龍解など)
@@ -849,6 +860,7 @@ function startTurn(s: GameState, L: Lookup) {
   s.usedOnce = [];
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
+  for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const c of s.cards) {
     if (c.hyperUntil === p) {
       if (c.zone === 'battle') c.face = 0;
@@ -989,7 +1001,7 @@ function advance(s: GameState, L: Lookup): boolean {
       if (prog.complete) {
         s.pending.shift();
         const nm = L(top.cid)?.faces[top.face]?.name ?? '';
-        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined);
+        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined, top.subject);
         return true;
       }
       if (top.auto) {
@@ -1174,6 +1186,8 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const f = faceOf(s, L, iid);
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid)) return false;
   if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
+  const lim = s.players[c.owner].actLimit;
+  if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
   const k = kwOf(s, L, iid);
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'))) return false;
   return true;
@@ -1263,6 +1277,8 @@ function blockStep(s: GameState, L: Lookup) {
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
         if (activeStatics(s, L).some((x) => x.owner !== s.cards[b].owner && x.spec.s === 'oppRestrict' && x.spec.block && matchesSel(s, L, b, x.spec.sel, true))) return false;
+        const bl = s.players[s.cards[b].owner].actLimit;
+        if (bl && bl.turn === s.turn && bl.blk >= bl.n) return false;
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
         // 「火・自然ブロッカー」など: 条件に合う相手だけブロックできる
         const limB = !isSealed(s, b) && (f?.statics ?? []).some((x) => x.s === 'limitedBlocker' && matchesSel(s, L, a.attacker, x.sel));
@@ -1376,6 +1392,8 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }
   log(s, by, `${pl.name} のシールドを${shields.length}枚ブレイク`);
+  if (pl.broken?.turn !== s.turn) pl.broken = { turn: s.turn, n: 0 };
+  pl.broken.n += shields.length;
   if (breaker != null && s.cards[breaker].zone === 'battle') fireSelf(s, L, breaker, s.cards[breaker].face, ['breakShield']);
   fireWatchers(s, L, target, null, 'ownShieldBroken', null);
 }
@@ -1530,6 +1548,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       const targetPlayer = a.card != null ? s.cards[a.card].owner : a.player;
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
+      countAct(s, p, 'atk');
       fireSelf(s, L, a.attacker, c.face, ['tapped']);
       s.phase = 'attack';
       s.attack = { attacker: a.attacker, owner: p, targetPlayer, targetCard: a.card ?? null, blocked: null, step: 'opt' };
@@ -1741,6 +1760,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const c = s.cards[a.iid];
   const card = L(c.cid);
   if (!card) return 'カード情報がありません';
+  const zone0 = c.zone;
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
@@ -1949,6 +1969,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       const effect = lines.join('\n');
       s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: `ナイト・マジック: ${effect}`, effect, optional: true, auto: false });
     }
+    // 手札から唱えた後、墓地からもう一度唱えてもよい
+    if (lines.length && zone0 === 'hand' && kwLine(RECAST)) {
+      const effect = lines.join('\n');
+      s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: `墓地からもう一度唱える: ${effect}`, effect, optional: true, auto: false });
+    }
     // サイクロン: 直前にクリーチャーを召喚していれば手札に戻る
     const cyclone = kwLine(/^サイクロン/) && me.lastPlay?.turn === s.turn && me.lastPlay.kind === 'creature';
     if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
@@ -2091,6 +2116,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
           fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['tapped']);
         }
         at.blocked = a.blocker;
+        countAct(s, p, 'blk');
         log(s, p, `${q(nameOf(s, L, a.blocker))} でブロック`);
         fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['block']);
         fireSelf(s, L, at.attacker, s.cards[at.attacker].face, ['blocked']);

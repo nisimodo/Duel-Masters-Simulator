@@ -101,6 +101,10 @@ export interface PlayerState {
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
+  /** このターンにブレイクされたシールドの数 */
+  broken?: { turn: number; n: number };
+  /** 「次の自分のターンのはじめまで、相手は各ターンN度しか攻撃もブロックもできない」 (until のプレイヤーのターンのはじめまで) */
+  actLimit?: { until: number; n: number; turn: number; atk: number; blk: number };
 }
 
 export type Pending =
@@ -139,6 +143,8 @@ export type Pending =
       optional: boolean;
       /** 選択や条件がないので自動で実行する */
       auto: boolean;
+      /** 誘発させたカード (「そのクリーチャー」「そのカード」) */
+      subject?: number;
     };
 
 /** 実行中の効果プログラム */

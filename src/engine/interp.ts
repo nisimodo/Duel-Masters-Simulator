@@ -187,6 +187,12 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return !!s.cards[ex.src]?.tapped;
     case 'and':
       return evalCond(s, L, ex, c.a) && evalCond(s, L, ex, c.b);
+    case 'or':
+      return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
+    case 'brokenGE': {
+      const b = me.broken?.turn === s.turn ? me.broken.n : 0;
+      return (b >= c.n) !== !!c.neg;
+    }
     case 'totalShieldsLE':
       return me.shield.length + opp.shield.length <= c.n;
     case 'oppMore':
@@ -282,8 +288,8 @@ const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) =
 // ---------- 実行 ----------
 
 /** 効果プログラムの実行を開始する */
-export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number) {
-  runExec(s, L, { player, src, ops: [...ops], it: [], looked: [], did: false, name, spellBy });
+export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number) {
+  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy });
 }
 
 /** 選択への回答を受けて再開する */
@@ -808,12 +814,46 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'pickSameName': {
+        const all = s.players.flatMap((pl) => pl.battle).filter((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.isCreature);
+        const cnt = new Map<string, number>();
+        for (const i of all) cnt.set(nameOf(s, L, i), (cnt.get(nameOf(s, L, i)) ?? 0) + 1);
+        ex.it = all.filter((i) => (cnt.get(nameOf(s, L, i)) ?? 0) >= op.n);
+        break;
+      }
+      case 'actLimit': {
+        for (let o = 0; o < s.players.length; o++)
+          if (o !== ex.player && !s.players[o].lost) s.players[o].actLimit = { until: ex.player, n: op.n, turn: -1, atk: 0, blk: 0 };
+        log(s, ex.player, `次の自分のターンのはじめまで、相手は各ターン${op.n}度しかクリーチャーで攻撃もブロックもできない`);
+        break;
+      }
+      case 'useEnterOf': {
+        for (const i of ex.it) {
+          const c = s.cards[i];
+          const f = L(c.cid)?.faces[c.face];
+          const spec = f?.triggers.find((t) => t.events.includes('enter') && !(op.exclude && t.effect.replace(/^▶/, '').startsWith(op.exclude)));
+          if (!spec) continue;
+          s.pending.push({ kind: 'ability', player: ex.player, src: i, cid: c.cid, face: c.face, event: 'enter', text: spec.text, effect: spec.effect, optional: spec.optional, auto: false });
+          log(s, ex.player, `${q(nameOf(s, L, i))} の出た時の能力を使う`);
+        }
+        break;
+      }
       case 'useMarked': {
         const root = s.cards[ex.src]?.linkedTo ?? ex.src;
         const push = (iid: number) => {
           const c = s.cards[iid];
           const f = L(c.cid)?.faces[c.face];
-          const eff = f?.marked?.[op.key];
+          let eff = f?.marked?.[op.key];
+          // 「そのカードの文明に合うq能力」: 「q 光:〜」のうち、it の文明のもの
+          if (op.byCiv && eff) {
+            const civs = ex.it.flatMap((i) => (L(s.cards[i].cid)?.faces[s.cards[i].face]?.civs ?? []).map((x) => CIV_NAME[x]));
+            eff = eff
+              .split('。')
+              .map((x) => x.match(/^(光|水|闇|火|自然)[:：](.+)$/))
+              .filter((x): x is RegExpMatchArray => !!x && civs.includes(x[1]))
+              .map((x) => x[2])
+              .join('。');
+          }
           if (!eff) return;
           s.pending.push({ kind: 'ability', player: ex.player, src: iid, cid: c.cid, face: c.face, event: 'spell', text: `${op.key} ${eff}`, effect: eff, optional: false, auto: false });
           log(s, ex.player, `${q(nameOf(s, L, iid))} の ${op.key} 能力を使う`);

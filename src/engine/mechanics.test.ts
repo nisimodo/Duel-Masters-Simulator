@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, breakCount, createGame, kwOf, power } from './engine';
+import { applyAction, breakCount, canAttackWith, createGame, kwOf, power } from './engine';
 import { programOf } from './interp';
 import { spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
@@ -125,6 +125,9 @@ const db = buildDB(
     { id: 'gachaSp', n: 'gachaSp', img: '', f: [{ n: 'gachaSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['ドギラゴン・ガチャを2度回す。回すたびに、その能力を使う。'] }] },
     cr('ddisc', 6, 6000, ['このクリーチャーを召喚する時、自分の手札を1枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを3少なくする。']),
     cr('oni', 2, 2000, ['このクリーチャーは攻撃できない。', '鬼タイム :自分と相手のシールドの数が合計6つ以下なら、真上の▪️能力を無視する。', 'スピードアタッカー']),
+    cr('space2', 1, 1000, ['スペース・チャージ（自分のマナゾーンにカードが置かれた時、そのカードの文明に合うq能力を使ってもよい）', 'q 光：カードを1枚引く。', 'q 火：カードを2枚引く。']),
+    { id: 'jokA', n: 'jokA', img: '', f: [{ n: 'jokA', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ジョーカーズ'], x: ['このクリーチャーが出た時、カードを2枚引く。'] }] },
+    { id: 'jbig', n: 'jbig', img: '', f: [{ n: 'jbig', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ジョーカーズ'], x: ['このクリーチャーが出た時、Jビッグ1する。(自分の他のジョーカーズの、Jビッグ1以外の、出た時にトリガーする能力を1つ使う)'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -408,6 +411,52 @@ describe('named mechanics', () => {
       s = act(s, 0, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: null });
     }
     expect(s.cards[ch].zone).toBe('grave');
+  });
+
+  it('スペース・チャージ: uses only the q ability matching the civilization of the card put into mana', () => {
+    let s = setup([
+      { p: 0, cid: 'space2', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'charge', iid: find(s, 0, 'hand', 'vanilla')! });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.players[0].hand.length).toBe(hand + 1);
+  });
+
+  it('Jビッグ: uses the enter ability of another Jokers creature', () => {
+    let s = setup([
+      { p: 0, cid: 'jokA', zone: 'battle' },
+      { p: 0, cid: 'jbig', zone: 'hand' },
+    ]);
+    const iid = find(s, 0, 'hand', 'jbig')!;
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'play', iid, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 8 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: top.options.slice(0, 1), options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.players[0].hand.length).toBe(hand - 1 + 2);
+  });
+
+  it('modal "同じものを選んでもよい" allows picking the same option twice', () => {
+    const p = programOf('次の中から2回選ぶ。(同じものを選んでもよい)▼カードを1枚引く。▼相手のクリーチャーを1体破壊する。');
+    expect(p.complete).toBe(true);
+    expect(p.ops.filter((o) => o.op === 'modal').length).toBe(2);
+  });
+
+  it('相手は各ターン1度しか攻撃できない', () => {
+    let s = setup([
+      { p: 0, cid: 'sa', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    s.players[0].actLimit = { until: 1, n: 1, turn: -1, atk: 0, blk: 0 };
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+    expect(s.players[0].actLimit?.atk).toBe(1);
+    expect(canAttackWith(s, L, find(s, 0, 'battle', 'vanilla')!)).toBe(false);
   });
 
   it('スペース・チャージ: uses the q ability when a matching card goes to mana', () => {
