@@ -27,6 +27,10 @@ export type StaticCond =
   | { c: 'countLess'; sel: Sel; n: number }
   /** 相手のシールドが N 枚未満 */
   | { c: 'oppShieldsLess'; n: number }
+  /** 自分のマナゾーンのカードがすべてその文明 */
+  | { c: 'manaAllCiv'; civ: Civ }
+  /** 自分のシールドが相手より多い */
+  | { c: 'shieldsMore' }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -234,6 +238,9 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
     const sel = parseSel('自分の' + m[1]);
     if (sel) return { cond: { c: 'countLess', sel, n: m[2] ? +m[2] : 1 }, rest: m[3] };
   }
+  if ((m = t.match(/^自分のマナゾーンにあるカードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
+  if ((m = t.match(/^(?:ラビリンス[:：])?自分のシールド(?:の数)?が相手(?:のシールド)?より多ければ、(.+)$/))) return { cond: { c: 'shieldsMore' }, rest: m[1] };
+  if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
@@ -257,7 +264,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/\s+/g, '')
     .replace(/。$/, '')
     .replace(/はすべて、(「)/, 'は$1')
-    .replace(/^革命\d+[:：]/, '');
+    .replace(/^革命\d+[:：―\-－ー]/, '')
+    .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '');
   let m: RegExpMatchArray | null;
 
   // ---- キーワード系 ----
@@ -292,7 +300,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sel = parseSel(m[1]);
     if (sel) return [{ s: 'oppRestrict', sel, attack: /攻撃/.test(m[2]), block: /ブロック/.test(m[2]) }];
   }
-  if (/^相手(プレイヤー)?はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない$/.test(t0)) return [{ s: 'noFreePlay' }];
+  if (/^相手(プレイヤー)?はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない$/.test(t0) || /^相手は、?コストを支払わずに呪文を唱えられない$/.test(t0)) return [{ s: 'noFreePlay' }];
   if (/^このクリーチャーがタップされている間、相手の攻撃クリーチャーは可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^ハンティング$/.test(t0))
     return [{ s: 'power', target: { t: 'self' }, delta: 1000, when: 'battle', per: { sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ハンター'] }, each: 1 } }];

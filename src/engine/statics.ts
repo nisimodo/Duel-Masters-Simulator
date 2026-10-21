@@ -161,6 +161,12 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
       return countRel(s, L, a, cond.sel) < cond.n;
     case 'oppShieldsLess':
       return s.players[mainOpp(s, a.owner)].shield.length < cond.n;
+    case 'manaAllCiv': {
+      const mana = s.players[a.owner].mana;
+      return mana.length > 0 && mana.every((m) => (L(s.cards[m].cid)?.civs ?? []).every((x) => x === cond.civ) && (L(s.cards[m].cid)?.civs ?? []).length > 0);
+    }
+    case 'shieldsMore':
+      return s.players[a.owner].shield.length > s.players[mainOpp(s, a.owner)].shield.length;
     case 'selfNew':
       return !!s.cards[a.src]?.sick;
     case 'handLE':

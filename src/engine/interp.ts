@@ -207,7 +207,12 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     case 'totalShieldsLE':
       return me.shield.length + opp.shield.length <= c.n;
     case 'oppMore':
-      return opp[c.zone].length > me[c.zone].length;
+      return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
+    case 'manaAllCiv':
+      return me.mana.length > 0 && me.mana.every((m) => {
+        const cv = L(s.cards[m].cid)?.civs ?? [];
+        return cv.length > 0 && cv.every((x) => x === c.civ);
+      });
     case 'selfFaceUpShield': {
       const sc = s.cards[ex.src];
       return sc?.zone === 'shield' && sc.faceUp;

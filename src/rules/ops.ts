@@ -99,7 +99,9 @@ export type Cond =
   /** 自分と相手のシールドの数の合計がN以下 */
   | { c: 'totalShieldsLE'; n: number }
   /** 相手の (手札/マナ/シールド) が自分より多い */
-  | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield' }
+  | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield'; self?: boolean }
+  /** 自分のマナゾーンのカードがすべてその文明 */
+  | { c: 'manaAllCiv'; civ: Civ }
   /** 両方を満たす */
   | { c: 'and'; a: Cond; b: Cond }
   | { c: 'or'; a: Cond; b: Cond }
