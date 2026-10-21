@@ -1735,6 +1735,8 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
     if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
     const n = s.players[p].battle.filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
     if (g.cond.c === 'countAtLeast' && n < g.cond.n) return 'G・ゼロの条件を満たしていません';
+    const sc = s.players[p].spellsCast;
+    if (g.cond.c === 'spellsThisTurn' && !(sc?.turn === s.turn && sc.n >= g.cond.n)) return 'G・ゼロの条件を満たしていません';
     return 0;
   }
   let cost = costOf(s, L, p, a.iid, fi);
@@ -2024,6 +2026,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       log(s, p, '唱えた後、山札の下へ');
     } else moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
+    me.spellsCast = me.spellsCast?.turn === s.turn ? { turn: s.turn, n: me.spellsCast.n + 1 } : { turn: s.turn, n: 1 };
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };

@@ -28,7 +28,7 @@ import {
   type Lookup,
 } from './engine';
 import { matchesCond } from './cond';
-import { costOf } from './statics';
+import { activeStatics, costOf } from './statics';
 import { mainOpp, matchesSel, programOf } from './interp';
 import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
@@ -656,7 +656,8 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         const shields = s.players[p].shield.length;
         const sorted = [...top.blockers].sort((a, b) => power(s, L, a) - power(s, L, b));
         // 「可能であればブロックする」
-        const must = sorted.find((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustBlock') || (s.cards[b].grants ?? []).some((g) => g.kws.includes('強制ブロック')));
+        const oppMust = activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppMustBlock');
+        const must = sorted.find((b) => oppMust || (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustBlock') || (s.cards[b].grants ?? []).some((g) => g.kws.includes('強制ブロック')));
         if (must != null) return { t: 'block', blocker: must };
         // ガードマン: 守られるクリーチャーより価値が低い/生き残るなら身代わりに
         if (at.targetCard != null)

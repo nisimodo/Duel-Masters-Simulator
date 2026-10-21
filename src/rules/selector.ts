@@ -33,6 +33,9 @@ const ZONE_WORDS: [RegExp, SelZone][] = [
   [/山札(にある)?/, 'deck'],
 ];
 
+/** 漢字を含む種族 */
+const KANJI_RACE = /^(革命軍|マスター革命軍|S級侵略者|侵略者(ZERO)?|超化獣|チーム(切札|零|銀河)|鬼札王国|鬼レクスターズ|月光王国|美孔麗王国|暴拳王国|不死樹王国|魔導具|(ハムカツ|ドレミ|テック|アクミ|ダママ|イメン)団|裁きの紋章Z?|(生徒会|アオハル)組|禁断|ドラゴンの花嫁|アウトレイジ(猫|犬)?|[゠-ヿー・]+(爆|閃|號|炎|風|海|邪))$/;
+
 /** 種族などとして許す語 (カタカナ・英字・記号) */
 const RACE_WORD = /^[゠-ヿー・=＝<>＜＞A-Za-z0-9.'’!！]+$/;
 
@@ -130,7 +133,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
   if (p) {
     // 残りは種族 (「ドラゴン」「ジャイアントまたはコマンド」等)
     const races = p.split(/または|か|、|・(?=[^゠-ヿ])/).filter(Boolean);
-    if (!races.every((r) => RACE_WORD.test(r))) return null;
+    if (!races.every((r) => RACE_WORD.test(r) || KANJI_RACE.test(r))) return null;
     sel.races = races.map((r) => r.replace(/[<>＜＞]/g, ''));
     if (sel.kind === 'card' && !/カード$/.test(phrase)) sel.kind = 'creature';
   }

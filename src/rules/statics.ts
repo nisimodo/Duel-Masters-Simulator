@@ -13,6 +13,8 @@ export type StaticCond =
   | { c: 'powerAtLeast'; n: number }
   | { c: 'totalShieldsLE'; n: number } // 鬼タイム: 自分と相手のシールドの合計
   | { c: 'countAtLeast'; sel: Sel; n: number }
+  /** このターン、自分が呪文をN枚以上唱えている */
+  | { c: 'spellsThisTurn'; n: number }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -110,6 +112,8 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** 相手のクリーチャーは、可能であればブロックする */
+  | { s: 'oppMustBlock' }
   /** サバキZ: 裁きの紋章が自分のシールドゾーンから手札に加えられた時、それを捨ててこのクリーチャーを召喚できる */
   | { s: 'sabakiZ' }
   /** 自分のターン中、クリーチャーをN体、自分のマナゾーンから召喚してもよい */
@@ -317,6 +321,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^バズレンダ\[[a-z]*(\d+)\]/))) return [{ s: 'buzz', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ビビッドロー\[[a-z]*(\d+)\]/))) return [{ s: 'vivid', cost: +m[1] }];
   if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];
+  if (/^相手のクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'oppMustBlock' }];
   if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
     const words = m[3].replace(/のいずれか$/, '');
     const list = words.split('、');
@@ -388,6 +393,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if ((m = t0.match(/^ササゲール(\d+)/))) return [{ s: 'sasageru', n: +m[1] }];
   if (/^ハイパーエナジー/.test(t0)) return [{ s: 'hyperEnergy' }];
+  if ((m = t0.match(/^G・ゼロ[:：]このターン、自分が呪文を(\d+)枚以上唱えていれば/))) return [{ s: 'gzero', cond: { c: 'spellsThisTurn', n: +m[1] } }];
   if ((m = t0.match(/^G・ゼロ[:：](?:バトルゾーンに)?自分の(.+?)が(?:(\d+)(?:体|枚|つ)以上)?あれば/))) {
     const sel = parseSel('自分の' + m[1]);
     return sel ? [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[2] ? +m[2] : 1 } }] : null;
