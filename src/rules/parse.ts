@@ -185,6 +185,7 @@ function parseCond(c: string): Cond | null {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
   }
+  if (/^このクリーチャーが(?:自分の)?墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
   if (/^それが(この|その)ターン(最初|はじめて)の攻撃(であ|で)?$/.test(c)) return { c: 'firstAttack' };
@@ -194,7 +195,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
-  if (/^このクリーチャーがリンクしていない$/.test(c)) return { c: 'linked', neg: true };
+  if (/^このクリーチャーがリンクしていな(い|け)?$/.test(c)) return { c: 'linked', neg: true };
   if (/^このクリーチャーが表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
     const Z = { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] as SelZone[] };
@@ -260,6 +261,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/(クリーチャー)はすべて、(攻撃|ブロック)/, '$1すべては$2')
+    .replace(/^自分のマナゾーンにあるカードの(?:数|枚数)と同じ枚数のカードを引く$/, '自分のマナゾーンにあるカード1枚につき、カードを1枚引く')
+    .replace(/^このクリーチャーがリンクしている場合、/, 'このクリーチャーがリンクしていれば、')
+    .replace(/^このクリーチャーがリンクしていない場合、/, 'このクリーチャーがリンクしていなければ、')
+    .replace(/^このクリーチャーがタップされていた場合、/, 'このクリーチャーがタップされていれば、')
+    .replace(/^そのクリーチャーのパワーが(\d+)(以下|以上)であれば、?(破壊する|持ち主の.+|タップする)$/, 'それがパワー$1$2のクリーチャーであれば、そのクリーチャーを$3')
+    .replace(/^そのクリーチャーのパワーが(\d+)(以下|以上)であれば、?/, 'それがパワー$1$2のクリーチャーであれば、')
     .replace(/^(光|水|闇|火|自然)[:：]/, '')
     .replace(/(すべてのプレイヤーに|相手に)見せてから/g, '')
     .replace(/^その中から(.+?)を(\d+)(体|枚)(?:見せ|表向きにし)、/, 'その中から$1を$2$3選び、')
@@ -383,6 +391,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^自分はゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^(この|その)クリーチャーは、?可能(であれば|なら)ブロックする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['強制ブロック'], until: 'nextOwnTurn' }];
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   {
@@ -508,7 +517,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 一時的な能力 「次の自分のターンのはじめまで、このクリーチャーは離れない/破壊されない/すべてのバトルに勝つ/相手に選ばれず、攻撃されない」
   {
-    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その)クリーチャーは、?(.+)$/);
+    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その|自分の|バトルゾーンにある自分の)クリーチャーは、?(?:すべて、?)?(.+)$/);
     const map: [RegExp, string[]][] = [
       [/^(バトルゾーンを)?離れない$/, ['離れない']],
       [/^破壊されない$/, ['破壊されない']],
@@ -518,7 +527,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       [/^攻撃されない$/, ['攻撃されない']],
     ];
     const hit = nl && map.find(([re]) => re.test(nl[3]));
-    if (nl && hit) return [{ op: 'grant', target: { ref: nl[2] === 'この' ? 'self' : 'it' }, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+    const tgt: Target | null = nl ? (nl[2] === 'この' ? { ref: 'self' } : nl[2] === 'その' ? { ref: 'it' } : { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }) : null;
+    if (nl && hit && tgt) return [{ op: 'grant', target: tgt, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
   if (/^このターンの後に(自分の)?ターンを(追加する|もう一度行う)$/.test(s) || /^このターンの後にもう一度自分のターンを行う$/.test(s)) return [{ op: 'extraTurn' }];
   // 「その中から〇〇をすべて手札に加え、それ以外のカードを好きな順序で山札の一番下に戻す」
@@ -806,6 +816,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     // 「このターン、そのクリーチャーの最初の(次の)攻撃の終わりに、そのクリーチャーをアンタップする」
     const au = s.match(/^このターン、(この|その)クリーチャーの(?:最初|次)の攻撃の終わりに、(?:この|その)クリーチャーをアンタップする$/);
     if (au) return [{ op: 'grant', target: { ref: au[1] === 'この' ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
+  }
+  // 次の自分のターンのはじめに
+  {
+    const ts = s.match(/^次の自分のターンのはじめに、(.+)$/);
+    const body = ts && sentence(ts[1], ctx);
+    if (body) return [{ op: 'atNextTurnStart', body }];
   }
   // ターンの終わりに
   {

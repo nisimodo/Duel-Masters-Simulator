@@ -219,6 +219,8 @@ export interface GameState {
   curSpellBy?: number;
   /** ターンの終わりに実行する効果 */
   endTurnExecs?: Exec[];
+  /** 「次の自分のターンのはじめに〜」(そのプレイヤーのターンのはじめに実行) */
+  startTurnExecs?: Exec[];
   /** このプレイヤーの今のターンの後に、もう一度そのプレイヤーのターン */
   extraTurnFor?: number;
   /** 次のターンのはじめに支払うコスト (逆転撃) */

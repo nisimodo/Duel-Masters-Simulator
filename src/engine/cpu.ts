@@ -656,7 +656,7 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         const shields = s.players[p].shield.length;
         const sorted = [...top.blockers].sort((a, b) => power(s, L, a) - power(s, L, b));
         // 「可能であればブロックする」
-        const must = sorted.find((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustBlock'));
+        const must = sorted.find((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustBlock') || (s.cards[b].grants ?? []).some((g) => g.kws.includes('強制ブロック')));
         if (must != null) return { t: 'block', blocker: must };
         // ガードマン: 守られるクリーチャーより価値が低い/生き残るなら身代わりに
         if (at.targetCard != null)

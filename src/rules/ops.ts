@@ -208,6 +208,8 @@ export type Op =
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */
   | { op: 'atTurnEnd'; body: Op[] }
+  /** 次の自分のターンのはじめに body を実行する */
+  | { op: 'atNextTurnStart'; body: Op[] }
   /** ガチンコ・ジャッジ (勝てば did = true) */
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */

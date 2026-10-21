@@ -872,6 +872,10 @@ function startTurn(s: GameState, L: Lookup) {
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
+  // 「次の自分のターンのはじめに〜」
+  const startEx = (s.startTurnExecs ?? []).filter((x) => x.player === p);
+  s.startTurnExecs = (s.startTurnExecs ?? []).filter((x) => x.player !== p);
+  for (const ex of startEx) runExec(s, L, ex);
   for (const c of s.cards) {
     if (c.hyperUntil === p) {
       if (c.zone === 'battle') c.face = 0;
