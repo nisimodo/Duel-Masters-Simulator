@@ -1,6 +1,6 @@
 // デュエル・マスターズ ルールエンジン (決定的: 同じ初期状態とアクション列からは必ず同じ状態になる)
 // キーワード能力とゲームの進行は自動、カード固有の効果は手動操作アクションで処理する。
-import type { Card, Civ, Face } from '../lib/cards';
+import { CIV_NAME, type Card, type Civ, type Face } from '../lib/cards';
 import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
@@ -761,8 +761,8 @@ function beginEndTurn(s: GameState, L: Lookup) {
 /** ターンの終わりの能力が解決した後の後始末 */
 function finishEndTurn(s: GameState, L: Lookup) {
   const p = s.active;
-  // J・O・E: 山札の下に置いて1枚引く / B・A・D: 破壊する
-  for (const iid of [...s.players[p].battle]) {
+  // J・O・E: 山札の下に置いて1枚引く / B・A・D: 破壊する / アビスラッシュ・ウラ・ニンジャ: 山札の下へ
+  for (const iid of s.players.flatMap((pl) => [...pl.battle])) {
     const c = s.cards[iid];
     if (c.endOfTurn === 'bad') {
       c.endOfTurn = undefined;
@@ -1070,6 +1070,19 @@ function queueAttackTriggers(s: GameState, L: Lookup) {
   for (const u of s.cards[a.attacker].under) fireSelf(s, L, u, 0, ['crossAttack']);
   fireWatchers(s, L, a.owner, null, 'ownAttack', 'oppAttack', a.attacker);
   if (a.targetCard != null) fireSelf(s, L, a.targetCard, s.cards[a.targetCard].face, ['attacked']);
+  // ウラ・ニンジャ・ストライク: 攻撃された側の手札から
+  s.players.forEach((pl, dp) => {
+    if (dp === a.owner || pl.lost) return;
+    for (const h of pl.hand) {
+      const hc = s.cards[h];
+      const f = L(hc.cid)?.faces[0];
+      const un = (f?.statics ?? []).find((x) => x.s === 'uraNinja');
+      if (!f || !un || un.s !== 'uraNinja' || a.ninjaUsed) continue;
+      if (pl.mana.length < un.n) continue;
+      if (un.civ && !pl.mana.some((m) => cardCivs(L, s.cards[m].cid).some((c) => CIV_NAME[c] === un.civ))) continue;
+      s.pending.push({ kind: 'ability', player: dp, src: h, cid: hc.cid, face: 0, event: 'oppAttack', text: `ウラ・ニンジャ・ストライク: ${f.name}`, effect: 'このクリーチャーをコストを支払わずに召喚してもよい。そのターンの終わりに、このクリーチャーを山札の下に置く', optional: true, auto: false });
+    }
+  });
   // アタック・チャンス: 手札の呪文をコストを支払わずに唱えてもよい
   for (const h of s.players[a.owner].hand) {
     const hc = s.cards[h];
@@ -1456,6 +1469,11 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
     return 0;
   }
   let cost = costOf(s, L, p, a.iid, fi);
+  // ソウルシフト: 進化元のコストだけ少なく / NEO進化として召喚するならN少なく
+  const base = a.evo?.find((b) => s.cards[b]?.owner === p);
+  if (base != null && statics.some((x) => x.s === 'soulShift')) cost = Math.max(1, cost - (faceOf(s, L, base)?.cost ?? 0));
+  const neo = statics.find((x) => x.s === 'neoDiscount');
+  if (base != null && neo && neo.s === 'neoDiscount') cost = Math.max(0, cost - neo.n);
   if (a.sasa?.length) {
     if (!statics.some((x) => x.s === 'sasageru')) return 'このクリーチャーはササゲールで召喚できません';
     const costs = new Set<number>();
@@ -1568,7 +1586,9 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (face.isCreature) {
     let bases: number[] = [];
     if (face.isEvolution) {
-      bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === 'battle' && s.cards[b].owner === p);
+      const ef = (face.statics ?? []).find((x) => x.s === 'evoFrom');
+      const baseZone = ef && ef.s === 'evoFrom' ? ef.zone : 'battle';
+      bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === baseZone && s.cards[b].owner === p && b !== a.iid);
       // NEO進化・G-NEO進化は進化元なしでも召喚できる
       if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
     }

@@ -84,7 +84,9 @@ export function PayDialog({
     if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c) ?? []);
   };
   const [showAll, setShowAll] = useState(false);
-  const baseCands = s.players[me].battle.filter((b) => {
+  const ef = statics.find((x) => x.s === 'evoFrom');
+  const baseZone = ef && ef.s === 'evoFrom' ? ef.zone : 'battle';
+  const baseCands = (baseZone === 'mana' ? s.players[me].mana : baseZone === 'hand' ? s.players[me].hand.filter((h) => h !== iid) : s.players[me].battle).filter((b) => {
     const bf = faceOf(s, L, b);
     if (!bf) return false;
     if (showAll) return true;
@@ -93,7 +95,10 @@ export function PayDialog({
     return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
-  const ok = cost != null && pay.length === cost && (cost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
+  // ソウルシフト・NEO進化の軽減は進化元によって変わる
+  const costEvo = evo.length && statics.some((x) => x.s === 'soulShift' || x.s === 'neoDiscount') ? playCost(s, L, me, { t: 'play', iid, face, pay: [], evo, alt, taps, sasa, he, gzero }, face) : cost;
+  const realCost = typeof costEvo === 'number' ? costEvo : cost;
+  const ok = realCost != null && pay.length === realCost && (realCost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
   const needEvo = (f.isEvolution && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);

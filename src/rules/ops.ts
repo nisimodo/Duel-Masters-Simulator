@@ -117,6 +117,8 @@ export type Op =
   | { op: 'superLink'; names: string[] }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
+  /** このターンの終わりに、このクリーチャーを山札の下に置く */
+  | { op: 'endOfTurnBottom' }
   /** ゲーム中に一度だけ (2回目以降は「そうしたら」が成立しない) */
   | { op: 'oncePerGame' }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */

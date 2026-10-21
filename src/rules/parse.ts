@@ -204,6 +204,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/(\d+枚目?)を、/g, '$1を')
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
     .replace(/》(\d+)(つ|体|枚)を/, '》を$1$2')
     .replace(/^バトルゾーンにある、/, '')
     .replace(/クリーチャーすべてを/, 'クリーチャーをすべて')
@@ -239,6 +240,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「(そのクリーチャーは)可能ならこのクリーチャーを攻撃する」(相手のクリーチャーが攻撃する時)
   if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'self' }];
   if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?クリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'creature' }];
+  if (/^(その|この)ターンの終わりに、このクリーチャーを(自分の)?山札の(一番)?下に置く$/.test(s)) return [{ op: 'endOfTurnBottom' }];
   // Jトルネード: 自分の他のジョーカーズを1体、手札に戻す
   if (/^Jトルネードする$/.test(s))
     return [

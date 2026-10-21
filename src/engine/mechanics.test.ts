@@ -98,6 +98,8 @@ const db = buildDB(
     cr('downer', 1, 1000, ['このクリーチャーが出た時、自分のマナゾーンのカードを1枚、裏向きにしてもよい。']),
     cr('repl', 3, 3000, ['このクリーチャーが破壊される時、墓地に置くかわりに自分の他のクリーチャーを1体破壊してもよい。']),
     cr('sgo', 3, 3000, ['シールド・ゴー(このクリーチャーが破壊された時、新しいシールドとして自分のシールドゾーンに表向きのまま加える。このクリーチャーが表向きで、シールドゾーンを離れる時、かわりに自分の墓地に置く)']),
+    { id: 'manaevo', n: 'manaevo', img: '', f: [{ n: 'manaevo', t: '進化クリーチャー', c: 'F', co: 2, p: '9000', r: ['テスト'], x: ['マナ進化:テストを1体自分のマナゾーンから選び、このクリーチャーをその上に重ねつつバトルゾーンに出す。'] }] },
+    { id: 'shift', n: 'shift', img: '', f: [{ n: 'shift', t: '進化クリーチャー', c: 'F', co: 7, p: '9000', r: ['テスト'], x: ['ソウルシフト(このクリーチャーを召喚する時、このクリーチャーの進化元クリーチャーを選ぶ。このクリーチャーのコストは、その選んだクリーチャーのコストだけ少なくなる)', '進化-自分のテスト1体の上に置く。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -586,5 +588,22 @@ describe('named mechanics', () => {
     expect(s.cards[g].faceUp).toBe(true);
     s = act(s, 0, { t: 'move', iid: g, to: 'hand' });
     expect(s.cards[g].zone).toBe('grave');
+  });
+
+  it('マナ進化 / ソウルシフト', () => {
+    let s = setup([
+      { p: 0, cid: 'manaevo', zone: 'hand' },
+      { p: 0, cid: 'big', zone: 'mana' },
+      { p: 0, cid: 'shift', zone: 'hand' },
+    ]);
+    const me = find(s, 0, 'hand', 'manaevo')!;
+    const base = find(s, 0, 'mana', 'big')!;
+    s = act(s, 0, { t: 'play', iid: me, face: 0, pay: freeMana(s, 0, 2, base), evo: [base] });
+    expect(s.cards[me].zone).toBe('battle');
+    expect(s.cards[base].parent).toBe(me);
+    // ソウルシフト: コスト7 - 進化元のコスト2 = 5 (マナ3枚では足りない → 2枚で出せない、を確認)
+    const sh = find(s, 0, 'hand', 'shift')!;
+    const err = applyAction(s, 0, { t: 'play', iid: sh, face: 0, pay: [], evo: [me], free: false }, L).error;
+    expect(err).toMatch(/コスト5/);
   });
 });

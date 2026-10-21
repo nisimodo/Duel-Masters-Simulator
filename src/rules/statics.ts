@@ -99,7 +99,15 @@ export type StaticSpec =
   /** 破壊されない (inBattle: バトル中だけ) */
   | { s: 'indestructible'; inBattle?: boolean }
   /** 自分のターンのはじめにアンタップしない */
-  | { s: 'noUntapStart' };
+  | { s: 'noUntapStart' }
+  /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
+  | { s: 'soulShift' }
+  /** NEO進化クリーチャーとして召喚するならコストをN少なく */
+  | { s: 'neoDiscount'; n: number }
+  /** ウラ・ニンジャ・ストライクN(文明): 相手のクリーチャーが攻撃した時、手札から召喚してターンの終わりに山札の下へ */
+  | { s: 'uraNinja'; n: number; civ?: string }
+  /** マナ進化・手札進化: 進化元を他のゾーンから選ぶ */
+  | { s: 'evoFrom'; zone: 'mana' | 'hand'; sel: Sel; n: number };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -158,6 +166,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
+  if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if ((m = t0.match(/^NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[1] }];
+  if ((m = full.replace(/\s+/g, '').match(/^ウラ・ニンジャ・ストライク(\d+)(?:\((光|水|闇|火|自然)\))?/))) return [{ s: 'uraNinja', n: +m[1], civ: m[2] }];
+  if ((m = t0.match(/^(マナ|手札)進化[-ー―:：](.+?)を(\d+)体自分の(?:マナゾーン|手札)から選び、このクリーチャーをその上に重ねつつバトルゾーンに出す$/))) {
+    const sel = parseSel(m[2]);
+    return sel ? [{ s: 'evoFrom', zone: m[1] === 'マナ' ? 'mana' : 'hand', sel, n: +m[3] }] : null;
+  }
   if ((m = t0.match(/^コストを支払うかわりに、自分の(.+?)を(\d+)体タップして、?この(呪文|クリーチャー)を(唱え|召喚し)てもよい$/))) {
     const sel = parseSel('自分の' + m[1]);
     return sel ? [{ s: 'tapCast', sel, n: +m[2] }] : null;

@@ -603,6 +603,13 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `攻撃先が ${q(nameOf(s, L, to))} に変わった`);
         break;
       }
+      case 'endOfTurnBottom': {
+        // 召喚した後のこのクリーチャー (it に入っていればそれ)
+        const t = ex.it.find((i) => s.cards[i].zone === 'battle') ?? ex.src;
+        if (s.cards[t]?.zone === 'battle') s.cards[t].endOfTurn = 'abyss';
+        if (s.attack) s.attack.ninjaUsed = true;
+        break;
+      }
       case 'oncePerGame': {
         const used = (s.onceGame ??= []);
         if (used.includes(ex.src)) {

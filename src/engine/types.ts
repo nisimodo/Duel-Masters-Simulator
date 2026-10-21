@@ -139,6 +139,8 @@ export interface Exec {
 }
 
 export interface AttackState {
+  /** この攻撃中にニンジャ・ストライク等を使った */
+  ninjaUsed?: boolean;
   attacker: number;
   owner: number;
   targetPlayer: number;
