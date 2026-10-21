@@ -65,6 +65,8 @@ export interface Face {
 
 export interface AbilityGroup {
   kind: AbilityGroupKind;
+  /** 鬼タイムで無視される条件 (シールドの合計がこれ以下なら無効) */
+  n?: number;
   /** O・ドライブ: この文明を追加で支払った時の能力 */
   civ?: string;
   triggers: TriggerSpec[];
@@ -120,7 +122,10 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
     const statics = parseStatics(al);
     const kws = g.lines.map((l) => stripReminder(normText(l)).replace(/\s+/g, '').replace(/。$/, '')).filter((x) => GRANT_KWS.includes(x));
     if (kws.length) statics.push({ s: 'grant', target: { t: 'self' }, kws, when: 'always' });
-    return { kind: g.kind, civ: g.civ, triggers: parseTriggers(al), statics };
+    // 「このクリーチャーは攻撃できない」も条件つきにする
+    if (g.lines.some((l) => /^このクリーチャーは、?(相手プレイヤーを)?攻撃(することが)?できない。?$/.test(stripReminder(normText(l)).replace(/\s+/g, ''))))
+      statics.push({ s: 'grant', target: { t: 'self' }, kws: ['攻撃できない'], when: 'always' });
+    return { kind: g.kind, civ: g.civ, n: (g as { n?: number }).n, triggers: parseTriggers(al), statics };
   });
   const power = f.p ? Number((f.p.normalize('NFKC').match(/-?\d+/) || ['0'])[0]) : null;
   return {

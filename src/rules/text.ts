@@ -67,7 +67,7 @@ export function mergeModal(lines: string[]): string[] {
   return out;
 }
 
-export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce' | 'odrive';
+export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce' | 'odrive' | 'oniOff';
 
 const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^ウェーブストライカー/, 'wave'],
@@ -87,11 +87,11 @@ const SILENT_SKILL = /^サイレントスキル/;
  * カードのテキスト行を、常に有効な行・条件つき/共有の能力 (ウェーブストライカー・アクセル・超魂X・サバイバーのoS能力)・
  * タップ能力 (攻撃するかわりにタップして使う能力) に分ける
  */
-export const MARKED_LINE = /^(q|oP|oB|xB)\s+(.+)$|^(◇)\s*(.+)$/;
+export const MARKED_LINE = /^(q|oP|oB|xB|P)\s+(.+)$|^(◇)\s*(.+)$/;
 
 export function splitAbilities(lines: string[]): {
   main: string[];
-  groups: { kind: AbilityGroupKind; lines: string[] }[];
+  groups: { kind: AbilityGroupKind; lines: string[]; n?: number }[];
   tap: string | null;
   silent: string | null;
   marked: Record<string, string[]>;
@@ -110,6 +110,7 @@ export function splitAbilities(lines: string[]): {
   let silent: string[] | null = null;
   let inSilent = false;
   let nextAbility = false;
+  let oniN: number | undefined;
   let odrive = 0; // 0: なし / 1: 次の行を取る / 2: 「水:」で始まる行を取る
   for (const raw of lines) {
     const t = normText(raw).trim();
@@ -126,6 +127,21 @@ export function splitAbilities(lines: string[]): {
       main.push(raw);
       odrive = 1;
       if (!groups.has('odrive')) groups.set('odrive', []);
+      continue;
+    }
+    // 「鬼タイム:自分と相手のシールドの数が合計N以下なら、真上の能力を無視する」: 直前の行は条件つき
+    const oni = t.replace(/\s+/g, '').match(/^鬼タイム[:：]?自分と相手のシールドの数が合計(\d+)つ以下なら、真上の.?.?能力を無視する/);
+    if (oni) {
+      const prev = main.pop();
+      if (prev != null) push('oniOff', prev);
+      oniN = +oni[1];
+      continue;
+    }
+    // キズナコンプ(〜)P〜: P の後ろが記号つきの能力
+    const kz = t.match(/^(キズナ\S*?)\s*([(（].+?[)）])\s*P\s*(.+)$/);
+    if (kz) {
+      main.push(kz[1] + kz[2]);
+      (marked['P'] ??= []).push(kz[3].replace(/。$/, ''));
       continue;
     }
     if (nextAbility) {
@@ -200,5 +216,5 @@ export function splitAbilities(lines: string[]): {
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked };
 }

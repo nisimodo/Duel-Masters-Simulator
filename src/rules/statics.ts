@@ -110,6 +110,8 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** サバキZ: 裁きの紋章が自分のシールドゾーンから手札に加えられた時、それを捨ててこのクリーチャーを召喚できる */
+  | { s: 'sabakiZ' }
   /** 攻撃の終わりにアンタップする */
   | { s: 'untapAfterAttack' }
   /** 相手のカードはマナゾーンにタップして置かれる */
@@ -215,6 +217,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
   if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/))) {
     const sel = parseSel(m[1], { zones: ['mana'] });

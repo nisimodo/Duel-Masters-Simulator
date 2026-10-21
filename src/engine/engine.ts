@@ -79,6 +79,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'T・ブレイカー') k.breaker = Math.max(k.breaker, 3);
     else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
     else if (kw === 'ワールド・ブレイカー' || kw === '∞ブレイカー') k.breaker = 99;
+    else if (kw === '攻撃できない') k.cantAttack = true;
     else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
     else {
       const pa = kw.match(/^パワーアタッカー\+(\d+)$/);
@@ -1353,6 +1354,23 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     }
     moveCard(s, L, sh, 'hand');
     const card = L(s.cards[sh].cid);
+    // サバキZ: 裁きの紋章が手札に加えられた時、それを捨ててサバキZを持つクリーチャーを召喚できる
+    if (card?.faces[0].races.some((r) => r.startsWith('裁きの紋章'))) {
+      for (const h of pl.hand) {
+        const hf = L(s.cards[h].cid)?.faces[0];
+        if (h === sh || !hf?.isCreature || !(hf.statics ?? []).some((x) => x.s === 'sabakiZ')) continue;
+        runExec(s, L, {
+          player: target,
+          src: h,
+          ops: [{ op: 'optional', body: [{ op: 'move', target: { ref: 'saved' }, to: 'grave' }, { op: 'play', target: { ref: 'self' }, mode: 'summon' }], prompt: `サバキZ: 《${card.name}》を捨てて《${hf.name}》を召喚する` }],
+          it: [],
+          looked: [],
+          saved: [sh],
+          did: false,
+          name: hf.name,
+        });
+      }
+    }
     const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger);
     const strike = !!card?.faces.some((f) => f.kw.gStrike);
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });

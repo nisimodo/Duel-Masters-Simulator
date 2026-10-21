@@ -820,6 +820,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 記号つきの能力を使う 「このクリーチャーの q 能力を使ってもよい」「このクリーチャーと自分の他のクリーチャー1体の oP 能力を使う」
   {
+    const kc = s.match(/^(好きな数|(\d+)体)の自分のクリーチャーの(P|oP)能力を使う$/) ?? s.match(/^自分のクリーチャー(\d+)体の(P|oP)能力を使う$/);
+    if (kc) return [{ op: 'useMarked', key: kc[3] ?? kc[2], others: kc[1] === '好きな数' ? 99 : +(kc[2] ?? kc[1]) }];
     const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|◇)能力を(?:1回)?使(う|ってもよい)$/);
     if (um) {
       const op: Op = { op: 'useMarked', key: um[2], others: um[1] ? +um[1] : undefined };

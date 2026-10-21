@@ -124,6 +124,7 @@ const db = buildDB(
     cr('b2g', 3, 3000, ['スピードアタッカー', 'このクリーチャーがシールドをブレイクする時、相手はそのシールドを自身の手札に加えるかわりに墓地に置く。']),
     { id: 'gachaSp', n: 'gachaSp', img: '', f: [{ n: 'gachaSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['ドギラゴン・ガチャを2度回す。回すたびに、その能力を使う。'] }] },
     cr('ddisc', 6, 6000, ['このクリーチャーを召喚する時、自分の手札を1枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを3少なくする。']),
+    cr('oni', 2, 2000, ['このクリーチャーは攻撃できない。', '鬼タイム :自分と相手のシールドの数が合計6つ以下なら、真上の▪️能力を無視する。', 'スピードアタッカー']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -816,5 +817,13 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid: d, face: 0, pay: freeMana(s, 0, 3), discards: [v] });
     expect(s.cards[d].zone).toBe('battle');
     expect(s.cards[v].zone).toBe('grave');
+  });
+
+  it('鬼タイム: 真上の能力はシールドの合計が少ない時だけ無視される', () => {
+    const s = setup([{ p: 0, cid: 'oni', zone: 'battle' }]);
+    const o = find(s, 0, 'battle', 'oni')!;
+    expect(kwOf(s, L, o).cantAttack).toBe(true);
+    for (const pl of s.players) while (pl.shield.length > 3) pl.shield.pop();
+    expect(kwOf(s, L, o).cantAttack).toBeFalsy();
   });
 });
