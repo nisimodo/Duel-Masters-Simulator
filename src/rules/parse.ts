@@ -289,6 +289,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/、(?:そのカード|それら)を(?:相手に)?見せる$/, '')
+    .replace(/^自分の山札の一番上のカードを、?(?:表にして、?)?(?:自分の)?マナゾーンに置/, '自分の山札の上から1枚目をマナゾーンに置')
     .replace(/^カード名を(?:ひとつ|1つ)選んで言う$/, 'カード名を1つ選ぶ')
     .replace(/(?:選んだ|選ばれた)(?:カード名と同じカード|カードと同じ名前の(?:カード)?|名前を持つカード|カード)/g, '〈名前〉のカード')
     .replace(/^この攻撃中に自分が「ニンジャ」能力を使っていなければ、/, '')
@@ -439,6 +441,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const cv = s.match(/^(?:(.+?)以外の)?(種族|文明)を(?:ひとつ|1つ)選ぶ$/);
     if (cv) return [{ op: 'chooseValue', kind: cv[2] === '種族' ? 'race' : 'civ', exclude: cv[1], hostile: false }];
     if (/^カード名を1つ選ぶ$/.test(s)) return [{ op: 'chooseValue', kind: 'name', hostile: false }];
+    const ov = s.match(/^相手に(種族|文明)を(?:ひとつ|1つ)選ばせる$/);
+    if (ov) return [{ op: 'chooseValue', kind: ov[1] === '種族' ? 'race' : 'civ', hostile: false, byOpp: true }];
     const nv = s.match(/^(?:(\d+)以下の)?数字を(?:ひとつ|1つ)選ぶ$/);
     if (nv) return [{ op: 'chooseValue', kind: 'number', max: nv[1] ? +nv[1] : undefined, hostile: false }];
   }

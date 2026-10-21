@@ -824,7 +824,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (!labels.length) break;
         ex.valueLabels = labels;
         ask(s, ex, {
-          player: ex.player,
+          player: op.byOpp ? mainOpp(s, ex.player) : ex.player,
           mode: 'modal',
           prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}を1つ選ぶ`,
           options: [],

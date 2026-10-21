@@ -100,7 +100,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));
     changed ||= take(/^単色の?/, () => (sel.mono = true));
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
-    changed ||= take(/^(?:進化ではない|進化以外の|進化クリーチャーではない|進化クリーチャー以外の|進化でない)/, () => (sel.nonEvolution = true));
+    changed ||= take(/^、?(?:進化ではない|進化以外の|進化クリーチャーではない|進化クリーチャーでない|進化クリーチャー以外の|進化でない)/, () => (sel.nonEvolution = true));
     changed ||= take(/^(?:このクリーチャーよりパワーが小さい|パワーがこのクリーチャーより小さい|このクリーチャーよりパワーの小さい)/, () => (sel.powerLtSelf = true));
     changed ||= take(/^(?:そのクリーチャーよりパワーが小さい|そのクリーチャーよりパワーの小さい|パワーがそのクリーチャーより小さい)/, () => (sel.powerLtIt = true));
     changed ||= take(/^、?パワーが一番小さい/, () => (sel.extreme = 'minPower'));
