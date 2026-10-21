@@ -1038,7 +1038,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const k = kwOf(s, L, iid);
   const mine = ownStatics(s, L, iid);
   const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer');
-  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps;
+  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer);
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };

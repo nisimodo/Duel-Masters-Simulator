@@ -206,6 +206,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
     .replace(/^このターンが終わるまで、/, 'このターン、')
     .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
+    .replace(/(その|選んだ|選ばれた)種族の/g, '〈種族〉の')
+    .replace(/(その|選んだ|選ばれた)文明の/g, '〈文明〉の')
+    .replace(/(その|選んだ)数字と同じコスト(を持つ|の)/g, '〈数字コスト〉の')
+    .replace(/(その|選んだ)数字と同じパワーを持つ/g, '〈数字パワー〉の')
+    .replace(/(自分|相手)の、?〈(種族|文明)〉の/g, '$1の〈$2〉の')
+    .replace(/〈(種族|文明)〉の(自分|相手)の/g, '$2の〈$1〉の')
     .replace(/》(\d+)(つ|体|枚)を/, '》を$1$2')
     .replace(/^バトルゾーンにある、/, '')
     .replace(/クリーチャーすべてを/, 'クリーチャーをすべて')
@@ -237,6 +243,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: down ? 'faceDown' : 'faceUp', target: { ref: 'it' } },
       ];
     }
+  }
+  // 種族・文明・数字を選ぶ
+  {
+    const cv = s.match(/^(?:(.+?)以外の)?(種族|文明)を(?:ひとつ|1つ)選ぶ$/);
+    if (cv) return [{ op: 'chooseValue', kind: cv[2] === '種族' ? 'race' : 'civ', exclude: cv[1], hostile: false }];
+    const nv = s.match(/^(?:(\d+)以下の)?数字を(?:ひとつ|1つ)選ぶ$/);
+    if (nv) return [{ op: 'chooseValue', kind: 'number', max: nv[1] ? +nv[1] : undefined, hostile: false }];
   }
   // 「(そのクリーチャーは)可能ならこのクリーチャーを攻撃する」(相手のクリーチャーが攻撃する時)
   if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'self' }];
@@ -783,6 +796,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'attackBlock' }];
   }
+  if ((m = s.match(/^(?:次の(?:自分|相手)のターンのはじめまで|このターン)、(.+?)は(?:自分|プレイヤー)を攻撃(?:することが)?できない$/))) {
+    const t = refTarget(m[1]);
+    if (t) return [{ op: 'restrict', target: t, what: 'attackMe' }];
+  }
   if ((m = s.match(/^(?:この|その)ターン、(.+?)は攻撃できない$/))) {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'attack' }];
@@ -895,6 +912,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 function refTarget(phrase: string): Target | null {
   const p = phrase.replace(/\s+/g, '');
   if (/^この(クリーチャー|カード|タマシード|ドラグハート|クロスギア|フォートレス)$/.test(p)) return { ref: 'self' };
+  // 「その種族のクリーチャー」(選んだ値で絞った名詞) はすべて
+  if (/〈/.test(p)) {
+    const sel = parseSel(p.replace(/(すべて|全体)$/, ''));
+    if (sel) return { ref: 'sel', sel, count: { all: true }, chooser: 'self' };
+  }
   if (IT.test(p) && p.replace(IT, '') === '') return { ref: 'it' };
   const m = p.match(/^(.+?)(すべて|全体)$/);
   if (m) {
@@ -935,6 +957,13 @@ export function parseEffect(text: string): Program {
   }
   const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);
+  for (const o of prog.ops)
+    if (o.op === 'chooseValue') {
+      const after = body.slice(Math.max(0, body.search(/(種族|文明|数字)を(ひとつ|1つ)選/)));
+      // 「自分を攻撃できない」は相手のクリーチャーに対する効果
+      const me = (after.match(/自分を/g)?.length ?? 0);
+      o.hostile = (after.match(/相手/g)?.length ?? 0) + me > (after.match(/自分/g)?.length ?? 0) - me;
+    }
   if (bonus) {
     const mod = prog.ops.find((o) => o.op === 'modal');
     if (mod && mod.op === 'modal') mod.bonus = bonus;

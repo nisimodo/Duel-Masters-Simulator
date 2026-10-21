@@ -24,6 +24,11 @@ export interface Sel {
   civInMana?: boolean;
   /** 無色ではない */
   notColorless?: boolean;
+  /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
+  raceRef?: boolean;
+  civRef?: boolean;
+  costRef?: boolean;
+  powerRef?: boolean;
   /** 自分のマナゾーンにあるカードと同じ文明を持つ */
   civShareMana?: boolean;
   /** 裏向き (true) / 表向き (false) のカードだけ */
@@ -96,7 +101,7 @@ export type Op =
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
   | { op: 'power'; target: Target; delta: number; until: 'turn' }
-  | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' }
+  | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' | 'attackMe' }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
   | { op: 'shuffle'; who?: 'opp' }
@@ -117,6 +122,8 @@ export type Op =
   | { op: 'swap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
+  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number'; max?: number; exclude?: string; hostile: boolean }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** このターンの終わりに、このクリーチャーを山札の下に置く */

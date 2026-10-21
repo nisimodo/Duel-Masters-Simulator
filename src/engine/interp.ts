@@ -1,6 +1,6 @@
 // 効果プログラム (src/rules/ops.ts) の実行。
 // 決定的に動き (乱数はゲームの乱数)、プレイヤーの選択が必要になったら 'choice' を積んで中断する。
-import type { Card, Face } from '../lib/cards';
+import { CIV_NAME, type Card, type Face } from '../lib/cards';
 import type { Cond, Count, Dest, Op, Sel, Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
@@ -71,6 +71,14 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.notColorless && !civs.length) return false;
+  if (sel.raceRef || sel.civRef || sel.costRef || sel.powerRef) {
+    const cv = s.chosenValue ?? {};
+    const f = L(s.cards[iid].cid)?.faces[s.cards[iid].face];
+    if (sel.raceRef && !(cv.race && (f?.races ?? []).some((r) => r.includes(cv.race!)))) return false;
+    if (sel.civRef && !(cv.civ && civs.some((x) => CIV_NAME[x] === cv.civ))) return false;
+    if (sel.costRef && !(cv.num != null && f?.cost === cv.num)) return false;
+    if (sel.powerRef && !(cv.num != null && power(s, L, iid) === cv.num)) return false;
+  }
   if (sel.civShareMana) {
     const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
     if (!civs.some((x) => have.has(x))) return false;
@@ -110,7 +118,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.civShareMana && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -275,6 +283,13 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.shift();
     ex.did = !!answer.yes;
     if (answer.yes) ex.ops.unshift(...op.body);
+  } else if (op.op === 'chooseValue') {
+    ex.ops.shift();
+    const v = (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
+    if (v != null) {
+      s.chosenValue = op.kind === 'race' ? { race: v } : op.kind === 'civ' ? { civ: v } : { num: +v };
+      log(s, ex.player, `${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : '数字'}「${v}」を選んだ`);
+    }
   } else if (op.op === 'modal') {
     ex.ops.shift();
     const picked = (answer.options ?? [0]).slice(0, op.pick);
@@ -282,6 +297,17 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.unshift(...bodies);
   }
   runExec(s, L, ex);
+}
+
+/** 種族・文明・数字の選択肢 (種族はバトルゾーンと手札にあるものを多い順に) */
+export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number', max?: number, exclude?: string): string[] {
+  if (kind === 'civ') return ['光', '水', '闇', '火', '自然'].filter((c) => !exclude?.includes(c));
+  if (kind === 'number') return Array.from({ length: (max ?? 12) + 1 }, (_, i) => String(i));
+  const count = new Map<string, number>();
+  for (const pl of s.players)
+    for (const i of [...pl.battle, ...pl.hand, ...pl.grave])
+      for (const r of L(s.cards[i].cid)?.faces[s.cards[i].face]?.races ?? []) if (!exclude || !r.includes(exclude)) count.set(r, (count.get(r) ?? 0) + 1);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map((x) => x[0]);
 }
 
 function ask(s: GameState, ex: Exec, p: Omit<Extract<GameState['pending'][number], { kind: 'choice' }>, 'kind' | 'exec'>) {
@@ -413,6 +439,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           const c = s.cards[i];
           if (op.what === 'untap') c.noUntap = true;
           else if (op.what === 'attack') c.noAttack = true;
+          else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
           else c.restrict = { attack: true, block: true, until: ex.player };
         }
         break;
@@ -594,6 +621,22 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         rc.sick = sick;
         log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
         break;
+      }
+      case 'chooseValue': {
+        const labels = valueLabels(s, L, op.kind, op.max, op.exclude);
+        if (!labels.length) break;
+        ex.valueLabels = labels;
+        ask(s, ex, {
+          player: ex.player,
+          mode: 'modal',
+          prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : '数字'}を1つ選ぶ`,
+          options: [],
+          labels,
+          min: 1,
+          max: 1,
+          purpose: op.hostile ? 'hostile' : 'benefit',
+        });
+        return;
       }
       case 'redirectAttack': {
         const at = s.attack;

@@ -38,7 +38,7 @@ export interface CardInst {
   /** パートナーが裏向きになったターン */
   downTurn?: number;
   /** 「次の○○のターンのはじめまで攻撃/ブロックできない」 (解除するプレイヤー) */
-  restrict?: { attack: boolean; block: boolean; until: number };
+  restrict?: { attack: boolean; block: boolean; until: number; noAttackPlayer?: number };
   /** 次のアンタップを1回しない */
   noUntap?: boolean;
   /** ジャストダイバー (このプレイヤーの次のターンのはじめまで選ばれず攻撃されない) */
@@ -137,6 +137,8 @@ export interface Exec {
   did: boolean;
   /** 表示用の名前 */
   name: string;
+  /** 種族・文明・数字の選択肢 */
+  valueLabels?: string[];
 }
 
 export interface AttackState {
@@ -177,6 +179,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** 直前に選んだ種族・文明・数字 */
+  chosenValue?: { race?: string; civ?: string; num?: number };
   /** このターンに誘発した能力の数 (無限ループ防止) */
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */

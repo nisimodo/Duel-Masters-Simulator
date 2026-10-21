@@ -8,7 +8,7 @@
 //  3. 展開: 残りのマナで一番価値の高いカードから出す (革命チェンジ/侵略持ちは温存)。
 //  4. 攻撃: とどめを刺せるなら総攻撃。メタクリーチャーを倒せるなら優先して攻撃。
 //     シールドが少なく次の相手ターンで負けそうならブロッカーは守りに残す。勝てないブロッカーへの無駄な攻撃はしない。
-import type { Card, Civ, Face } from '../lib/cards';
+import { CIV_NAME, type Card, type Civ, type Face } from '../lib/cards';
 import { stripReminder } from '../lib/triggers';
 import { effectHints, hintsFromText, type EffectHint } from './effects';
 import {
@@ -525,6 +525,25 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   }
   if (top.mode === 'modal') {
     const op = top.exec.ops[0];
+    if (op?.op === 'chooseValue') {
+      // 有利な効果なら自分の、不利な効果なら相手のクリーチャーで一番多い種族・文明・コスト
+      const who = op.hostile ? s.players.filter((_, i) => i !== p).flatMap((pl) => pl.battle) : [...s.players[p].battle, ...s.players[p].hand];
+      const tally = new Map<string, number>();
+      for (const i of who) {
+        const f = faceOf(s, L, i) ?? L(s.cards[i].cid)?.faces[0];
+        if (!f) continue;
+        const keys = op.kind === 'race' ? f.races : op.kind === 'civ' ? f.civs.map((c) => CIV_NAME[c]) : [String(f.cost)];
+        for (const k of keys) tally.set(k, (tally.get(k) ?? 0) + 1);
+      }
+      const labels = top.labels ?? [];
+      let best = 0;
+      let bestN = -1;
+      labels.forEach((l, i) => {
+        const n = [...tally.entries()].filter(([k]) => k.includes(l) || l.includes(k)).reduce((a, [, v]) => a + v, 0);
+        if (n > bestN) (best = i), (bestN = n);
+      });
+      return { t: 'choose', options: [best] };
+    }
     if (op?.op !== 'modal') return { t: 'choose', options: [0] };
     const scored = op.options.map((o, i) => ({ i, v: opsValue(s, p, L, o.body) })).sort((a, b) => b.v - a.v);
     return { t: 'choose', options: scored.slice(0, top.max).map((x) => x.i) };

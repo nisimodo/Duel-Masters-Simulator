@@ -100,6 +100,8 @@ const db = buildDB(
     cr('sgo', 3, 3000, ['シールド・ゴー(このクリーチャーが破壊された時、新しいシールドとして自分のシールドゾーンに表向きのまま加える。このクリーチャーが表向きで、シールドゾーンを離れる時、かわりに自分の墓地に置く)']),
     { id: 'manaevo', n: 'manaevo', img: '', f: [{ n: 'manaevo', t: '進化クリーチャー', c: 'F', co: 2, p: '9000', r: ['テスト'], x: ['マナ進化:テストを1体自分のマナゾーンから選び、このクリーチャーをその上に重ねつつバトルゾーンに出す。'] }] },
     { id: 'shift', n: 'shift', img: '', f: [{ n: 'shift', t: '進化クリーチャー', c: 'F', co: 7, p: '9000', r: ['テスト'], x: ['ソウルシフト(このクリーチャーを召喚する時、このクリーチャーの進化元クリーチャーを選ぶ。このクリーチャーのコストは、その選んだクリーチャーのコストだけ少なくなる)', '進化-自分のテスト1体の上に置く。'] }] },
+    { id: 'pickrace', n: 'pickrace', img: '', f: [{ n: 'pickrace', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['種族をひとつ選ぶ。自分の墓地から、その種族のクリーチャーを1体選び、自分の手札に加える。'] }] },
+    { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -605,5 +607,25 @@ describe('named mechanics', () => {
     const sh = find(s, 0, 'hand', 'shift')!;
     const err = applyAction(s, 0, { t: 'play', iid: sh, face: 0, pay: [], evo: [me], free: false }, L).error;
     expect(err).toMatch(/コスト5/);
+  });
+
+  it('種族を選ぶ: the chosen race filters later selections', () => {
+    let s = setup([
+      { p: 0, cid: 'pickrace', zone: 'hand' },
+      { p: 0, cid: 'drg', zone: 'battle' },
+    ]);
+    const d = find(s, 0, 'battle', 'drg')!;
+    s = act(s, 0, { t: 'move', iid: d, to: 'grave' });
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'pickrace')!, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.kind === 'choice' && top.mode === 'modal') {
+        const idx = (top.labels ?? []).indexOf('アーマード・ドラゴン');
+        expect(idx).toBeGreaterThanOrEqual(0);
+        s = act(s, 0, { t: 'choose', options: [idx] });
+      } else if (top.kind === 'choice') s = act(s, 0, { t: 'choose', picks: top.options.slice(0, 1) });
+      else s = act(s, 0, { t: 'resolve', use: true });
+    }
+    expect(s.cards[d].zone).toBe('hand');
   });
 });

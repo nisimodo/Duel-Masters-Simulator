@@ -53,6 +53,10 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     let changed = false;
     changed ||= take(/^バトルゾーンにある/, () => ((sel.zones = ['battle']), (zoneSet = true)));
     changed ||= take(/^自分のマナゾーンにあるカードと同じ文明を持つ、?/, () => (sel.civShareMana = true));
+    changed ||= take(/^〈種族〉の/, () => (sel.raceRef = true));
+    changed ||= take(/^〈文明〉の/, () => (sel.civRef = true));
+    changed ||= take(/^〈数字コスト〉の/, () => (sel.costRef = true));
+    changed ||= take(/^〈数字パワー〉の/, () => (sel.powerRef = true));
     changed ||= take(/^(自分|相手|各プレイヤー|すべてのプレイヤー|いずれかのプレイヤー)の/, (m) => {
       sel.owner = m[1] === '自分' ? 'self' : m[1] === '相手' ? 'opp' : 'any';
     });
