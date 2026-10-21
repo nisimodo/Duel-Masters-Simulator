@@ -170,6 +170,11 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // バトルゾーンを離れない (禁断の鼓動など)
+    if (own.some((x) => x.s === 'neverLeave')) {
+      log(s, c.owner, `${q(card!.faces[c.face].name)} はバトルゾーンを離れない`);
+      return 'battle';
+    }
     // 一時的に離れない
     if ((c.grants ?? []).some((g) => g.kws.includes('離れない'))) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は離れない`);
@@ -381,6 +386,8 @@ export function moveCard(
       }
     }
   }
+  // 「このカードがバトルゾーン以外のゾーンにあれば、自分はゲームに負ける」
+  if (from === 'battle' && dest !== 'battle' && card?.faces.some((f) => (f.statics ?? []).some((x) => x.s === 'loseIfLeave'))) lose(s, c.owner, `${card.name} がバトルゾーンを離れた`);
   if (s.mode === 'duepa' && from === 'battle' && dest !== 'battle' && isPartnerCard(s, iid)) {
     s.pending.push({ kind: 'partner', player: c.owner, iid });
   }
@@ -397,7 +404,8 @@ export function moveCard(
     }
     if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
     if (dest === 'battle' && from !== 'battle' && (card?.faces[c.face]?.races ?? []).some((r) => r.includes('コマンド'))) {
-      const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b));
+      const civs = cardCivs(L, c.cid);
+      const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b) && (cardCivs(L, s.cards[b].cid).some((x) => civs.includes(x)) || !cardCivs(L, s.cards[b].cid).length));
       if (host != null) removeSeal(s, L, host);
     }
     if (dest === 'battle' && from !== 'battle' && card?.faces[c.face]?.marked?.OL && (card.faces[c.face].statics ?? []).some((x) => x.s === 'buzz')) {
@@ -752,6 +760,28 @@ export function createGame(init: GameInit, L: Lookup): GameState {
     shuffleArr(s, pl.deck);
     shuffleArr(s, pl.gr);
   });
+  // 禁断の鼓動など: ゲーム開始時、封印を付けてバトルゾーンに置く
+  s.players.forEach((pl) => {
+    for (const i of [...pl.deck]) {
+      const f = L(s.cards[i].cid)?.faces[0];
+      const m = f?.text.map((l) => l.normalize('NFKC')).join('').match(/ゲーム開始時、(?:四隅に)?封印を(\d+|ひとつ|1)つ(?:ずつ)?付けて(?:リンクしたフィールドとして)?バトルゾーンに置く/);
+      if (!m) continue;
+      const n0 = (/\d/.test(m[1]) ? +m[1] : 1) * (/四隅/.test(m[0]) ? 4 : 1);
+      pl.deck.splice(pl.deck.indexOf(i), 1);
+      s.cards[i].zone = 'battle';
+      s.cards[i].faceUp = true;
+      pl.battle.push(i);
+      for (let k = 0; k < n0 && pl.deck.length; k++) {
+        const t = pl.deck.pop()!;
+        s.cards[t].zone = 'under';
+        s.cards[t].parent = i;
+        s.cards[t].sealOf = i;
+        s.cards[t].faceUp = false;
+        s.cards[i].under.push(t);
+      }
+      log(s, null, `${q(f!.name)} を封印${n0}つ付けてバトルゾーンに置いた`);
+    }
+  });
   const n = init.mode === 'duepa' ? 6 : 5;
   s.players.forEach((pl, p) => {
     for (let i = 0; i < n; i++) {
@@ -820,8 +850,7 @@ function startTurn(s: GameState, L: Lookup) {
       for (const m of avail.slice(0, d.cost)) s.cards[m].tapped = true;
       log(s, p, `コスト${d.cost}を支払った`);
     } else {
-      log(s, p, `コスト${d.cost}を支払えないのでゲームに負けた`);
-      pl.lost = true;
+      lose(s, p, `逆転撃のコスト${d.cost}を支払えなかった`);
     }
   }
   s.debts = (s.debts ?? []).filter((x) => x.player !== p);
@@ -894,10 +923,12 @@ function finishEndTurn(s: GameState, L: Lookup) {
 function advanceTurn(s: GameState, L: Lookup) {
   if (s.phase === 'over') return;
   let next = s.active;
-  for (let i = 0; i < s.players.length; i++) {
-    next = (next + 1) % s.players.length;
-    if (!s.players[next].lost) break;
-  }
+  if (s.extraTurnFor === s.active && !s.players[s.active].lost) s.extraTurnFor = undefined;
+  else
+    for (let i = 0; i < s.players.length; i++) {
+      next = (next + 1) % s.players.length;
+      if (!s.players[next].lost) break;
+    }
   s.active = next;
   s.turn++;
   s.attack = null;

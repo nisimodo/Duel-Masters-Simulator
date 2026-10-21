@@ -278,6 +278,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 封印
   {
     const N1 = '(\\d+|ひとつ|1つ)';
+    if (/^この(鼓動|フィールド)の/.test(s)) s = s.replace(/^この(鼓動|フィールド)の/, 'このカードの');
     const num = (x: string) => (/\d/.test(x) ? +x.replace(/つ$/, '') : 1);
     let sm = s.match(new RegExp(`^(?:相手は)?(?:それ|そのクリーチャー|それら|その\\d+体)に封印を${N1}つ?付ける$`));
     if (sm) return [{ op: 'seal', target: { ref: 'it' }, n: num(sm[1]) }];
@@ -395,6 +396,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const hit = nl && map.find(([re]) => re.test(nl[3]));
     if (nl && hit) return [{ op: 'grant', target: { ref: nl[2] === 'この' ? 'self' : 'it' }, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
+  if (/^このターンの後に(自分の)?ターンを(追加する|もう一度行う)$/.test(s) || /^このターンの後にもう一度自分のターンを行う$/.test(s)) return [{ op: 'extraTurn' }];
   // 相手が選ぶ・各プレイヤーなど
   {
     if (/^(このターン|そのターン)、(この|その)クリーチャーは(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(s))

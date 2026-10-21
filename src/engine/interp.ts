@@ -918,6 +918,11 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
         return;
       }
+      case 'extraTurn': {
+        s.extraTurnFor = ex.player;
+        log(s, ex.player, 'このターンの後に、もう一度自分のターンを行う');
+        break;
+      }
       case 'destroyExtreme': {
         const who = op.owner === 'self' ? ex.player : mainOpp(s, ex.player);
         const cs = s.players[who].battle.filter((b) => L(s.cards[b].cid)?.faces[s.cards[b].face]?.isCreature).sort((a, b) => power(s, L, a) - power(s, L, b));

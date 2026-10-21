@@ -104,6 +104,10 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** バトルゾーンを離れない */
+  | { s: 'neverLeave' }
+  /** このカードがバトルゾーン以外のゾーンにあれば負ける */
+  | { s: 'loseIfLeave' }
   /** 城: 自分のシールドをN枚選び、付けて要塞化する */
   | { s: 'castle'; n: number }
   /** タップしていても、アンタップしてブロックできる */
@@ -189,6 +193,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^この(鼓動|最終禁断フィールド|禁断フィールド|フィールド|カード|クリーチャー)は(、)?(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'neverLeave' }];
+  if (/^このカードがバトルゾーン以外のゾーンにあれば、(クリーチャーをすべて破壊し、)?自分はゲームに負ける$/.test(t0)) return [{ s: 'loseIfLeave' }];
   if ((m = t0.match(/^(自分のクリーチャー|このクリーチャー)は(?:すべて)?、?すべてのバトルに勝つ$/)))
     return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : { t: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' } }, kws: ['すべてのバトルに勝つ'], when: 'always' }];
   if ((m = t0.match(/^城[-ー―:：?]?自分のシールドを(ひとつ|1つ|\d+つ)選び、このカードを付けて要塞化する/))) return [{ s: 'castle', n: /\d/.test(m[1]) ? +m[1].replace('つ', '') : 1 }];

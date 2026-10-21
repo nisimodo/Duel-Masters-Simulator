@@ -111,6 +111,15 @@ const db = buildDB(
     { id: 'devo', n: 'devo', img: '', f: [{ n: 'devo', t: '進化クリーチャー', c: 'F', co: 2, p: '9000', r: ['テスト'], x: ['デッキ進化-自分の山札の上から1枚目を表向きにする。そのカードがクリーチャーであれば、このクリーチャーをその上に重ねつつバトルゾーンに出す。そのカードがクリーチャー以外であれば、このクリーチャーを自分の手札に戻す。'] }] },
     cr('dyn', 1, 3000, ['ダイナモ(バトルが始まる時、あるいはこのクリーチャーで攻撃できる時、このクリーチャーをタップしてもよい。そうした場合、そのターンの終わりまで、このクリーチャーのパワーと能力をバトルゾーンにある自分の他のダイナモ1体に加える)']),
     { id: 'castle', n: 'castle', img: '', f: [{ n: 'castle', t: '城', c: 'F', co: 2, p: null, r: [], x: ['城-自分のシールドをひとつ選び、このカードを付けて要塞化する。その要塞化されたシールドがシールドゾーンから離れた時、このカードを自分の墓地に置く。', 'バトルゾーンにある自分のクリーチャーすべてのパワーは+3000される。'] }] },
+    {
+      id: 'kodo',
+      n: 'kodo',
+      img: '',
+      f: [
+        { n: '禁断の鼓動', t: '禁断の鼓動', c: 'F', co: 0, p: null, r: [], x: ['この鼓動は、ゲーム開始時、封印を2つ付けてバトルゾーンに置く。', 'この鼓動はバトルゾーンを離れない。', '禁断解放-この鼓動の封印がすべてなくなった時、クリーチャー側に裏返す。'] },
+        { n: '禁断クリーチャー', t: '禁断クリーチャー', c: 'F', co: 99, p: '99999', r: [], x: ['このカードがバトルゾーン以外のゾーンにあれば、自分はゲームに負ける。'] },
+      ],
+    },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -731,5 +740,32 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'move', iid: sh, to: 'hand' });
     expect(s.cards[c].zone).toBe('grave');
     expect(power(s, L, v)).toBe(1000);
+  });
+
+  it('禁断: starts in play with seals, commands remove them, and it flips when all are gone', () => {
+    let s = setup([
+      { p: 0, cid: 'cmd', zone: 'hand' },
+      { p: 0, cid: 'cmd', zone: 'hand' },
+    ], 3);
+    // setup で作り直すので、禁断の鼓動はデッキに入れて createGame から配置させる
+    const g = createGame({ mode: 'duema', seed: 3, createdAt: 0, players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: [...Array(30).fill('vanilla'), ...(p === 0 ? ['kodo', 'cmd', 'cmd'] : [])], hyper: [], gr: [], partner: null })) } as never, L);
+    const k = g.cards.findIndex((c) => c.cid === 'kodo');
+    expect(g.cards[k].zone).toBe('battle');
+    expect(g.cards[k].under.filter((u) => g.cards[u].sealOf === k).length).toBe(2);
+    void s;
+    s = structuredClone(g);
+    s.pending = [];
+    s.turnStep = 'main';
+    s.active = 0;
+    for (const cid of ['cmd', 'cmd']) {
+      const c = s.cards.findIndex((x, i) => x.cid === cid && x.zone !== 'battle' && x.owner === 0 && i !== k && x.zone !== 'under');
+      const z = s.cards[c].zone as 'deck';
+      (s.players[0][z] as number[]).splice((s.players[0][z] as number[]).indexOf(c), 1);
+      s.cards[c].zone = 'hand';
+      s.players[0].hand.push(c);
+      s = act(s, 0, { t: 'play', iid: c, face: 0, pay: [], free: true, force: true });
+      for (let j = 0; j < 4 && s.pending.length; j++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    }
+    expect(s.cards[k].face).toBe(1);
   });
 });
