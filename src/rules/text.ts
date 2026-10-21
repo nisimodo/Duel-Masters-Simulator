@@ -76,6 +76,11 @@ export function mergeModal(lines: string[]): string[] {
       out[out.length - 1] = prev.replace(/次の能力を(\d+)回行う/, `次の能力を$1回[鬼${oniRep[1]}:${oniRep[2]}]行う`);
       continue;
     }
+    // 「〜。そうした場合、」で終わる行は次の行に続く
+    if (/(そうした場合|そうしたら)、$/.test(prev.trim()) && t) {
+      out[out.length - 1] = prev.trim() + t.replace(/^[▶►・]\s*/, '');
+      continue;
+    }
     // 「そうしたら、真上の▪能力をもうN度使う」: 直前の行の文をくり返す
     const again = t.match(/^(.*?)そうしたら、真上の.{0,3}能力をもう(\d+)度使う。?$/);
     if (again && prev) {

@@ -185,6 +185,7 @@ function parseCond(c: string): Cond | null {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
   }
+  if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以下(?:であ|で)?$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '<=', n: +m[2] };
   if (/^バトルゾーンにある自分のクリーチャーがこのクリーチャーだけであ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, cmp: '<=', n: 0 };
   if (/^このクリーチャーが(?:自分の)?墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
@@ -294,7 +295,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^そのクリーチャーのパワーが(\d+)(以下|以上)であれば、?(破壊する|持ち主の.+|タップする)$/, 'それがパワー$1$2のクリーチャーであれば、そのクリーチャーを$3')
     .replace(/^そのクリーチャーのパワーが(\d+)(以下|以上)であれば、?/, 'それがパワー$1$2のクリーチャーであれば、')
     .replace(/^(光|水|闇|火|自然)[:：]/, '')
-    .replace(/(すべてのプレイヤーに|相手に)見せてから/g, '')
+    .replace(/(すべてのプレイヤーに|相手に)見せてから、?/g, '')
+    .replace(/^その中から好きなカードを(\d+)枚、/, 'その中からカードを$1枚選び、')
     .replace(/^その中から(.+?)を(\d+)(体|枚)(?:見せ|表向きにし)、/, 'その中から$1を$2$3選び、')
     .replace(/^各相手は/, '相手は')
     .replace(/^相手は手札を(\d+)枚捨てる$/, '相手は自身の手札を$1枚選び、捨てる')
