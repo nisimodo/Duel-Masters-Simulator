@@ -10,7 +10,7 @@ export interface Sel {
   owner: 'self' | 'opp' | 'any';
   zones: SelZone[];
   /** カードの種類 */
-  kind: 'creature' | 'spell' | 'card' | 'element' | 'crossgear' | 'field' | 'tamaseed' | 'aura' | 'castle' | 'psychic' | 'dragheart' | 'gr' | 'duelist';
+  kind: 'creature' | 'spell' | 'card' | 'element' | 'crossgear' | 'field' | 'tamaseed' | 'aura' | 'castle' | 'psychic' | 'dragheart' | 'gr' | 'duelist' | 'creatureOrTama';
   civs?: Civ[];
   /** この文明を持たない (「闇以外の」) */
   civNot?: Civ[];

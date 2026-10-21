@@ -63,6 +63,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (k === 'crossgear' && !t.includes('クロスギア')) return false;
   if (k === 'field' && !t.includes('フィールド')) return false;
   if (k === 'tamaseed' && !t.includes('タマシード')) return false;
+  if (k === 'creatureOrTama' && !f.isCreature && !t.includes('タマシード')) return false;
   if (k === 'aura' && !t.includes('オーラ')) return false;
   if (k === 'castle' && !t.includes('城')) return false;
   if (sel.evolution && !f.isEvolution) return false;

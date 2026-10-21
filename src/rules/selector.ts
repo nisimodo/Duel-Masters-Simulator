@@ -6,6 +6,7 @@ const CIV: Record<string, Civ> = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自�
 
 const KINDS: [RegExp, Sel['kind'], Partial<Sel>?][] = [
   [/シールド$/, 'card', { zones: ['shield'] }],
+  [/クリーチャー(?:また|か)はタマシード$|クリーチャーかタマシード$/, 'creatureOrTama'],
   [/サイキック・クリーチャー$/, 'psychic'],
   [/GRクリーチャー$/, 'gr'],
   [/進化クリーチャー$/, 'creature', { evolution: true }],
