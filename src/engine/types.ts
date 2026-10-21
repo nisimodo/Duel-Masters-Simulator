@@ -103,6 +103,8 @@ export interface PlayerState {
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
+  /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
+  noLose?: { turn?: number; until?: number };
   /** このターンに唱えた呪文の数 */
   spellsCast?: { turn: number; n: number };
   /** このターンに攻撃した回数 */

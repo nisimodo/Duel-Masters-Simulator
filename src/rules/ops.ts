@@ -55,6 +55,8 @@ export interface Sel {
   tapped?: boolean;
   /** 「ブロッカー」を持つ 等 */
   hasKw?: string;
+  /** この能力を持たない */
+  hasKwNot?: string;
   /** 自分以外 (「他の」) */
   other?: boolean;
   /** このクリーチャーよりパワーが小さい */
@@ -168,6 +170,10 @@ export type Op =
   | { op: 'pickSameName'; n: number }
   /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */
   | { op: 'mugetsu'; each?: number; total?: number }
+  /** 攻撃しているクリーチャーを破壊する */
+  | { op: 'destroyAttacker' }
+  /** このターン (または次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない */
+  | { op: 'noLose'; until: 'turn' | 'nextOwnTurn' }
   /** 自分はゲームに勝つ (相手全員が負ける) */
   | { op: 'winGame' }
   /** 攻撃を中止する */

@@ -883,6 +883,7 @@ function startTurn(s: GameState, L: Lookup) {
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
+  for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
   const startEx = (s.startTurnExecs ?? []).filter((x) => x.player === p);
   s.startTurnExecs = (s.startTurnExecs ?? []).filter((x) => x.player !== p);
@@ -1110,6 +1111,10 @@ function settle(s: GameState, L: Lookup) {
 export function lose(s: GameState, p: number, reason: string) {
   const pl = s.players[p];
   if (pl.lost || s.phase === 'over') return;
+  if (pl.noLose && (pl.noLose.turn === s.turn || pl.noLose.until != null)) {
+    log(s, p, `${pl.name} はゲームに負けない (${reason})`);
+    return;
+  }
   pl.lost = true;
   pl.place = s.players.filter((x) => !x.lost).length + 1;
   log(s, p, `${pl.name} の敗北 (${reason})`);

@@ -116,6 +116,10 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.powerMin != null && pw < sel.powerMin) return false;
   if (sel.powerMax != null && pw > sel.powerMax) return false;
   if (sel.tapped != null && c.zone === 'battle' && c.tapped !== sel.tapped) return false;
+  if (sel.hasKwNot) {
+    const kw = sel.hasKwNot;
+    if ((kw === 'ブロッカー' && f.kw.blocker) || f.text.some((x) => x.normalize('NFKC').startsWith(kw))) return false;
+  }
   if (sel.hasKw) {
     const kw = sel.hasKw;
     const has =
@@ -133,7 +137,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -851,6 +855,19 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.cards[i].tapped = !s.cards[i].tapped;
           log(s, ex.player, `${q(nameOf(s, L, i))} を${s.cards[i].tapped ? 'タップ' : 'アンタップ'}`);
         }
+        break;
+      }
+      case 'destroyAttacker': {
+        const at = s.attack?.attacker;
+        if (at != null && s.cards[at].zone === 'battle') {
+          log(s, ex.player, `${q(nameOf(s, L, at))} を破壊`);
+          moveCard(s, L, at, 'grave');
+        }
+        break;
+      }
+      case 'noLose': {
+        s.players[ex.player].noLose = op.until === 'turn' ? { turn: s.turn } : { until: ex.player };
+        log(s, ex.player, `${op.until === 'turn' ? 'このターン' : '次の自分のターンのはじめまで'}、自分はゲームに負けず、相手はゲームに勝てない`);
         break;
       }
       case 'winGame': {

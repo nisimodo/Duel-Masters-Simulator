@@ -267,6 +267,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^([゠-ヿー・]+)以外をすべて/, '$1以外のクリーチャーをすべて')
+    .replace(/^好きな(?:枚)?数の(.+?)を(?=自分の(?:墓地|手札|マナゾーン)から)/, '$1を99枚まで、')
+    .replace(/^自分の山札の一番上のカードを表にして、?(?:自分の)?マナゾーンに置(く|いてもよい)$/, '自分の山札の上から1枚目をマナゾーンに置$1')
+    .replace(/^自分の山札を上から(\d+)枚、?表向きにする$/, '自分の山札の上から$1枚を表向きにする')
+    .replace(/^(?:バトルゾーンにある)?相手のクリーチャーを(\d+)体、選(ぶ|んでもよい)$/, '相手のクリーチャーを$1体選$2')
+    .replace(/^相手はバトルゾーンから自身の/, '相手は自身の')
+    .replace(/^相手は、?(?:バトルゾーンにある)?自身の(クリーチャー)すべてを、?持ち主の(墓地|手札|マナゾーン)に/, '相手の$1をすべて持ち主の$2に')
+    .replace(/^(?:それが)?([゠-ヿー・]+|進化クリーチャー)以外(?:のカード)?であれば、/, 'それが$1以外のカードであれば、')
     .replace(/この進化したクリーチャー/g, 'このクリーチャー')
     .replace(/^(それが呪文(?:であれば|なら)、)自分がコストを支払わずに唱え/, '$1その呪文をコストを支払わずに唱え')
     .replace(/^バトルゾーンから(?=[^、]+を\d+体)/, '')
@@ -432,7 +440,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:その|それと同じ)枚数と同じ数のカードを引く$|^その枚数と同じ枚数のカードを引く$|^それと同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItPlus', plus: 0 }];
   if (/^(この|その)クリーチャーは、?可能(であれば|なら)ブロックする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['強制ブロック'], until: 'nextOwnTurn' }];
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
-  if (/^攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
+  if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
+  if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  {
+    const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
+    if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
+    if (/^(?:そのカード|それ)を自分の手札またはマナゾーンに(?:加える|置く)$/.test(s))
+      return [{ op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'マナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'mana' }] }] }];
+    const ds = s.match(/^([^、]+?)をすべて、自分の(墓地|手札|マナゾーン)から(.+)$/);
+    const dsel = ds && parseSel(ds[1], { zones: [ZONE[ds[2]]] });
+    const dops = ds && verbOps(ds[3], { ref: 'it' });
+    if (ds && dsel && dops) return [{ op: 'choose', target: { ref: 'sel', sel: { ...dsel, owner: 'self', zones: [ZONE[ds[2]]] }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' }, ...dops];
+  }
   {
     const db = s.match(/^自分の山札の一番下のカードを(墓地|マナゾーン|手札)に(?:置く|加える)$/);
     if (db) return [{ op: 'deckBottomTo', to: db[1] === '墓地' ? 'grave' : db[1] === '手札' ? 'hand' : 'mana' }];

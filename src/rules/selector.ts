@@ -81,6 +81,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^パワー(\d+)以下の/, (m) => (sel.powerMax = +m[1]));
     changed ||= take(/^パワー(\d+)以上の/, (m) => (sel.powerMin = +m[1]));
     changed ||= take(/^「([^」]+)」を持つ/, (m) => (sel.hasKw = m[1]));
+    changed ||= take(/^、?「([^」]+)」(?:以外の|を持たない)/, (m) => (sel.hasKwNot = m[1]));
     changed ||= take(/^(タップされていない|タップしていない)/, () => (sel.tapped = false));
     changed ||= take(/^(タップされている|タップしている|タップ状態の)/, () => (sel.tapped = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)(?:ではない|以外の)/, (m) => {
@@ -97,7 +98,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));
     changed ||= take(/^単色の?/, () => (sel.mono = true));
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
-    changed ||= take(/^(?:進化ではない|進化以外の|進化クリーチャーではない|進化でない)/, () => (sel.nonEvolution = true));
+    changed ||= take(/^(?:進化ではない|進化以外の|進化クリーチャーではない|進化クリーチャー以外の|進化でない)/, () => (sel.nonEvolution = true));
     changed ||= take(/^このクリーチャーよりパワーが小さい/, () => (sel.powerLtSelf = true));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
