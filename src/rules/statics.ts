@@ -140,6 +140,10 @@ export type StaticSpec =
   | { s: 'gBreaker' }
   /** このクリーチャーは召喚できない */
   | { s: 'noSummon' }
+  /** 相手のクリーチャーは出たターン、自分を攻撃できない */
+  | { s: 'oppNewNoAttack' }
+  /** 条件つきで、このクリーチャーの召喚コストを増減する */
+  | { s: 'selfCost'; delta: number; cond?: StaticCond; floor: number }
   /** 〇ステルス: 相手のマナゾーンにその文明のカードがあればブロックされない */
   | { s: 'stealth'; civ: Civ }
   /** 〇スレイヤー: その文明のクリーチャーとバトルした時、相手を破壊する */
@@ -213,6 +217,11 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^自分の(墓地|マナゾーン|手札)に(.+?)が(\d+)(?:体|枚|つ)(?:以上|でも)あれば、(.+)$/))) {
+    const z = m[1] === '墓地' ? 'grave' : m[1] === '手札' ? 'hand' : 'mana';
+    const sel = parseSel(m[2], { zones: [z] });
+    if (sel) return { cond: { c: 'countAtLeast', sel: { ...sel, owner: 'self', zones: [z], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, n: +m[3] }, rest: m[4] };
+  }
   if ((m = t.match(/^自分の(墓地|マナゾーン)に(.+?)が(\d+)(?:体|枚|つ)以上なければ、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : 'mana';
     const sel = parseSel(m[2], { zones: [z] });
@@ -291,6 +300,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  if (/^相手のクリーチャーは、?(?:バトルゾーンに)?出たターン、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNewNoAttack' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)ステルス/))) return [{ s: 'stealth', civ: CIV_OF[m[1]] }];
   if ((m = t0.match(/^((?:光|水|闇|火|自然)(?:・(?:光|水|闇|火|自然))*)スレイヤー/))) return [{ s: 'civSlayer', civs: m[1].split('・').map((x) => CIV_OF[x]) }];
   if (/^このクリーチャーは、?タップしてバトルゾーンに置かれる$/.test(t0)) return [{ s: 'entersTapped' }];
@@ -503,6 +513,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
       return out;
     }
   }
+  // ---- 条件つきで、このクリーチャーの召喚コストを増減 ----
+  if (cond && (m = body.match(/^このクリーチャーの(?:召喚)?コストを(\d+)(少なく|多く)する(?:[、。]?ただし.*)?$/)))
+    return [{ s: 'selfCost', delta: (m[2] === '少なく' ? -1 : 1) * +m[1], cond, floor: floorOf(full) }];
   // ---- 条件つきの「ブロックされない」「攻撃できない」など ----
   if (cond && (m = body.replace(/することが(でき)/, '$1').match(/^このクリーチャーは、?(ブロックされない|攻撃されない|攻撃できない|相手プレイヤーを攻撃できない)$/))) {
     const kw = m[1] === '相手プレイヤーを攻撃できない' ? 'プレイヤー攻撃不可' : m[1];

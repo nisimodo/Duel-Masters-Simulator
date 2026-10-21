@@ -1245,7 +1245,9 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const k = kwOf(s, L, iid);
   const mine = ownStatics(s, L, iid);
   const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'));
-  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer);
+  // 「相手のクリーチャーは出たターン、自分を攻撃できない」
+  const guarded = (o: number) => c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack');
+  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };

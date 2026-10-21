@@ -265,6 +265,11 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   // 「このターン、次に召喚する〇〇のコストをN少なくする」
   const ns = s.players[p].nextSummon;
   if (ns && ns.turn === s.turn && f.isCreature && matchesSel(s, L, iid, { ...ns.sel, zones: [c.zone as never] })) cost = Math.max(1, cost - ns.n);
+  // 条件つきの「このクリーチャーの召喚コストをN少なくする」
+  for (const sp of f.statics ?? []) {
+    if (sp.s !== 'selfCost' || !condOk(s, L, { src: iid, owner: p, spec: sp }, sp.cond, iid)) continue;
+    cost = sp.delta < 0 ? Math.max(Math.min(cost, sp.floor), cost + sp.delta) : cost + sp.delta;
+  }
   // シンパシー (自分の〇〇1体につき1少なく)
   for (const sp of f.statics ?? []) {
     if (sp.s !== 'sympathy') continue;
