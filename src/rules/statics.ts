@@ -473,6 +473,18 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
   if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
   if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
+  if ((m = t0.match(/^(光|水|闇|火|自然)のクリーチャーを召喚するコストと(?:光|水|闇|火|自然)の呪文を唱えるコストは、?それぞれ([+-])(\d+)される$/))) {
+    const civ = CIV_OF[m[1]];
+    const d = (m[2] === '-' ? -1 : 1) * +m[3];
+    return [
+      { s: 'cost', side: 'any', sel: { owner: 'any', zones: ['hand', 'mana', 'grave', 'shield', 'deck'], kind: 'creature', civs: [civ] }, action: 'summon', delta: d, floor: 1 },
+      { s: 'cost', side: 'any', sel: { owner: 'any', zones: ['hand', 'mana', 'grave', 'shield', 'deck'], kind: 'spell', civs: [civ] }, action: 'cast', delta: d, floor: 1 },
+    ];
+  }
+  if ((m = t0.match(/^すべての(.+?)は、?(攻撃(?:また|も)はブロック|攻撃もブロックも|攻撃|ブロック)されない$/)) && parseSel(m[1])) {
+    const kws = m[2] === '攻撃' ? ['攻撃されない'] : m[2] === 'ブロック' ? ['ブロックされない'] : ['攻撃されない', 'ブロックされない'];
+    return [{ s: 'grant', target: { t: 'sel', sel: parseSel(m[1])! }, kws, when: 'always' }];
+  }
   if ((m = t0.match(/^((?:自分|相手)の.+?)は、?(攻撃(?:また|も)はブロック|攻撃もブロックも|攻撃|ブロック)されない$/))) {
     const tg = target(m[1]);
     const kws = m[2] === '攻撃' ? ['攻撃されない'] : m[2] === 'ブロック' ? ['ブロックされない'] : ['攻撃されない', 'ブロックされない'];
