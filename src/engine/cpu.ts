@@ -24,6 +24,7 @@ import {
 } from './engine';
 import { matchesCond } from './cond';
 import type { Action, GameState } from './types';
+import type { Op } from '../rules/ops';
 
 const opps = (s: GameState, p: number) => s.players.map((_, i) => i).filter((i) => i !== p && !s.players[i].lost);
 
@@ -413,6 +414,85 @@ function chooseAttack(s: GameState, p: number, L: Lookup): Action | null {
   return null;
 }
 
+// ---------- 効果の選択 ----------
+
+/** 自分のカードの価値 (高いほど手放したくない) */
+function ownValue(s: GameState, L: Lookup, iid: number): number {
+  const c = s.cards[iid];
+  const card = L(c.cid);
+  if (!card) return 0;
+  const f = c.zone === 'battle' ? (card.faces[c.face] ?? card.faces[0]) : (card.faces.find((x) => x.isCreature) ?? card.faces[0]);
+  let v = f.cost * 2 + (f.power ?? 0) / 2000 + Math.min(f.kw.breaker, 5);
+  if (f.kw.blocker) v += 1;
+  if (f.kw.shieldTrigger && c.zone === 'hand') v -= 1;
+  v += metaScore(f) / 3;
+  return v;
+}
+
+/** 効果の選択肢 (opsの塊) のおおまかな価値 */
+function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
+  let v = 0;
+  for (const o of ops) {
+    if (o.op === 'draw') v += (o.who === 'self' ? 4 : -4) * o.n;
+    else if (o.op === 'top') v += o.to === 'mana' || o.to === 'manaTapped' ? 3 * o.n : o.to === 'shield' ? 4 * o.n : o.to === 'hand' ? 4 * o.n : 1;
+    else if (o.op === 'choose' && o.target.ref === 'sel') {
+      const sel = o.target.sel;
+      const hostile = o.purpose === 'hostile';
+      const pool = opps(s, p).flatMap((x) => s.players[x].battle);
+      if (hostile && sel.owner !== 'self') v += pool.length ? 8 + Math.max(...pool.map((i) => threatOf(s, L, i))) : -2;
+      else if (o.purpose === 'sacrifice') v -= 5;
+      else v += 4;
+    } else if (o.op === 'discard') v += o.who === 'opp' ? 5 : -4;
+    else if (o.op === 'grSummon') v += 6 * o.n;
+    else if (o.op === 'breakShield') v += 3;
+    else if (o.op === 'tap' || o.op === 'power' || o.op === 'restrict') v += 2;
+    else if (o.op === 'optional' || o.op === 'if') v += opsValue(s, p, L, o.op === 'if' ? o.body : o.body) / 2;
+  }
+  return v;
+}
+
+function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameState['pending'][number], { kind: 'choice' }>): Action {
+  if (top.mode === 'yesno') {
+    const op = top.exec.ops[0];
+    const deckLow = s.players[p].deck.length <= 8;
+    const risky = op?.op === 'optional' && op.body.some((o) => o.op === 'draw' || (o.op === 'top' && o.who === 'self'));
+    if (deckLow && risky) return { t: 'choose', yes: false };
+    if (op?.op === 'optional' && opsValue(s, p, L, op.body) < 0 && !top.exec.ops.slice(1).some((o) => o.op === 'if' && o.cond.c === 'did'))
+      return { t: 'choose', yes: false };
+    return { t: 'choose', yes: true };
+  }
+  if (top.mode === 'modal') {
+    const op = top.exec.ops[0];
+    if (op?.op !== 'modal') return { t: 'choose', options: [0] };
+    const scored = op.options.map((o, i) => ({ i, v: opsValue(s, p, L, o.body) })).sort((a, b) => b.v - a.v);
+    return { t: 'choose', options: scored.slice(0, top.max).map((x) => x.i) };
+  }
+  // カードを選ぶ
+  const score = (i: number) => {
+    const mine = s.cards[i].owner === p;
+    if (top.purpose === 'hostile') return mine ? -100 - ownValue(s, L, i) : threatOf(s, L, i) + ownValue(s, L, i) / 4;
+    if (top.purpose === 'sacrifice') return -ownValue(s, L, i);
+    if (top.purpose === 'benefit') return mine ? ownValue(s, L, i) : -threatOf(s, L, i);
+    return 0;
+  };
+  const ranked = [...top.options].sort((a, b) => score(b) - score(a));
+  const n = top.purpose === 'sacrifice' ? top.min : top.max;
+  if (top.sumPowerMax != null) {
+    // パワーの合計の上限内で、価値の高い順に詰める
+    const picks: number[] = [];
+    let sum = 0;
+    for (const i of ranked) {
+      const pw = power(s, L, i);
+      if (sum + pw <= top.sumPowerMax && picks.length < top.max) {
+        picks.push(i);
+        sum += pw;
+      }
+    }
+    return { t: 'choose', picks };
+  }
+  return { t: 'choose', picks: ranked.slice(0, Math.max(top.min, n)) };
+}
+
 // ---------- 判断 ----------
 
 /** CPUの次の一手 (null = 何もしない) */
@@ -471,6 +551,8 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         return { t: 'partner', yes: true };
       case 'ability':
         return { t: 'resolve', use: true };
+      case 'choice':
+        return chooseForChoice(s, p, L, top);
     }
   }
   if (s.active !== p || s.phase === 'over') return null;

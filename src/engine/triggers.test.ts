@@ -56,6 +56,10 @@ const db = buildDB(
     cr('start', '朝の精', 1, 1000, ['自分のターンのはじめに、山札の上から1枚目をマナゾーンに置く。']),
     cr('dead', '遺言', 1, 1000, ['このクリーチャーが破壊された時、カードを2枚引く。']),
     cr('vanilla', 'バニラ', 1, 1000, []),
+    cr('dragonfan', 'ドラゴン好き', 1, 1000, ['自分の他のドラゴンが出た時、カードを1枚引く。']),
+    cr('oncer', '一度だけ', 1, 1000, ['各ターンに1度、自分の他のクリーチャーが出た時、カードを1枚引く。']),
+    cr('miller', '墓地肥やし', 1, 1000, ['このクリーチャーが出た時、自分の山札の上から3枚を墓地に置く。']),
+    { id: 'dragon', n: 'テストドラゴン', img: '', f: [{ n: 'テストドラゴン', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['アーマード・ドラゴン'], x: [] }] },
     sp('kill', '破壊呪文', 1, ['相手のクリーチャーを1体破壊する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -80,11 +84,18 @@ function setup(hand0: string[], hand1: string[], battle1: string[] = []): GameSt
   );
   // 手札とバトルゾーンを強制的に組み替える
   s = structuredClone(s);
+  // 初期の手札・シールドに入っていることもあるので全ゾーンから探す (手札に既にあるものは使わない)
+  const used = new Set<number>();
   const take = (p: number, cid: string) => {
     const pl = s.players[p];
-    const iid = pl.deck.find((i) => s.cards[i].cid === cid)!;
-    pl.deck.splice(pl.deck.indexOf(iid), 1);
-    return iid;
+    for (const z of ['deck', 'shield', 'hand'] as const) {
+      const iid = pl[z].find((i) => s.cards[i].cid === cid && !used.has(i));
+      if (iid == null) continue;
+      pl[z].splice(pl[z].indexOf(iid), 1);
+      used.add(iid);
+      return iid;
+    }
+    throw new Error(`card not found: ${cid}`);
   };
   for (const [p, list] of [
     [0, hand0],
@@ -122,6 +133,33 @@ function act(s: GameState, p: number, a: Action): GameState {
 const handIid = (s: GameState, p: number, cid: string) => s.players[p].hand.find((i) => s.cards[i].cid === cid)!;
 const pay1 = (s: GameState, p: number) => [s.players[p].mana.find((i) => !s.cards[i].tapped)!];
 
+describe('trigger conditions', () => {
+  it('mill goes to the graveyard (not mana)', () => {
+    let s = setup(['miller'], []);
+    const mana = s.players[0].mana.length;
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'miller'), face: 0, pay: pay1(s, 0) });
+    expect(s.players[0].grave.length).toBe(3);
+    expect(s.players[0].mana.length).toBe(mana);
+  });
+  it('「自分の他のドラゴンが出た時」 fires only for dragons', () => {
+    let s = setup(['dragonfan', 'vanilla', 'dragon'], []);
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'dragonfan'), face: 0, pay: pay1(s, 0) });
+    const h = s.players[0].hand.length;
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'vanilla'), face: 0, pay: pay1(s, 0) });
+    expect(s.players[0].hand.length).toBe(h - 1);
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'dragon'), face: 0, pay: pay1(s, 0) });
+    expect(s.players[0].hand.length).toBe(h - 2 + 1);
+  });
+  it('「各ターンに1度」 fires once per turn', () => {
+    let s = setup(['oncer', 'vanilla', 'dragon'], []);
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'oncer'), face: 0, pay: [] , free: true, force: true });
+    const h = s.players[0].hand.length;
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'vanilla'), face: 0, pay: [], free: true, force: true });
+    s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'dragon'), face: 0, pay: [], free: true, force: true });
+    expect(s.players[0].hand.length).toBe(h - 2 + 1);
+  });
+});
+
 describe('triggered abilities', () => {
   it('auto-resolves a mandatory "出た時" draw', () => {
     let s = setup(['draw'], []);
@@ -132,21 +170,18 @@ describe('triggered abilities', () => {
     expect(s.log.some((l) => l.m.includes('出た時'))).toBe(true);
   });
 
-  it('spell effect waits for resolution, then opponent "相手が呪文を唱えた時" triggers', () => {
+  it('spell effect resolves automatically, then opponent "相手が呪文を唱えた時" triggers', () => {
     let s = setup(['kill'], [], ['watch']);
     s = act(s, 0, { t: 'play', iid: handIid(s, 0, 'kill'), face: 0, pay: pay1(s, 0) });
-    expect(s.pending.map((x) => x.kind === 'ability' && x.event)).toEqual(['spell', 'spellOpp']);
-    expect(s.pending[0].player).toBe(0);
-    expect(s.pending[1].player).toBe(1);
-    // ターンプレイヤーは保留中に攻撃・ターン終了できない
+    // 破壊呪文は自動で解決 (対象が1体なので選択なし) → 見張りは墓地へ
+    expect(s.players[1].battle.length).toBe(0);
+    expect(s.players[1].grave.some((i) => s.cards[i].cid === 'watch')).toBe(true);
+    // 見張りの「相手が呪文を唱えた時、カードを1枚引いてもよい」は誘発済みなので、相手が使うか選ぶ
+    expect(s.pending[0]).toMatchObject({ kind: 'choice', player: 1, mode: 'yesno' });
     expect(applyAction(s, 0, { t: 'endTurn' }, L).error).toBeTruthy();
-    // 呪文の効果を手動で処理 (相手の見張りを破壊)
-    const target = s.players[1].battle[0];
-    s = act(s, 0, { t: 'move', iid: target, to: 'grave' });
-    s = act(s, 0, { t: 'resolve', use: true });
-    // 見張りは破壊されたが、唱えた時の能力はすでに誘発しているので相手が処理する
-    expect(s.pending[0].player).toBe(1);
-    s = act(s, 1, { t: 'resolve', use: false });
+    const hand = s.players[1].hand.length;
+    s = act(s, 1, { t: 'choose', yes: true });
+    expect(s.players[1].hand.length).toBe(hand + 1);
     expect(s.pending).toEqual([]);
   });
 

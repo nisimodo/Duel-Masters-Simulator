@@ -1,4 +1,5 @@
 import type { DeckType } from '../lib/deck';
+import type { Op, Purpose } from '../rules/ops';
 
 export type ZoneName = 'deck' | 'hand' | 'mana' | 'battle' | 'shield' | 'grave' | 'hyper' | 'gr' | 'partner';
 export const ZONE_LABEL: Record<ZoneName, string> = {
@@ -36,6 +37,12 @@ export interface CardInst {
   revealed: boolean;
   /** パートナーが裏向きになったターン */
   downTurn?: number;
+  /** 「次の○○のターンのはじめまで攻撃/ブロックできない」 (解除するプレイヤー) */
+  restrict?: { attack: boolean; block: boolean; until: number };
+  /** 次のアンタップを1回しない */
+  noUntap?: boolean;
+  /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
+  grants?: { kws: string[]; until: number }[];
 }
 
 export interface PlayerState {
@@ -66,6 +73,22 @@ export type Pending =
   | { kind: 'trigger'; player: number; iid: number; strike: boolean; trigger: boolean }
   | { kind: 'partner'; player: number; iid: number }
   | {
+      kind: 'choice';
+      player: number;
+      mode: 'cards' | 'yesno' | 'modal';
+      prompt: string;
+      /** 選択肢のカード (cards) */
+      options: number[];
+      /** 選択肢の文 (modal) */
+      labels?: string[];
+      min: number;
+      max: number;
+      purpose: Purpose;
+      /** 選んだクリーチャーのパワーの合計の上限 */
+      sumPowerMax?: number;
+      exec: Exec;
+    }
+  | {
       kind: 'ability';
       player: number;
       /** 能力の発生源 */
@@ -79,6 +102,20 @@ export type Pending =
       /** 選択や条件がないので自動で実行する */
       auto: boolean;
     };
+
+/** 実行中の効果プログラム */
+export interface Exec {
+  player: number;
+  src: number;
+  ops: Op[];
+  it: number[];
+  looked: number[];
+  /** 2つ目の選択の前に保存したカード */
+  saved?: number[];
+  did: boolean;
+  /** 表示用の名前 */
+  name: string;
+}
 
 export interface AttackState {
   attacker: number;
@@ -133,6 +170,10 @@ export interface GameState {
   seq: number;
   /** パートナーカードのiid (デュエパ) */
   partnerIids: number[];
+  /** 攻撃の後に実行する効果 */
+  delayed?: Exec[];
+  /** このターンに使った「各ターンに1度」の能力 */
+  usedOnce?: string[];
 }
 
 export type Action =
@@ -145,6 +186,7 @@ export type Action =
   | { t: 'trigger'; use: boolean; face?: number; target?: number | null }
   | { t: 'partner'; yes: boolean }
   | { t: 'resolve'; use: boolean }
+  | { t: 'choose'; picks?: number[]; yes?: boolean; options?: number[] }
   | { t: 'endTurn' }
   | { t: 'concede' }
   // ---- 手動操作 (カード固有の効果を処理するため) ----

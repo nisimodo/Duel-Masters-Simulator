@@ -769,6 +769,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
 
       {myPending && myPending.kind !== 'breakSel' && myPending.kind !== 'ability' && (
         <PendingDialog
+          key={s.seq}
           s={s}
           L={L}
           db={db}

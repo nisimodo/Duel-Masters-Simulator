@@ -145,7 +145,74 @@ export function PendingDialog({
     [s, L, pending.player],
   );
   void db;
+  const [picks, setPicks] = useState<number[]>([]);
   switch (pending.kind) {
+    case 'choice': {
+      const ok = picks.length >= pending.min && picks.length <= pending.max;
+      if (pending.mode === 'yesno')
+        return (
+          <Modal title="確認">
+            <div>{pending.prompt}</div>
+            <div className="row">
+              <button className="primary" onClick={() => onSubmit({ t: 'choose', yes: true })}>
+                はい
+              </button>
+              <button onClick={() => onSubmit({ t: 'choose', yes: false })}>いいえ</button>
+            </div>
+          </Modal>
+        );
+      if (pending.mode === 'modal')
+        return (
+          <Modal title="効果を選ぶ">
+            <div className="small">
+              {pending.prompt} ({picks.length}/{pending.max})
+            </div>
+            <div className="col">
+              {(pending.labels ?? []).map((l, i) => (
+                <button
+                  key={i}
+                  className={picks.includes(i) ? 'primary' : ''}
+                  style={{ textAlign: 'left', whiteSpace: 'normal' }}
+                  onClick={() => setPicks(picks.includes(i) ? picks.filter((x) => x !== i) : [...picks, i].slice(-pending.max))}
+                >
+                  ▼ {l}
+                </button>
+              ))}
+            </div>
+            <button className="primary" disabled={!ok} onClick={() => onSubmit({ t: 'choose', options: picks })}>
+              決定
+            </button>
+          </Modal>
+        );
+      return (
+        <Modal title="カードを選ぶ">
+          <div className="small">
+            {pending.prompt} ({picks.length}/{pending.min === pending.max ? pending.max : `${pending.min}～${pending.max}`})
+          </div>
+          <div className="row" style={{ maxWidth: 820 }}>
+            {pending.options.map((o) => (
+              <div key={o} className="col" style={{ alignItems: 'center', gap: 2 }}>
+                {s.cards[o].zone === 'shield' ? (
+                  // シールドは裏向きのまま選ぶ
+                  <CardBack width={90} onClick={() => setPicks(picks.includes(o) ? picks.filter((x) => x !== o) : [...picks, o].slice(-pending.max))}>
+                    {picks.includes(o) && <span className="count">✓</span>}
+                  </CardBack>
+                ) : (
+                  img(o, {
+                    selected: picks.includes(o),
+                    onClick: () => setPicks(picks.includes(o) ? picks.filter((x) => x !== o) : [...picks, o].slice(-pending.max)),
+                  })
+                )}
+                <span className="small muted">{s.players[s.cards[o].owner]?.name}</span>
+              </div>
+            ))}
+          </div>
+          <button className="primary" disabled={!ok} onClick={() => onSubmit({ t: 'choose', picks })}>
+            決定
+          </button>
+        </Modal>
+      );
+    }
     case 'attackOpt':
       return (
         <Modal title="革命チェンジ / 侵略">

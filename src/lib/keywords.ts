@@ -1,3 +1,5 @@
+import { normText } from '../rules/text';
+
 // カードテキストからキーワード能力を抽出する。
 // ここで拾った能力はルールエンジンが自動処理する。それ以外の効果はプレイヤーが手動で処理する。
 
@@ -78,7 +80,7 @@ export function parseCond(text: string): CondSpec {
 const has = (lines: string[], re: RegExp) => lines.some((l) => re.test(l));
 
 export function parseKeywords(rawLines: string[], type: string): Keywords {
-  const lines = rawLines.map((l) => l.normalize('NFKC'));
+  const lines = rawLines.map((l) => normText(l));
   const all = lines.join('\n');
   let breaker = 1;
   if (has(lines, /^ワールド・ブレイカー/)) breaker = 99;

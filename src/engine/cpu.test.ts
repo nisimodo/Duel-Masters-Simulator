@@ -161,22 +161,23 @@ describe('CPU priorities', () => {
 });
 
 import { hintsFromText } from './effects';
+import { startExec } from './interp';
+import { parseEffect } from '../rules/parse';
 describe('mass removal', () => {
   it('parses conditions', () => {
     expect(hintsFromText(['コスト5以上のクリーチャーをすべて、持ち主の手札に戻す。'])[0]).toMatchObject({ kind: 'massBounce', minCost: 5, oppOnly: false });
     expect(hintsFromText(['相手のパワー3000以下のクリーチャーをすべて破壊する。'])[0]).toMatchObject({ kind: 'massDestroy', maxPower: 3000, oppOnly: true });
   });
-  it('CPU bounces every matching creature on both sides', () => {
+  it('bounces every matching creature on both sides', () => {
     const s = setup({ myBattle: ['big', 'cheap'], oppBattle: ['beater', 'meta'] });
-    s.pending = [
-      { kind: 'ability', player: 0, src: 0, cid: 'x', face: 0, event: 'spell', text: '', effect: 'コスト5以上のクリーチャーをすべて、持ち主の手札に戻す。', optional: false, auto: false },
-    ];
-    const moved = cpuPlan(s, 0, L)
-      .filter((a) => a.t === 'move')
-      .map((a) => cidOf(s, (a as { iid: number }).iid))
-      .sort();
-    expect(moved).toEqual(['beater', 'big']);
+    startExec(s, L, 0, s.players[0].battle[0], parseEffect('コスト5以上のクリーチャーをすべて、持ち主の手札に戻す。').ops, 'test');
+    const inHand = (p: number) => s.players[p].hand.map((i) => cidOf(s, i));
+    expect(inHand(0)).toContain('big');
+    expect(inHand(1)).toContain('beater');
+    expect(s.players[0].battle.map((i) => cidOf(s, i))).toEqual(['cheap']);
+    expect(s.players[1].battle.map((i) => cidOf(s, i))).toEqual(['meta']);
   });
+
 });
 
 describe('reveal and play for free (清永)', () => {

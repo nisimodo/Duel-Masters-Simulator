@@ -1,21 +1,23 @@
 // デュエル・マスターズ ルールエンジン (決定的: 同じ初期状態とアクション列からは必ず同じ状態になる)
 // キーワード能力とゲームの進行は自動、カード固有の効果は手動操作アクションで処理する。
 import type { Card, Civ, Face } from '../lib/cards';
+import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
+import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 
 export type Lookup = (cid: string) => Card | undefined;
 
 // ---------- 乱数 (mulberry32) ----------
-function rand(s: GameState): number {
+export function rand(s: GameState): number {
   let t = (s.rng = (s.rng + 0x6d2b79f5) >>> 0);
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
-function shuffleArr(s: GameState, a: number[]) {
+export function shuffleArr(s: GameState, a: number[]) {
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rand(s) * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
@@ -36,12 +38,39 @@ export function nameOf(s: GameState, L: Lookup, iid: number): string {
   if (c.zone === 'battle' || c.zone === 'hyper') return card.faces[c.face]?.name ?? card.name;
   return card.name;
 }
-const q = (n: string) => `《${n}》`;
+export const q = (n: string) => `《${n}》`;
 
-function log(s: GameState, p: number | null, m: string) {
+export function log(s: GameState, p: number | null, m: string) {
   s.log.push({ p, m });
   if (s.log.length > 400) s.log.splice(0, s.log.length - 400);
 }
+
+/** 一時的に与えられたものも含めたキーワード能力 */
+export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
+  const f = faceOf(s, L, iid);
+  const base: Keywords = f ? f.kw : EMPTY_KW;
+  const g = s.cards[iid].grants;
+  if (!g?.length) return base;
+  const k: Keywords = { ...base };
+  for (const kw of g.flatMap((x) => x.kws)) {
+    if (kw === 'ブロッカー') k.blocker = true;
+    else if (kw === 'スピードアタッカー') k.speedAttacker = true;
+    else if (kw === 'マッハファイター') k.machFighter = true;
+    else if (kw === 'スレイヤー') k.slayer = true;
+    else if (kw === 'ブロックされない') k.unblockable = true;
+    else if (kw === 'ジャストダイバー') k.justDiver = true;
+    else if (kw === 'W・ブレイカー') k.breaker = Math.max(k.breaker, 2);
+    else if (kw === 'T・ブレイカー') k.breaker = Math.max(k.breaker, 3);
+    else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
+    else if (kw === 'ワールド・ブレイカー') k.breaker = 99;
+    else {
+      const pa = kw.match(/^パワーアタッカー\+(\d+)$/);
+      if (pa) k.powerAttacker += +pa[1];
+    }
+  }
+  return k;
+}
+const EMPTY_KW = parseKeywords([], '');
 
 export const isCreature = (s: GameState, L: Lookup, iid: number) => !!faceOf(s, L, iid)?.isCreature;
 
@@ -49,7 +78,7 @@ export function power(s: GameState, L: Lookup, iid: number, attacking = false): 
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   let p = (f?.power ?? 0) + c.powerMod;
-  if (attacking && f) p += f.kw.powerAttacker;
+  if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
   return p;
 }
 
@@ -60,7 +89,7 @@ export function cardCivs(L: Lookup, cid: string): Civ[] {
 const opponentsOf = (s: GameState, p: number) => s.players.map((_, i) => i).filter((i) => i !== p && !s.players[i].lost);
 
 /** zone配列からiidを取り除く */
-function detach(s: GameState, iid: number) {
+export function detach(s: GameState, iid: number) {
   const c = s.cards[iid];
   if (c.zone === 'under') {
     if (c.parent != null) {
@@ -82,6 +111,9 @@ function detach(s: GameState, iid: number) {
 }
 
 function resetCard(c: CardInst) {
+  c.grants = undefined;
+  c.restrict = undefined;
+  c.noUntap = undefined;
   c.tapped = false;
   c.sick = false;
   c.powerMod = 0;
@@ -166,6 +198,11 @@ const MAX_PENDING = 80;
 
 function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec: TriggerSpec, event: TrigEvent) {
   if (s.pending.length >= MAX_PENDING) return;
+  if (spec.oncePerTurn) {
+    const key = `${src}|${spec.text}`;
+    if ((s.usedOnce ??= []).includes(key)) return;
+    s.usedOnce.push(key);
+  }
   const c = s.cards[src];
   const card = L(c.cid);
   const owner = c.owner;
@@ -196,7 +233,7 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
-function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | null, ownEv: TrigEvent | null, oppEv: TrigEvent | null) {
+function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | null, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null = exclude) {
   const n = s.players.length;
   for (let k = 0; k < n; k++) {
     const p = (s.active + k) % n;
@@ -207,7 +244,12 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
       if (iid === exclude) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
-      for (const spec of f.triggers ?? []) if (spec.events.includes(ev)) pushAbility(s, L, iid, s.cards[iid].face, spec, ev);
+      for (const spec of f.triggers ?? []) {
+        if (!spec.events.includes(ev)) continue;
+        // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
+        if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
+        pushAbility(s, L, iid, s.cards[iid].face, spec, ev);
+      }
     }
   }
 }
@@ -243,7 +285,7 @@ function isPartnerCard(s: GameState, iid: number) {
   return s.partnerIids.includes(iid);
 }
 
-function drawCards(s: GameState, p: number, n: number) {
+export function drawCards(s: GameState, p: number, n: number) {
   const pl = s.players[p];
   let drawn = 0;
   for (let i = 0; i < n; i++) {
@@ -361,8 +403,15 @@ function startTurn(s: GameState, L: Lookup) {
   s.turnStep = 'start';
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
-    c.tapped = false;
+    if (c.noUntap) c.noUntap = false;
+    else c.tapped = false;
     c.sick = false;
+  }
+  // 「次の○○のターンのはじめまで」の制限を解除
+  s.usedOnce = [];
+  for (const c of s.cards) {
+    if (c.restrict && c.restrict.until === p) c.restrict = undefined;
+    if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
   }
   log(s, null, `── ターン${s.turn}: ${pl.name} ──`);
   // ターンのはじめの能力 → (advance で) ドロー
@@ -392,6 +441,7 @@ function finishEndTurn(s: GameState, L: Lookup) {
   for (const c of s.cards) {
     c.powerMod = 0;
     c.noAttack = false;
+    if (c.grants) c.grants = c.grants.filter((g) => g.until !== -1);
   }
   for (const iid of s.players[p].battle) {
     const f = faceOf(s, L, iid);
@@ -431,10 +481,20 @@ function advance(s: GameState, L: Lookup): boolean {
   if (s.phase === 'over') return false;
   const top = s.pending[0];
   if (top) {
-    if (top.kind === 'ability' && top.auto) {
-      s.pending.shift();
-      if (s.cards[top.src]) execAuto(s, L, top.player, top.effect);
-      return true;
+    if (top.kind === 'ability') {
+      // 効果テキストを完全に解釈できた能力は自動で実行 (選択が必要なら 'choice' を積む)
+      const prog = programOf(top.effect);
+      if (prog.complete) {
+        s.pending.shift();
+        const nm = L(top.cid)?.faces[top.face]?.name ?? '';
+        startExec(s, L, top.player, top.src, prog.ops, q(nm));
+        return true;
+      }
+      if (top.auto) {
+        s.pending.shift();
+        if (s.cards[top.src]) execAuto(s, L, top.player, top.effect);
+        return true;
+      }
     }
     return false;
   }
@@ -454,6 +514,10 @@ function advance(s: GameState, L: Lookup): boolean {
     }
     if (a.step === 'breaking' || a.step === 'done') {
       s.attack = null;
+      // 「攻撃の後、〜」を実行
+      const later = s.delayed ?? [];
+      s.delayed = [];
+      for (const ex of later) runExec(s, L, ex);
       return true;
     }
     return false;
@@ -478,7 +542,7 @@ function settle(s: GameState, L: Lookup) {
   checkState(s, L);
 }
 
-function lose(s: GameState, p: number, reason: string) {
+export function lose(s: GameState, p: number, reason: string) {
   const pl = s.players[p];
   if (pl.lost || s.phase === 'over') return;
   pl.lost = true;
@@ -581,8 +645,9 @@ export const untappedMana = (s: GameState, p: number) => s.players[p].mana.filte
 export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
-  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack) return false;
-  if (c.sick && !f.kw.speedAttacker && !f.kw.machFighter) return false;
+  if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack) return false;
+  const k = kwOf(s, L, iid);
+  if (c.sick && !k.speedAttacker && !k.machFighter) return false;
   return true;
 }
 
@@ -591,14 +656,15 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const f = faceOf(s, L, iid);
   if (!f) return { players: [], cards: [] };
   const opps = opponentsOf(s, c.owner);
-  const sickOnlyMach = c.sick && !f.kw.speedAttacker;
-  const players = sickOnlyMach || f.kw.cantAttackPlayer ? [] : opps;
+  const k = kwOf(s, L, iid);
+  const sickOnlyMach = c.sick && !k.speedAttacker;
+  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps;
   const cards: number[] = [];
   for (const o of opps)
     for (const t of s.players[o].battle) {
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
-      if (s.cards[t].tapped || (f.kw.machFighter && c.sick)) cards.push(t);
+      if (s.cards[t].tapped || (k.machFighter && c.sick)) cards.push(t);
     }
   return { players, cards };
 }
@@ -624,7 +690,7 @@ function queueAttackTriggers(s: GameState, L: Lookup) {
   a.step = 'atkTrig';
   fireSelf(s, L, a.attacker, s.cards[a.attacker].face, ['attack']);
   for (const u of s.cards[a.attacker].under) fireSelf(s, L, u, 0, ['crossAttack']);
-  fireWatchers(s, L, a.owner, null, 'ownAttack', 'oppAttack');
+  fireWatchers(s, L, a.owner, null, 'ownAttack', 'oppAttack', a.attacker);
   if (a.targetCard != null) fireSelf(s, L, a.targetCard, s.cards[a.targetCard].face, ['attacked']);
 }
 
@@ -633,11 +699,11 @@ function blockStep(s: GameState, L: Lookup) {
   a.step = 'block';
   const def = a.targetPlayer;
   const attFace = faceOf(s, L, a.attacker);
-  const blockers = attFace?.kw.unblockable
+  const blockers = attFace && kwOf(s, L, a.attacker).unblockable
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
-        return f?.isCreature && f.kw.blocker && !s.cards[b].tapped && b !== a.targetCard;
+        return f?.isCreature && kwOf(s, L, b).blocker && !s.cards[b].tapped && !s.cards[b].restrict?.block && b !== a.targetCard;
       });
   const manaCount = s.players[def].mana.length;
   const ninjas = s.players[def].hand.filter((h) => {
@@ -649,7 +715,7 @@ function blockStep(s: GameState, L: Lookup) {
   } else resolveAttack(s, L);
 }
 
-function battle(s: GameState, L: Lookup, att: number, def: number) {
+export function battle(s: GameState, L: Lookup, att: number, def: number) {
   const pa = power(s, L, att, true);
   const pd = power(s, L, def);
   const na = nameOf(s, L, att);
@@ -659,8 +725,10 @@ function battle(s: GameState, L: Lookup, att: number, def: number) {
   const fd = faceOf(s, L, def)!;
   let killA = pa <= pd;
   let killD = pd <= pa;
-  if (killA && fa.kw.slayer) killD = true;
-  if (killD && fd.kw.slayer) killA = true;
+  if (killA && kwOf(s, L, att).slayer) killD = true;
+  if (killD && kwOf(s, L, def).slayer) killA = true;
+  void fa;
+  void fd;
   if (killD) {
     log(s, null, `${q(nd)} は破壊された`);
     moveCard(s, L, def, 'grave');
@@ -673,7 +741,7 @@ function battle(s: GameState, L: Lookup, att: number, def: number) {
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
 }
 
-function breakShields(s: GameState, L: Lookup, target: number, shields: number[], by: number | null, breaker: number | null = null) {
+export function breakShields(s: GameState, L: Lookup, target: number, shields: number[], by: number | null, breaker: number | null = null) {
   const pl = s.players[target];
   for (const sh of shields) {
     if (s.cards[sh].zone !== 'shield') continue;
@@ -734,7 +802,7 @@ function resolveAttack(s: GameState, L: Lookup) {
     lose(s, a.targetPlayer, 'ダイレクトアタック');
     return;
   }
-  const n = Math.min(faceOf(s, L, a.attacker)?.kw.breaker ?? 1, def.shield.length);
+  const n = Math.min(kwOf(s, L, a.attacker).breaker, def.shield.length);
   a.step = 'breaking';
   if (n < def.shield.length) {
     s.pending.unshift({ kind: 'breakSel', player: a.owner, target: a.targetPlayer, count: n });
@@ -859,7 +927,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
   }
 }
 
-function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play' }>, L: Lookup): Result {
+export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play' }>, L: Lookup): Result {
   const c = s.cards[a.iid];
   const card = L(c.cid);
   if (!card) return 'カード情報がありません';
@@ -1055,6 +1123,25 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
           const err = playCard(s, p, { t: 'play', iid: top.iid, face: card.faces.indexOf(face), pay: [], free: true, force: true }, L);
           if (err) return err;
         }
+      }
+      return null;
+    }
+    case 'choice': {
+      if (a.t !== 'choose') return '選択してください';
+      if (top.mode === 'cards') {
+        const picks = [...new Set(a.picks ?? [])].filter((x) => top.options.includes(x));
+        if (picks.length < top.min || picks.length > top.max) return top.min === top.max ? `${top.min}枚選んでください` : `${top.min}～${top.max}枚選んでください`;
+        if (top.sumPowerMax != null && picks.reduce((a2, i) => a2 + power(s, L, i), 0) > top.sumPowerMax) return `パワーの合計が${top.sumPowerMax}以下になるように選んでください`;
+        s.pending.shift();
+        resumeExec(s, L, top.exec, { picks });
+      } else if (top.mode === 'yesno') {
+        s.pending.shift();
+        resumeExec(s, L, top.exec, { yes: !!a.yes });
+      } else {
+        const opts = [...new Set(a.options ?? [])].filter((x) => x >= 0 && x < (top.labels?.length ?? 0));
+        if (opts.length < top.min || opts.length > top.max) return `${top.min}つ選んでください`;
+        s.pending.shift();
+        resumeExec(s, L, top.exec, { options: opts });
       }
       return null;
     }

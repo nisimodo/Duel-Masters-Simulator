@@ -1,5 +1,8 @@
 // カードテキストから誘発型能力 (「～時、」「～はじめに、」「～終わりに、」) を抽出する
 import { hintsFromText, SIMPLE_KINDS } from '../engine/effects';
+import { normText, stripReminder } from '../rules/text';
+import { parseSel } from '../rules/selector';
+import type { Sel } from '../rules/ops';
 
 export type TrigEvent =
   | 'enter' // このクリーチャーが出た時
@@ -65,6 +68,10 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
 
 export interface TriggerSpec {
   events: TrigEvent[];
+  /** 「自分の光のハンターが出た時」の「光のハンター」 (他のカードの出入り・攻撃・破壊で誘発する時の条件) */
+  subject?: Sel;
+  /** 「各ターンに1度」「各ターン、はじめて〜時」 */
+  oncePerTurn?: boolean;
   /** 元のテキスト (表示用) */
   text: string;
   /** 効果部分 */
@@ -78,8 +85,7 @@ const SKIP = /^(ブロッカー|革命チェンジ|S級侵略|侵略|ニンジ�
 
 const SKIP_TRIG = /^(革命チェンジ|S級侵略|侵略|ニンジャ・ストライク)/;
 
-/** 括弧内の注釈 (リマインダーテキスト) を除く */
-export const stripReminder = (s: string) => s.replace(/[（(][^（()）]*[)）]/g, '').replace(/[（(][^（()）]*[)）]/g, '');
+export { stripReminder };
 
 const CONDITIONAL = /もし|場合|かわりに|選|それ|その後|かつ|あれば|なければ|以外|好きな|または|ごとに|につき|見て|公開/;
 
@@ -92,12 +98,19 @@ export function isAutoEffect(effect: string, optional: boolean): boolean {
 export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
   for (const raw of rawLines) {
-    const line = stripReminder(raw.normalize('NFKC')).trim();
+    const line = stripReminder(normText(raw)).trim();
     if (!line || SKIP_TRIG.test(line)) continue;
     const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
-    const clause = m[1] + m[2];
-    const effect = m[3];
+    let clause = m[1] + m[2];
+    let effect = m[3];
+    // 「このクリーチャーが出た時、またはこのクリーチャーが攻撃する時、〜」
+    for (let k = 0; k < 4 && /^または/.test(effect); k++) {
+      const more = effect.match(/^(または.{1,80}?(?:時|はじめに|終わりに))、(.+)$/s);
+      if (!more) break;
+      clause += more[1];
+      effect = more[2];
+    }
     const self = /この(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
     const opp = /相手/.test(clause);
     const own = /自分/.test(clause);
@@ -148,7 +161,17 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     }
     if (!ev.size) continue;
     const optional = /てもよい|ことができる/.test(effect);
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional) });
+    // 他のカードを見張る能力の対象 (「自分の(他の)〇〇が出た時」「相手が〇〇を召喚した時」)
+    let subject: Sel | undefined;
+    const watch = [...ev].some((e) => /^(otherOwn|opp)(Enter|Destroyed|Attack)$|^ownAttack$/.test(e));
+    if (watch) {
+      const sm =
+        clause.match(/(?:自分|相手)の(?:他の)?(.+?)(?:が|を)(?:バトルゾーンに)?(?:出(?:た|した)|召喚した|攻撃する|破壊された)時/) ??
+        clause.match(/相手が(.+?)を(?:バトルゾーンに)?(?:出(?:した)?|召喚した)時/);
+      if (sm && !/^クリーチャー$/.test(sm[1])) subject = parseSel(sm[1]) ?? undefined;
+    }
+    const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause);
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn });
   }
   return out;
 }
@@ -156,6 +179,6 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
 /** 呪文の効果として解決するテキスト (キーワード行を除く) */
 export function spellEffectLines(lines: string[]): string[] {
   return lines
-    .map((l) => stripReminder(l.normalize('NFKC')).trim())
+    .map((l) => stripReminder(normText(l)).trim())
     .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l));
 }
