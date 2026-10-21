@@ -59,6 +59,8 @@ export interface CardInst {
   buzz?: number;
   /** ビビッドローで表向きにしたターン */
   vividTurn?: number;
+  /** 城として要塞化しているシールド */
+  fortOf?: number;
   /** 封印としてこのカードの上に置かれている (付いているカード) */
   sealOf?: number;
   /** 裏向きのマナ (文明を持たない) */

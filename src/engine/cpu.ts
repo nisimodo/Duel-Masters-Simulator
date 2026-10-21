@@ -431,6 +431,9 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
           }
         }
         cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined, odrivePay }, value: value + buzz * 8 });
+      } else if (/城$/.test(f.type)) {
+        // 城: 要塞化できるシールドがあれば
+        if (me.shield.some((sh) => !s.cards[sh].under.some((u) => s.cards[u].fortOf === sh))) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });
       } else if (/オーラ/.test(f.type)) {
         // オーラ: 一番強い自分のGRクリーチャーに (いなければGR召喚して) 付ける
         const holder = me.battle.filter((b) => /GR/.test(faceOf(s, L, b)?.type ?? '')).sort((a, b) => power(s, L, b) - power(s, L, a))[0];

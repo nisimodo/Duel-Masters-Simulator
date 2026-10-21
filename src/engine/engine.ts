@@ -356,8 +356,9 @@ export function moveCard(
     uc.parent = null;
     uc.zone = 'gone';
     const uCard = L(uc.cid);
-    let ud: ZoneName = to === 'battle' || uc.sealOf != null ? 'grave' : to;
+    let ud: ZoneName = to === 'battle' || uc.sealOf != null || uc.fortOf != null ? 'grave' : to;
     uc.sealOf = undefined;
+    uc.fortOf = undefined;
     if (uCard?.zone === 'hyper') ud = 'hyper';
     if (uCard?.zone === 'gr') ud = 'gr';
     resetCard(uc);
@@ -572,6 +573,16 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
     if (s.players[p].lost) continue;
     const ev = p === actor ? ownEv : oppEv;
     if (!ev) continue;
+    // 城 (要塞化しているシールドの上) の能力
+    for (const sh of s.players[p].shield)
+      for (const u of s.cards[sh].under) {
+        if (s.cards[u].fortOf !== sh) continue;
+        for (const spec of L(s.cards[u].cid)?.faces[0]?.triggers ?? []) {
+          if (!spec.events.includes(ev)) continue;
+          if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
+          pushAbility(s, L, u, 0, spec, ev);
+        }
+      }
     for (const iid of s.players[p].battle) {
       if (iid === exclude || isSealed(s, iid)) continue;
       const f = faceOf(s, L, iid);
@@ -1219,7 +1230,7 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
   let killA = pa <= pd;
   let killD = pd <= pa;
   // 「すべてのバトルに勝つ」
-  const winsAll = (i: number) => (s.cards[i].grants ?? []).some((g) => g.kws.includes('すべてのバトルに勝つ'));
+  const winsAll = (i: number) => (s.cards[i].grants ?? []).some((g) => g.kws.includes('すべてのバトルに勝つ')) || staticKws(s, L, i).includes('すべてのバトルに勝つ');
   if (winsAll(att)) (killA = false), (killD = true);
   if (winsAll(def)) (killD = false), (killA = true);
   if (winsAll(att) && winsAll(def)) killA = killD = false;
@@ -1829,6 +1840,22 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };
+  } else if (/城$/.test(face.type)) {
+    // 城: 要塞化されていない自分のシールドに付ける
+    const n = ((face.statics ?? []).find((x) => x.s === 'castle') as { n: number } | undefined)?.n ?? 1;
+    const free = s.players[p].shield.filter((sh) => !s.cards[sh].under.some((u) => s.cards[u].fortOf === sh));
+    const targets = free.slice(-n);
+    if (!targets.length) {
+      log(s, p, `${q(name)} を付けるシールドがないので墓地へ`);
+      moveCard(s, L, a.iid, 'grave');
+      return null;
+    }
+    detach(s, a.iid);
+    c.zone = 'under';
+    c.parent = targets[0];
+    c.fortOf = targets[0];
+    s.cards[targets[0]].under.push(a.iid);
+    log(s, p, `${q(name)} でシールドを要塞化した${how}`);
   } else if (/オーラ/.test(face.type)) {
     // オーラ: 自分のGRクリーチャーに付ける (選んでいなければGR召喚して付ける)
     let holder = (a.evo ?? []).find((b) => s.cards[b]?.zone === 'battle' && s.cards[b].owner === p && faceOf(s, L, b)?.isCreature);

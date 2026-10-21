@@ -110,6 +110,7 @@ const db = buildDB(
     cr('odr', 2, 2000, ['O・ドライブ 火x2 (このクリーチャーを召喚する時、自分のマナゾーンで火のカードをさらに2枚タップしてもよい。そうした場合、次の能力を得る)', 'このクリーチャーが出た時、カードを2枚引く。', 'W・ブレイカー']),
     { id: 'devo', n: 'devo', img: '', f: [{ n: 'devo', t: '進化クリーチャー', c: 'F', co: 2, p: '9000', r: ['テスト'], x: ['デッキ進化-自分の山札の上から1枚目を表向きにする。そのカードがクリーチャーであれば、このクリーチャーをその上に重ねつつバトルゾーンに出す。そのカードがクリーチャー以外であれば、このクリーチャーを自分の手札に戻す。'] }] },
     cr('dyn', 1, 3000, ['ダイナモ(バトルが始まる時、あるいはこのクリーチャーで攻撃できる時、このクリーチャーをタップしてもよい。そうした場合、そのターンの終わりまで、このクリーチャーのパワーと能力をバトルゾーンにある自分の他のダイナモ1体に加える)']),
+    { id: 'castle', n: 'castle', img: '', f: [{ n: 'castle', t: '城', c: 'F', co: 2, p: null, r: [], x: ['城-自分のシールドをひとつ選び、このカードを付けて要塞化する。その要塞化されたシールドがシールドゾーンから離れた時、このカードを自分の墓地に置く。', 'バトルゾーンにある自分のクリーチャーすべてのパワーは+3000される。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -714,5 +715,21 @@ describe('named mechanics', () => {
     const [a, b] = s.players[0].battle.filter((x) => s.cards[x].cid === 'dyn');
     s = act(s, 0, { t: 'dynamo', iid: a, onto: b });
     expect(power(s, L, b)).toBe(6000);
+  });
+
+  it('城: fortifies a shield; its ability works until the shield leaves', () => {
+    let s = setup([
+      { p: 0, cid: 'castle', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const c = find(s, 0, 'hand', 'castle')!;
+    const v = s.players[0].battle.find((b) => s.cards[b].cid === 'vanilla')!;
+    s = act(s, 0, { t: 'play', iid: c, face: 0, pay: freeMana(s, 0, 2) });
+    expect(s.cards[c].fortOf).toBeDefined();
+    expect(power(s, L, v)).toBe(4000);
+    const sh = s.cards[c].fortOf!;
+    s = act(s, 0, { t: 'move', iid: sh, to: 'hand' });
+    expect(s.cards[c].zone).toBe('grave');
+    expect(power(s, L, v)).toBe(1000);
   });
 });

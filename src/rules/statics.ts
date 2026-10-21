@@ -104,6 +104,8 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** 城: 自分のシールドをN枚選び、付けて要塞化する */
+  | { s: 'castle'; n: number }
   /** タップしていても、アンタップしてブロックできる */
   | { s: 'untapBlocker' }
   /** 相手のターン中に手札から捨てられる時、かわりにバトルゾーンに出す */
@@ -187,6 +189,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if ((m = t0.match(/^(自分のクリーチャー|このクリーチャー)は(?:すべて)?、?すべてのバトルに勝つ$/)))
+    return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : { t: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' } }, kws: ['すべてのバトルに勝つ'], when: 'always' }];
+  if ((m = t0.match(/^城[-ー―:：?]?自分のシールドを(ひとつ|1つ|\d+つ)選び、このカードを付けて要塞化する/))) return [{ s: 'castle', n: /\d/.test(m[1]) ? +m[1].replace('つ', '') : 1 }];
   if (/^このクリーチャーをアンタップして、相手クリーチャーの攻撃先をこのクリーチャー(または自分のタップしているクリーチャー)?に変更してもよい$/.test(t0)) return [{ s: 'untapBlocker' }];
   if (/^(相手のターン中に|相手の呪文の効果またはクリーチャーの能力によって、)このクリーチャーが(自分の)?手札から捨てられる時、墓地に置くかわりに(自分の)?バトルゾーンに出(してもよい|す)$/.test(t0)) return [{ s: 'discardToBattle' }];
   if ((m = t0.match(/^このクリーチャーが?、?リンクしている(?:間|時)、このクリーチャーはシールドをさらに(\d+)枚ブレイクする$/)))

@@ -53,6 +53,12 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
   const out: ActiveStatic[] = [];
   s.players.forEach((pl, p) => {
     if (pl.lost) return;
+    // 城: シールドを要塞化している間、能力が有効
+    for (const sh of pl.shield)
+      for (const u of s.cards[sh].under) {
+        if (s.cards[u].fortOf !== sh) continue;
+        for (const spec of L(s.cards[u].cid)?.faces[0]?.statics ?? []) out.push({ src: u, owner: p, spec });
+      }
     for (const iid of pl.battle) {
       const c = s.cards[iid];
       const f = L(c.cid)?.faces[c.face];
@@ -67,6 +73,7 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
       for (const u of c.under) {
         const uc = s.cards[u];
         const uf = L(uc.cid)?.faces[uc.face];
+        if (uc.fortOf != null) continue;
         // G・リンクしたゴッドの能力は、リンクしたクリーチャー全体の能力
         if (uc.linkedTo === iid) for (const spec of uf?.statics ?? []) out.push({ src: iid, owner: p, spec });
         else for (const spec of uf?.statics ?? []) if (isCrossSpec(spec)) out.push({ src: u, owner: p, spec });
