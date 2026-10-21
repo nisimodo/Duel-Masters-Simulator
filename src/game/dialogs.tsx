@@ -74,6 +74,8 @@ export function PayDialog({
   const vividOk = !!vivid && s.cards[iid].vividTurn === s.turn && s.cards[iid].zone === 'hand';
   const buzz = statics.find((x) => x.s === 'buzz');
   const odrive = statics.find((x) => x.s === 'odrive');
+  const dd = statics.find((x) => x.s === 'discardDiscount');
+  const [discards, setDiscards] = useState<number[]>([]);
   const [odCivs, setOdCivs] = useState<string[]>([]);
   // O・ドライブで追加でタップするマナ (支払いに使わないマナから文明が合うものを選ぶ)
   const odPay = (() => {
@@ -118,7 +120,10 @@ export function PayDialog({
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
   // ソウルシフト・NEO進化の軽減は進化元によって変わる
-  const costEvo = evo.length && statics.some((x) => x.s === 'soulShift' || x.s === 'neoDiscount') ? playCost(s, L, me, { t: 'play', iid, face, pay: [], evo, alt, taps, sasa, he, gzero }, face) : cost;
+  const costEvo =
+    (evo.length && statics.some((x) => x.s === 'soulShift' || x.s === 'neoDiscount')) || (dd && discards.length === (dd.s === 'discardDiscount' ? dd.n : 0))
+      ? playCost(s, L, me, { t: 'play', iid, face, pay: [], evo, alt, taps, sasa, he, gzero, discards: discards.length ? discards : undefined }, face)
+      : cost;
   const realCost = typeof costEvo === 'number' ? costEvo : cost;
   const totalCost = realCost != null && buzz && buzz.s === 'buzz' ? realCost + buzzN * buzz.n : realCost;
   const ok = totalCost != null && pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
@@ -178,6 +183,28 @@ export function PayDialog({
           />{' '}
           ビビッドロー (コスト{vivid.cost}で召喚)
         </label>
+      )}
+      {dd && dd.s === 'discardDiscount' && (
+        <div className="col" style={{ gap: 2 }}>
+          <b className="small">手札を{dd.n}枚捨てると、召喚コストが{dd.d}少なくなる ({discards.length}/{dd.n})</b>
+          <div className="row">
+            {s.players[me].hand
+              .filter((h) => h !== iid)
+              .map((h) => (
+                <CardImg
+                  key={h}
+                  card={L(s.cards[h].cid)!}
+                  width={50}
+                  selected={discards.includes(h)}
+                  onHover={onHover}
+                  onClick={() => {
+                    const next = discards.includes(h) ? discards.filter((x) => x !== h) : [...discards, h].slice(-dd.n);
+                    setDiscards(next);
+                  }}
+                />
+              ))}
+          </div>
+        </div>
       )}
       {odrive && odrive.s === 'odrive' && (
         <div className="row small">
@@ -406,7 +433,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type) && !statics.some((x) => x.s === 'deckEvo'))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined, odrivePay: odPay.length ? odPay : undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type) && !statics.some((x) => x.s === 'deckEvo'))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined, odrivePay: odPay.length ? odPay : undefined, discards: dd && dd.s === 'discardDiscount' && discards.length === dd.n ? discards : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

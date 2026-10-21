@@ -123,6 +123,7 @@ const db = buildDB(
     cr('stayT', 3, 3000, ['このクリーチャーがバトルゾーンを離れる時、タップされていれば、離れるかわりにとどまる。']),
     cr('b2g', 3, 3000, ['スピードアタッカー', 'このクリーチャーがシールドをブレイクする時、相手はそのシールドを自身の手札に加えるかわりに墓地に置く。']),
     { id: 'gachaSp', n: 'gachaSp', img: '', f: [{ n: 'gachaSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['ドギラゴン・ガチャを2度回す。回すたびに、その能力を使う。'] }] },
+    cr('ddisc', 6, 6000, ['このクリーチャーを召喚する時、自分の手札を1枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを3少なくする。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -803,5 +804,17 @@ describe('named mechanics', () => {
       s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: top.options.slice(0, top.min), options: [0] }) : { t: 'resolve', use: true });
     }
     expect(s.log.filter((l) => l.m.startsWith('ドギラゴン・ガチャ:')).length).toBe(2);
+  });
+
+  it('手札を捨てて召喚コストを少なくする', () => {
+    let s = setup([
+      { p: 0, cid: 'ddisc', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const d = find(s, 0, 'hand', 'ddisc')!;
+    const v = s.players[0].hand.find((h) => s.cards[h].cid === 'vanilla')!;
+    s = act(s, 0, { t: 'play', iid: d, face: 0, pay: freeMana(s, 0, 3), discards: [v] });
+    expect(s.cards[d].zone).toBe('battle');
+    expect(s.cards[v].zone).toBe('grave');
   });
 });

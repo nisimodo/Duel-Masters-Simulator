@@ -249,7 +249,7 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   // シンパシー (自分の〇〇1体につき1少なく)
   for (const sp of f.statics ?? []) {
     if (sp.s !== 'sympathy') continue;
-    const n = s.players[p].battle.filter((b) => matchesSel(s, L, b, sp.sel)).length;
+    const n = s.players[p][sp.zone ?? 'battle'].filter((b) => matchesSel(s, L, b, sp.sel)).length;
     if (n) cost = Math.max(Math.min(cost, sp.floor), cost - n);
   }
   return Math.max(0, cost);

@@ -1172,6 +1172,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid)) return false;
+  if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer')) return false;
   return true;
@@ -1260,6 +1261,7 @@ function blockStep(s: GameState, L: Lookup) {
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
+        if (activeStatics(s, L).some((x) => x.owner !== s.cards[b].owner && x.spec.s === 'oppRestrict' && x.spec.block && matchesSel(s, L, b, x.spec.sel, true))) return false;
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
         // 「火・自然ブロッカー」など: 条件に合う相手だけブロックできる
         const limB = !isSealed(s, b) && (f?.statics ?? []).some((x) => x.s === 'limitedBlocker' && matchesSel(s, L, a.attacker, x.sel));
@@ -1668,6 +1670,13 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
     return 0;
   }
   let cost = costOf(s, L, p, a.iid, fi);
+  const dd = statics.find((x) => x.s === 'discardDiscount');
+  if (a.discards?.length) {
+    if (!dd || dd.s !== 'discardDiscount') return 'このクリーチャーは手札を捨ててコストを少なくできません';
+    const ds = [...new Set(a.discards)];
+    if (ds.length !== dd.n || ds.some((h) => h === a.iid || s.cards[h].owner !== p || s.cards[h].zone !== 'hand')) return `捨てる手札を${dd.n}枚選んでください`;
+    cost = Math.max(1, cost - dd.d);
+  }
   const bz = statics.find((x) => x.s === 'buzz');
   if (a.buzz && bz && bz.s === 'buzz') cost += a.buzz * bz.n;
   // ソウルシフト: 進化元のコストだけ少なく / NEO進化として召喚するならN少なく
@@ -1770,6 +1779,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         log(s, p, `O・ドライブ: ${paid.join('・')} を追加で支払った`);
       }
     }
+    for (const h of a.discards ?? []) {
+      log(s, p, `${q(nameOf(s, L, h))} を捨てた`);
+      moveCard(s, L, h, 'grave');
+    }
     if (a.alt === 'tapCast') {
       for (const b of a.taps ?? []) s.cards[b].tapped = true;
       log(s, p, `${(a.taps ?? []).length}体タップして、コストを支払うかわりにした`);
@@ -1792,6 +1805,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   }
   const name = face.name;
   const how = a.free ? '(コストを支払わずに)' : '';
+  // 「相手はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない」
+  if (a.free && (face.isCreature || face.isSpell) && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'noFreePlay')) {
+    log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
+    return a.force ? null : '相手の能力で、コストを支払わずに使えません';
+  }
   if (face.isCreature && !a.force) {
     // エグザイル: 名前に《X》とある他のエグザイル・クリーチャーは出せない
     const mine = s.players[p].battle.filter((b) => b !== a.iid);

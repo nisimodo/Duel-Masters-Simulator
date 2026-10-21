@@ -27,7 +27,13 @@ export type StaticSpec =
   | { s: 'tapMana' }
   | { s: 'rainbowMana' }
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper' }
-  | { s: 'sympathy'; sel: Sel; floor: number }
+  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana' }
+  /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
+  | { s: 'discardDiscount'; n: number; d: number }
+  /** 相手の〇〇は攻撃/ブロックできない */
+  | { s: 'oppRestrict'; sel: Sel; attack: boolean; block: boolean }
+  /** 相手はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない */
+  | { s: 'noFreePlay' }
   | { s: 'sasageru'; n: number }
   | { s: 'gzero'; cond: StaticCond }
   | { s: 'hyperEnergy' }
@@ -209,6 +215,19 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
+  if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/))) {
+    const sel = parseSel(m[1], { zones: ['mana'] });
+    if (sel && m[2] === '1' && m[3] === '1') return [{ s: 'sympathy', sel: { ...sel, owner: 'self', zones: ['mana'] }, floor: floorOf(full), zone: 'mana' }];
+  }
+  if ((m = t0.match(/^相手の(.+?)は、?(攻撃・ブロック|攻撃もブロックも|攻撃|ブロック)(?:することが)?できない$/))) {
+    const sel = parseSel(m[1]);
+    if (sel) return [{ s: 'oppRestrict', sel, attack: /攻撃/.test(m[2]), block: /ブロック/.test(m[2]) }];
+  }
+  if (/^相手(プレイヤー)?はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない$/.test(t0)) return [{ s: 'noFreePlay' }];
+  if (/^このクリーチャーがタップされている間、相手の攻撃クリーチャーは可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
+  if (/^ハンティング$/.test(t0))
+    return [{ s: 'power', target: { t: 'self' }, delta: 1000, when: 'battle', per: { sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ハンター'] }, each: 1 } }];
   if (/^このクリーチャーを、?(自分の)?マナゾーンから召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'mana' }];
   if (/^このクリーチャーはタップして出て、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
   if (/^(各ターン、)?このクリーチャーの(最初の)?攻撃の終わりに、このクリーチャーをアンタップする$/.test(t0)) return [{ s: 'untapAfterAttack' }];
@@ -254,7 +273,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^城[-ー―:：?]?自分のシールドを(ひとつ|1つ|\d+つ)選び、このカードを付けて要塞化する/))) return [{ s: 'castle', n: /\d/.test(m[1]) ? +m[1].replace('つ', '') : 1 }];
   if (/^このクリーチャーをアンタップして、相手クリーチャーの攻撃先をこのクリーチャー(または自分のタップしているクリーチャー)?に変更してもよい$/.test(t0)) return [{ s: 'untapBlocker' }];
   if (/^(相手のターン中に|相手の呪文の効果またはクリーチャーの能力によって、)このクリーチャーが(自分の)?手札から捨てられる時、墓地に置くかわりに(自分の)?バトルゾーンに出(してもよい|す)$/.test(t0)) return [{ s: 'discardToBattle' }];
-  if ((m = t0.match(/^このクリーチャーが?、?リンクしている(?:間|時)、このクリーチャーはシールドをさらに(\d+)枚ブレイクする$/)))
+  if ((m = t0.match(/^このクリーチャーが?は?、?リンクしている(?:間|時)、(?:このクリーチャーは)?シールドをさらに(\d+)枚ブレイクする$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: [`ブレイク+${m[1]}`], when: 'always', cond: { c: 'linked' } }];
   if (/^ダイナモ$/.test(t0)) return [{ s: 'dynamo' }];
   if (/^デッキ進化[-ー―:：]/.test(t0)) return [{ s: 'deckEvo' }];
@@ -306,7 +325,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^(相手のターン中、)?このクリーチャーが、?(相手のターン中に)?タップ(され|し)てい(て|る)、?そのターン(に)?まだ攻撃(を受けていない場合|されていなければ)、相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0))
     return [{ s: 'lure' }];
   if (/^相手は呪文を唱えることができない$/.test(t0)) return [{ s: 'oppSpellLock' }];
-  if ((m = t0.match(/^自分の他の、?名前に《(.+?)》とある(?:エグザイル・)?クリーチャーをバトルゾーンに出すことはできない$/))) return [{ s: 'exileLimit', name: m[1] }];
+  if ((m = t0.match(/^自分の他の、?名前に《(.+?)》とある(?:エグザイル・)?クリーチャー(?:をバトルゾーンに出すことはできない|は出せない)$/))) return [{ s: 'exileLimit', name: m[1] }];
   if ((m = t0.match(/^アタック・チャンス[-ー―:：]?(.+)$/))) {
     const sel = parseSel(m[1].replace(/^ハイパーモード状態の/, ''));
     return sel ? [{ s: 'attackChance', sel }] : null;
