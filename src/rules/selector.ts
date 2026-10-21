@@ -133,7 +133,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
   if (!kindSet && !p && zoneSet && /(手札|マナゾーン|墓地|山札)(にある)?$/.test(phrase.replace(/\s+/g, ''))) sel.kind = 'card';
   if (p) {
     // 残りは種族 (「ドラゴン」「ジャイアントまたはコマンド」等)
-    const races = p.split(/または|か|、|・(?=[^゠-ヿ])/).filter(Boolean);
+    const races = p.split(/または|か|、|と|・(?=[^゠-ヿ])/).filter(Boolean);
     if (!races.every((r) => RACE_WORD.test(r) || KANJI_RACE.test(r))) return null;
     sel.races = races.map((r) => r.replace(/[<>＜＞]/g, ''));
     if (sel.kind === 'card' && !/カード$/.test(phrase)) sel.kind = 'creature';

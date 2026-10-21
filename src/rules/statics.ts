@@ -325,6 +325,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0) || /^相手は、?自身のマナゾーンにカードを置く時、?タップして置く$/.test(t0) || /^相手はカードをマナゾーンに置く時、?タップして置く$/.test(t0)) return [{ s: 'oppManaTapped' }];
   if (/^相手のクリーチャーは、?バトルゾーンに出す時タップして置く$/.test(t0) || /^相手のクリーチャーはタップしてバトルゾーンに出る$/.test(t0)) return [{ s: 'oppEntersTapped' }];
   if (/^このクリーチャーは、?可能(?:なら|であれば)、?毎ターン、?相手プレイヤーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
+  if (/^このクリーチャーは、?攻撃可能であれば、?必ず攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
   if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if (/^このクリーチャーは、?毎ターン攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
