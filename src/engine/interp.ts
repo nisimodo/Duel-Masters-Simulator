@@ -177,6 +177,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return !!s.cards[ex.src]?.tapped;
     case 'and':
       return evalCond(s, L, ex, c.a) && evalCond(s, L, ex, c.b);
+    case 'oppMore':
+      return opp[c.zone].length > me[c.zone].length;
     case 'selfFaceUpShield': {
       const sc = s.cards[ex.src];
       return sc?.zone === 'shield' && sc.faceUp;
@@ -806,6 +808,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           if (o === ex.player || s.players[o].lost) continue;
           if (op.until === 'turn') s.players[o].spellLockTurn = s.turn;
           else s.players[o].spellLockUntil = ex.player;
+          s.players[o].spellLockCost = op.costMax;
         }
         log(s, ex.player, `相手は${op.until === 'turn' ? 'このターン' : '次のターンのはじめまで'}呪文を唱えられない`);
         break;
@@ -917,6 +920,10 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         ex.pendingIds = ids;
         ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
         return;
+      }
+      case 'atTurnEnd': {
+        (s.endTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
+        break;
       }
       case 'extraTurn': {
         s.extraTurnFor = ex.player;

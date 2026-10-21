@@ -880,6 +880,10 @@ function beginEndTurn(s: GameState, L: Lookup) {
 /** ターンの終わりの能力が解決した後の後始末 */
 function finishEndTurn(s: GameState, L: Lookup) {
   const p = s.active;
+  // 「このターンの終わりに〜」
+  const delayed = s.endTurnExecs ?? [];
+  s.endTurnExecs = [];
+  for (const ex of delayed) runExec(s, L, ex);
   // J・O・E: 山札の下に置いて1枚引く / B・A・D: 破壊する / アビスラッシュ・ウラ・ニンジャ: 山札の下へ
   for (const iid of s.players.flatMap((pl) => [...pl.battle])) {
     const c = s.cards[iid];
@@ -1824,8 +1828,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
   } else if (face.isSpell) {
     const me = s.players[p];
-    if (me.spellLockUntil != null || me.spellLockTurn === s.turn) {
-      if (!a.force) return 'このターンは呪文を唱えられません';
+    if ((me.spellLockUntil != null || me.spellLockTurn === s.turn) && (me.spellLockCost == null || costOf(s, L, p, a.iid, card.faces.indexOf(face)) <= me.spellLockCost)) {
+      if (!a.force) return me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
     if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock')) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger;

@@ -92,6 +92,8 @@ export interface PlayerState {
   charged: boolean;
   /** このターン最後に使ったカードの種類 (サイクロン用) */
   lastPlay?: { turn: number; kind: 'creature' | 'spell' | 'other' };
+  /** 唱えられない呪文のコストの上限 (なければすべて) */
+  spellLockCost?: number;
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
@@ -193,6 +195,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** ターンの終わりに実行する効果 */
+  endTurnExecs?: Exec[];
   /** このプレイヤーの今のターンの後に、もう一度そのプレイヤーのターン */
   extraTurnFor?: number;
   /** 次のターンのはじめに支払うコスト (逆転撃) */

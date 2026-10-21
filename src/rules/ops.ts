@@ -84,6 +84,8 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }
+  /** 相手の (手札/マナ/シールド) が自分より多い */
+  | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield' }
   /** 両方を満たす */
   | { c: 'and'; a: Cond; b: Cond }
   /** これを装備/クロスしたクリーチャーがタップしている */
@@ -145,7 +147,9 @@ export type Op =
   /** タップしていればアンタップ、していなければタップ */
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
-  | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn' }
+  | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number }
+  /** このターンの終わりに body を実行する (it はその時点の it) */
+  | { op: 'atTurnEnd'; body: Op[] }
   /** ガチンコ・ジャッジ (勝てば did = true) */
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */

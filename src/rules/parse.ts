@@ -174,6 +174,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
+  if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
   if (/^このクリーチャーがリンクしていない$/.test(c)) return { c: 'linked', neg: true };
@@ -218,6 +219,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/(\d+)体ずつ/g, '$1体')
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
+    .replace(/^そうしない場合、/, 'そうしなかった場合、')
+    .replace(/^(クリーチャー|呪文|カード)(なら|であれば)、/, 'それが$1なら、')
+    .replace(/、コストを支払わずに自分の(手札|墓地|マナゾーン)から(唱え|召喚し|出し)/, '、自分の$1からコストを支払わずに$2')
     .replace(/^このターンの終わりまで、/, 'このターン、')
     .replace(/バトルゾーンにある、?(自分|相手)の/g, '$1の')
     .replace(/(自分|相手)の、/g, '$1の')
@@ -546,6 +550,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     }
   }
   if (/^(その|それら)2体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'saved' }, b: { ref: 'it' } }];
+  // ターンの終わりに
+  {
+    const te = s.match(/^(?:この|その)ターンの終わりに、(.+)$/);
+    if (te && !/^(このクリーチャー|これ)を/.test(te[1])) {
+      const body = sentence(te[1], ctx);
+      if (body) return [{ op: 'atTurnEnd', body }];
+    }
+  }
+  // N体につきN枚引く
+  {
+    const dp = s.match(/^(?:バトルゾーンにある)?(自分|相手)の(.+?)(\d+)体につき、?(?:カードを)?(\d+)枚(?:、カードを)?引く$/);
+    const sel = dp && parseSel(`${dp[1]}の${dp[2]}`);
+    if (dp && sel) return [{ op: 'drawPer', sel, each: +dp[3], mult: +dp[4] }];
+  }
   // コストの下限 (直前の軽減の注記)
   if (/^ただし、?コストは\d+(以下に(は)?ならない|より少なくならない)$/.test(s)) return [];
   // D・D・D など 「このカードを [ll02] 支払って自分の手札から実行してもよい」
@@ -598,8 +616,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // 呪文を唱えられない
   {
-    const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は呪文を唱えられない$/);
-    if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+    const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の)?呪文を唱えられない$/);
+    if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined }];
   }
 
   // 「このターン、そのクリーチャーのパワーを+2000し、「ブロッカー」を与える」: パワーと残りの効果に分ける
@@ -1191,8 +1209,9 @@ function parseEffectRaw(text: string): Program {
 
   for (const s of t.split('。').map((x) => x.trim()).filter(Boolean)) {
     // 「それ以外なら〜」 は直前の「〜なら」の else
-    const el = s.replace(/\s+/g, '').match(/^それ以外(?:なら|の場合)、?(.+)$/);
-    const last = ops[ops.length - 1];
+    const el = s.replace(/\s+/g, '').match(/^(?:それ以外(?:なら|の場合)|そうでなければ)、?(.+)$/);
+    let last = ops[ops.length - 1];
+    if (last?.op === 'optional' && last.body[last.body.length - 1]?.op === 'if') last = last.body[last.body.length - 1];
     if (el && last?.op === 'if' && !last.else) {
       const body = sentence(el[1], ctx) ?? verbOps(el[1], { ref: 'it' });
       if (body) {
