@@ -54,6 +54,9 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     let changed = false;
     changed ||= take(/^バトルゾーンにある/, () => ((sel.zones = ['battle']), (zoneSet = true)));
     changed ||= take(/^自分のマナゾーンにあるカードと同じ文明を持つ、?/, () => (sel.civShareMana = true));
+    changed ||= take(/^自分のマナゾーンにあるカードの枚数より、?コストが小さい/, () => (sel.costVs = { by: 'mana', cmp: 'lt' }));
+    changed ||= take(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'le' }));
+    changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
     changed ||= take(/^〈種族〉の/, () => (sel.raceRef = true));
     changed ||= take(/^〈文明〉の/, () => (sel.civRef = true));
     changed ||= take(/^〈数字コスト〉の/, () => (sel.costRef = true));
@@ -84,9 +87,6 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^無色ではない/, () => (sel.notColorless = true));
     changed ||= take(/^クリーチャー(ではない|以外の)/, () => (sel.notCreature = true));
     changed ||= take(/^サイキックではない/, () => (sel.notPsychic = true));
-    changed ||= take(/^自分のマナゾーンにあるカードの枚数より、?コストが小さい/, () => (sel.costVs = { by: 'mana', cmp: 'lt' }));
-    changed ||= take(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'le' }));
-    changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
     changed ||= take(/^無色の?/, () => (sel.colorless = true));
     changed ||= take(/^多色ではない/, () => (sel.monocolor = true));
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));

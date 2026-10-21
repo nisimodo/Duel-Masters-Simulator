@@ -499,7 +499,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^相手はそれを(?:自身の)?山札の上か下に置く$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'it' }, chooser: 'opp' }];
   if (/^(残り|見せたカードはすべて、|残りのカード)を?、?好きな順序で山札の上か下(のどちらか)?に(置く|戻す)$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'rest' }, chooser: 'self' }];
   // 効果で唱えた呪文を、唱えた後に山札の下へ
-  if (/^(?:こうして呪文を唱えたなら、)?(?:それ|その呪文)を唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
+  if (/^(?:こうして呪文を唱えたなら、)?(?:それ|その呪文)を唱えた後、墓地(?:に置く)?の?かわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   if (/^相手は(?:自身|自分)の山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'opp' }];
   // 唱えた後、墓地に置くかわりに山札の下 (呪文を出す処理で行う)
   if (/^(この呪文を(自分の手札から)?)?唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く$/.test(s)) return [];
@@ -822,7 +822,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   {
     const kc = s.match(/^(好きな数|(\d+)体)の自分のクリーチャーの(P|oP)能力を使う$/) ?? s.match(/^自分のクリーチャー(\d+)体の(P|oP)能力を使う$/);
     if (kc) return [{ op: 'useMarked', key: kc[3] ?? kc[2], others: kc[1] === '好きな数' ? 99 : +(kc[2] ?? kc[1]) }];
-    const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|◇)能力を(?:1回)?使(う|ってもよい)$/);
+    const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|P|◇)能力を(?:1回)?使(う|ってもよい)$/);
     if (um) {
       const op: Op = { op: 'useMarked', key: um[2], others: um[1] ? +um[1] : undefined };
       return um[3] === 'う' ? [op] : [{ op: 'optional', body: [op], prompt: s0 }];
@@ -913,7 +913,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
 
   // 条件 「〜あれば、」「〜なら、」
-  m = s.match(/^(?:もし)?(.+?)(?:れば|ならば|なら|であれば)、(.+)$/);
+  m = s.match(/^(?:もし)?(.+?)(?:れば|ならば|なら|であれば)、(.+)$/) ?? s.match(/^(?:もし)?(それが.+?)(?:ならば|なら|であれば)(.+)$/);
   if (m) {
     const cond = parseCond(m[1]);
     if (cond) {
