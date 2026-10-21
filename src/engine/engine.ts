@@ -237,9 +237,15 @@ export function moveCard(
       const prog = programOf(rl.effect);
       // 「〜してもよい」は、払える時は払う (払わずに離れる選択はしない)
       const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
-      if (!prog.complete || !canPay(s, L, c.owner, iid, ops)) continue;
+      // 置換の中で同じカードがまた置換しないように (互いに身代わりになる無限ループ防止)
+      if (!prog.complete || REPLACING.has(iid) || !canPay(s, L, c.owner, iid, ops)) continue;
       log(s, c.owner, `${q(card!.faces[c.face].name)} は離れるかわりに「${rl.effect}」`);
-      startExec(s, L, c.owner, iid, ops, card!.faces[c.face].name);
+      REPLACING.add(iid);
+      try {
+        startExec(s, L, c.owner, iid, ops, card!.faces[c.face].name);
+      } finally {
+        REPLACING.delete(iid);
+      }
       return 'battle';
     }
     // エターナル・Κ: 裏向きのマナをN枚表向きにして、とどまる
@@ -480,6 +486,9 @@ export function manaSummonLeft(s: GameState, L: Lookup, p: number): number {
   const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' ? x.spec.n : 0), 0) : 0;
   return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
 }
+
+/** 置換効果を処理中のカード */
+const REPLACING = new Set<number>();
 
 /** 「各ターンN度しか攻撃もブロックもできない」の回数を数える */
 function countAct(s: GameState, p: number, k: 'atk' | 'blk') {
