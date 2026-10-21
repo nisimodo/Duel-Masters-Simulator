@@ -73,6 +73,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.notColorless && !civs.length) return false;
+  if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
   if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
   if (sel.raceRef || sel.civRef || sel.costRef || sel.powerRef) {
     const cv = s.chosenValue ?? {};
@@ -121,7 +122,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -422,7 +423,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           if (t.chooser === 'opp') chooser = mainOpp(s, ex.player);
           if (t.chooser === 'opp' && t.sel.owner === 'opp') cands = cands.filter((i) => s.cards[i].owner === chooser);
         } else if (t.ref === 'looked') {
-          cands = ex.looked.filter((i) => s.cards[i].zone !== 'gone' && (!t.sel || matchesSel(s, L, i, t.sel)));
+          // 条件のゾーンに今あるカードだけ (先に別の場所へ動かしたカードは除く)
+          cands = ex.looked.filter((i) => s.cards[i].zone !== 'gone' && (!t.sel || ((t.sel.zones as string[]).includes(s.cards[i].zone) && matchesSel(s, L, i, t.sel))));
           cnt = t.count ?? { n: 1, upTo: false };
         } else if (t.ref === 'under') {
           cands = [...(s.cards[ex.src]?.under ?? [])];

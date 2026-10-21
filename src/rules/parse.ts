@@ -71,6 +71,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
   if (m(/^(裏向きにして|裏向きのまま)、?(自分の)?シールド(ゾーン)?に(加える|置く)$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(自分の)?手札から捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
+  if (m(/^相手の手札に戻す$/)) return [{ op: 'move', target, to: 'hand' }];
   if (m(/^(自分の墓地から)?表向きでシールド化する$/)) return [{ op: 'move', target, to: 'shieldUp' }];
   if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
   if (m(/^(好きな順序で)?(自身の|持ち主の|自分の)?山札の上か下(のどちらか)?に(置く|戻す)$/)) return [{ op: 'topOrBottom', target, chooser: 'self' }];
@@ -179,7 +180,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
-  if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
+  if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
@@ -208,7 +209,7 @@ function selTarget(phrase: string, num: string | undefined, upTo: string | undef
   return { ref: 'sel', sel, count: count(num, upTo, all), chooser };
 }
 
-const IT = /^(それらのクリーチャー|それらのカード|そのGRクリーチャー|それら|それ|その選んだクリーチャー|選んだクリーチャー|そのクリーチャー|その選んだカード|選んだカード|そのカード|その呪文|そのシールド|そのタマシード|その\d+体|その\d+枚|そのうちの\d+(?:体|枚))/;
+const IT = /^(それらのクリーチャー|それらのカード|そのGRクリーチャー|選ばれたクリーチャー|それら|それ|その選んだクリーチャー|選んだクリーチャー|そのクリーチャー|その選んだカード|選んだカード|そのカード|その呪文|そのシールド|そのタマシード|その\d+体|その\d+枚|そのうちの\d+(?:体|枚))/;
 
 function sentence(s0: string, ctx: Ctx): Op[] | null {
   let s = s0
@@ -597,7 +598,40 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       if (cond && body && els) return [{ op: 'if', cond, body, else: els }];
     }
   }
-  if (/^(その後、)?(それ|そのシールド|それら)を(元の場所に|元に)戻す$/.test(s)) return [];
+  if (/^(その後、)?(それ|そのシールド|それら)を(好きな順序で)?(元の場所に|元に)戻す$/.test(s)) return [];
+  if (/^ただし、?その(シールドの)?「S・トリガー」(能力)?は使えない$/.test(s)) return [];
+  // 「そのうちのN枚を〇〇に置き、もうN枚を〇〇に」
+  {
+    const two = s.match(/^(?:その中から|そのうちの)(\d+)枚を(.+?)(?:に置き|に加え|化し|に)、もう(\d+)枚を(.+)$/);
+    if (two) {
+      const d1 = two[2].replace(/^(自分の)?/, '');
+      const v1 = /シールド/.test(d1) ? 'シールド化する' : /手札/.test(d1) ? '手札に加える' : /墓地/.test(d1) ? '墓地に置く' : /マナ/.test(d1) ? 'マナゾーンに置く' : '';
+      const ops1 = v1 ? verbOps(v1, { ref: 'it' }) : null;
+      const ops2 = verbOps(two[4].replace(/^(自分の)?/, ''), { ref: 'it' }) ?? verbOps(two[4] + 'に置く', { ref: 'it' });
+      if (ops1 && ops2) {
+        const rest: Sel = { owner: 'any', zones: ['deck'], kind: 'card' };
+        return [
+          { op: 'choose', target: { ref: 'looked', sel: rest, count: { n: +two[1], upTo: false } }, purpose: 'benefit', prompt: s0 },
+          ...ops1,
+          { op: 'choose', target: { ref: 'looked', sel: rest, count: { n: +two[3], upTo: false } }, purpose: 'benefit', prompt: s0 },
+          ...ops2,
+        ];
+      }
+    }
+  }
+  {
+    const nb = s.match(/^このターン、(.+?)(\d+)体はブロックされない$/);
+    const sel = nb && parseSel(nb[1]);
+    if (nb && sel)
+      return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: +nb[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: s0 }, { op: 'grant', target: { ref: 'it' }, kws: ['ブロックされない'], until: 'turn' }];
+    if (/^相手は(?:自身|自分)の手札を見せ、その中の呪文をすべて捨てる$/.test(s))
+      return [{ op: 'move', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'spell' }, count: { all: true }, chooser: 'self' }, to: 'grave' }];
+    const ot = s.match(/^相手の山札の上から(\d+)枚(?:目)?を見る$/);
+    if (ot) {
+      ctx.looked = true;
+      return [{ op: 'top', n: +ot[1], to: 'look', who: 'opp' }];
+    }
+  }
   {
     const sg = s.match(/^裏向きのまま(\d+)枚選び、(?:自分の)?(墓地に置く|手札に加える)$/);
     if (sg)
