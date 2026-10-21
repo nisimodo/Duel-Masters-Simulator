@@ -115,6 +115,8 @@ export type Op =
   | { op: 'swap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
+  | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** ゲーム中に一度だけ (2回目以降は「そうしたら」が成立しない) */
   | { op: 'oncePerGame' }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */

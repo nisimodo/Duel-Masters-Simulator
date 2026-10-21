@@ -236,6 +236,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ];
     }
   }
+  // 「(そのクリーチャーは)可能ならこのクリーチャーを攻撃する」(相手のクリーチャーが攻撃する時)
+  if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'self' }];
+  if (/^(そのクリーチャーは、?)?可能(であれば|なら(ば)?)、?クリーチャーを攻撃する$/.test(s)) return [{ op: 'redirectAttack', to: 'creature' }];
   // Jトルネード: 自分の他のジョーカーズを1体、手札に戻す
   if (/^Jトルネードする$/.test(s))
     return [

@@ -4,6 +4,7 @@ import type { Card, Face } from '../lib/cards';
 import type { Cond, Count, Dest, Op, Sel, Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
+  attackTargets,
   battle,
   breakShields,
   cardCivs,
@@ -578,6 +579,25 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         rc.tapped = tapped;
         rc.sick = sick;
         log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
+        break;
+      }
+      case 'redirectAttack': {
+        const at = s.attack;
+        if (!at || at.owner === ex.player) break;
+        const tg = attackTargets(s, L, at.attacker);
+        const self = s.cards[ex.src]?.linkedTo ?? ex.src;
+        const to =
+          op.to === 'self'
+            ? tg.cards.includes(self)
+              ? self
+              : null
+            : at.targetCard != null
+              ? null
+              : (tg.cards.filter((c) => s.cards[c].owner === ex.player).sort((a, b) => power(s, L, a) - power(s, L, b))[0] ?? null);
+        if (to == null || at.targetCard === to) break;
+        at.targetCard = to;
+        at.targetPlayer = s.cards[to].owner;
+        log(s, ex.player, `攻撃先が ${q(nameOf(s, L, to))} に変わった`);
         break;
       }
       case 'oncePerGame': {
