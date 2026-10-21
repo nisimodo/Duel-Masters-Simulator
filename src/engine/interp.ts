@@ -922,7 +922,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         return;
       }
       case 'drawItPlus': {
-        const d = drawCards(s, ex.player, ex.it.length + op.plus);
+        const d = drawCards(s, ex.player, ex.it.length * (op.mult ?? 1) + op.plus);
         log(s, ex.player, `カードを${d}枚引いた`);
         break;
       }

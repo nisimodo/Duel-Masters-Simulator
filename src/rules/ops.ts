@@ -149,7 +149,7 @@ export type Op =
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number }
   /** it の枚数 + plus 枚引く */
-  | { op: 'drawItPlus'; plus: number }
+  | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */
   | { op: 'atTurnEnd'; body: Op[] }
   /** ガチンコ・ジャッジ (勝てば did = true) */

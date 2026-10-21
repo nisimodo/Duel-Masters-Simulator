@@ -176,6 +176,8 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
+  if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
+  if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
@@ -222,6 +224,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^そうしない場合、/, 'そうしなかった場合、')
+    .replace(/^相手の手札を見て(?!、)/, '相手の手札を見て、')
+    .replace(/^パワーの合計が(\d+)以下になるように(.+?)を(\d+)体まで選び、/, '$2を、パワーの合計が$1以下になるように好きな数選び、')
+    .replace(/^(.+?)をパワーの合計が(\d+)以下になるよう(?:に)?好きな数選び、/, '$1を、パワーの合計が$2以下になるように好きな数選び、')
     .replace(/^(クリーチャー|呪文|カード)(なら|であれば)、/, 'それが$1なら、')
     .replace(/、コストを支払わずに自分の(手札|墓地|マナゾーン)から(唱え|召喚し|出し)/, '、自分の$1からコストを支払わずに$2')
     .replace(/^このターンの終わりまで、/, 'このターン、')
@@ -552,6 +557,24 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     }
   }
   if (/^(その|それら)2体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'saved' }, b: { ref: 'it' } }];
+  // 表向きにしたカードをすべて〜 / その中の〇〇をすべて手札に加え、それ以外を〜
+  {
+    const rv = s.match(/^表向きにしたカードを(?:すべて)?(?:自分の)?(マナゾーン|墓地|手札)に(?:置く|加える)$/);
+    if (rv) return [{ op: 'move', target: { ref: 'it' }, to: rv[1] === '墓地' ? 'grave' : rv[1] === '手札' ? 'hand' : 'mana' }];
+    const lh = s.match(/^その中(?:から|の)(.+?)を(?:すべて)、?(?:自分の)?手札に加え、(?:それ以外のカード|残り(?:のカード)?)を(?:好きな順序で)?(?:自分の)?(墓地に置く|山札の(?:一番)?下に(?:戻す|置く))$/);
+    const sel = lh && parseSel(lh[1], { zones: ['deck'] });
+    if (lh && sel)
+      return [
+        { op: 'choose', target: { ref: 'looked', sel, count: { all: true } }, purpose: 'benefit', prompt: s0 },
+        { op: 'move', target: { ref: 'it' }, to: 'hand' },
+        { op: 'move', target: { ref: 'rest' }, to: /墓地/.test(lh[2]) ? 'grave' : 'deckBottom' },
+      ];
+    if (/^(?:その後、)?同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItPlus', plus: 0 }];
+    const kd = s.match(/^こうして(?:破壊した|捨てた|墓地に置いた)(?:クリーチャー|カード)(\d+)(?:体|枚)につき、?(?:カードを)?(\d+)枚(?:、カードを)?引く$/);
+    if (kd) return [{ op: 'drawItPlus', plus: 0, mult: +kd[2] / +kd[1] }];
+    const bs = s.match(/^そのうちの(\d+)(?:枚|つ)をブレイクする$/);
+    if (bs) return [{ op: 'breakShield', n: +bs[1] }];
+  }
   // 手札を捨てて、その枚数よりN枚多く引く
   {
     const dd = s.match(/^自分の手札を(\d+)枚まで捨て、その枚数より(\d+)枚多くカードを引く$/);
@@ -568,8 +591,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // ターンの終わりに
   {
-    const te = s.match(/^(?:この|その)ターンの終わりに、(.+)$/);
-    if (te && !/^(このクリーチャー|これ)を/.test(te[1])) {
+    const te = s.match(/^(?:この|その)ターンの終わりに、?(.+)$/);
+    if (te) {
       const body = sentence(te[1], ctx);
       if (body) return [{ op: 'atTurnEnd', body }];
     }
@@ -1078,8 +1101,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // ---- 単独の動詞 「破壊する」「アンタップする」: 直前に選んだカード、何も選んでいなければこのクリーチャー ----
   {
-    const ops = verbOps(s, ctx.chosen ? { ref: 'it' } : { ref: 'self' });
-    if (ops && (ctx.chosen || !/^(手札|マナ|墓地|山札|シールド)/.test(s))) return ops;
+    const ops = verbOps(s, ctx.chosen || ctx.looked ? { ref: 'it' } : { ref: 'self' });
+    if (ops && (ctx.chosen || ctx.looked || !/^(手札|マナ|墓地|山札|シールド)/.test(s))) return ops;
   }
 
   // ---- 選択して操作 ----
