@@ -12,6 +12,7 @@ import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { costOf } from '../engine/statics';
 import { useGameSync } from './useGameSync';
+import { GachaRoulette, type GachaSpin } from './GachaRoulette';
 import { NARROW, useMedia } from '../lib/useMedia';
 
 interface MenuItem {
@@ -47,6 +48,23 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const [pay, setPay] = useState<{ iid: number; face: number } | null>(null);
   /** カードを何枚か選ぶダイアログ (ハイパー化でタップするクリーチャー等) */
   const [pick, setPick] = useState<{ title: string; n: number; cands: number[]; picks: number[]; done: (picks: number[]) => void } | null>(null);
+  // ガチャのルーレット: 新しく回った分を順番に表示する (開いた時点の記録は再生しない)
+  const gachaSeen = useRef<number | null>(null);
+  const [gachaQueue, setGachaQueue] = useState<GachaSpin[]>([]);
+  const gachaCount = s?.gachaLog?.length ?? 0;
+  useEffect(() => {
+    if (!s) return;
+    if (gachaSeen.current == null) {
+      gachaSeen.current = gachaCount;
+      return;
+    }
+    if (gachaCount > gachaSeen.current) {
+      const fresh = (s.gachaLog ?? []).slice(gachaSeen.current).map((g) => ({ kind: g.kind, roll: g.roll, playerName: s.players[g.player]?.name ?? '' }));
+      gachaSeen.current = gachaCount;
+      setGachaQueue((q) => [...q, ...fresh]);
+    }
+  }, [gachaCount, s]);
+  const gachaDone = useCallback(() => setGachaQueue((q) => q.slice(1)), []);
   const [viewer, setViewer] = useState<{ kind: ViewerKind; player: number; iid?: number } | null>(null);
   const [toast, setToast] = useState('');
   const [breakPicks, setBreakPicks] = useState<number[]>([]);
@@ -896,6 +914,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         />
       )}
       {viewerNode}
+      {gachaQueue[0] && <GachaRoulette key={gachaCount - gachaQueue.length} spin={gachaQueue[0]} onDone={gachaDone} />}
       {detailModal && (
         <Modal title="カードの詳細" onClose={() => setDetailModal(null)}>
           <CardDetail db={db} card={detailModal.card} face={detailModal.face} />

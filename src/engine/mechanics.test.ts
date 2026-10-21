@@ -122,6 +122,7 @@ const db = buildDB(
     },
     cr('stayT', 3, 3000, ['このクリーチャーがバトルゾーンを離れる時、タップされていれば、離れるかわりにとどまる。']),
     cr('b2g', 3, 3000, ['スピードアタッカー', 'このクリーチャーがシールドをブレイクする時、相手はそのシールドを自身の手札に加えるかわりに墓地に置く。']),
+    { id: 'gachaSp', n: 'gachaSp', img: '', f: [{ n: 'gachaSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['ドギラゴン・ガチャを2度回す。回すたびに、その能力を使う。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -789,5 +790,18 @@ describe('named mechanics', () => {
     }
     expect(s.players[1].grave.length).toBe(grave + 1);
     expect(s.players[1].hand.length).toBe(hand);
+  });
+
+  it('ガチャ: rolls and uses the rolled abilities, recording them for the roulette', () => {
+    let s = setup([{ p: 0, cid: 'gachaSp', zone: 'hand' }]);
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'gachaSp')!, face: 0, pay: freeMana(s, 0, 1) });
+    expect(s.gachaLog?.length).toBe(2);
+    expect(s.gachaLog!.every((g) => g.kind === 'dogiragon' && g.roll >= 0 && g.roll < 6)).toBe(true);
+    // 出た目の能力が順に解決される
+    for (let k = 0; k < 12 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: top.options.slice(0, top.min), options: [0] }) : { t: 'resolve', use: true });
+    }
+    expect(s.log.filter((l) => l.m.startsWith('ドギラゴン・ガチャ:')).length).toBe(2);
   });
 });

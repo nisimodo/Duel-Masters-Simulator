@@ -197,6 +197,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** 回したガチャの記録 (画面のルーレット表示用) */
+  gachaLog?: { kind: 'dogiragon' | 'dokindam'; roll: number; player: number }[];
   /** ターンの残りをとばす */
   skipTurnRest?: boolean;
   /** 実行中の効果が呪文なら、唱えたプレイヤー */

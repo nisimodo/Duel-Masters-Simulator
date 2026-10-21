@@ -229,6 +229,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^そうしない場合、/, 'そうしなかった場合、')
+    .replace(/^自分の([^、]+?)がバトルゾーンにあれば、/, 'バトルゾーンに自分の$1があれば、')
     .replace(/^そのプレイヤーは、?(自分自身|自身)の/, '相手は自身の')
     .replace(/^そのプレイヤーは、?/, '相手は')
     .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
@@ -502,6 +503,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^コストを支払うかわりに、/.test(s)) return [];
   // シールドをさらにN枚ブレイクする
   {
+    const xn = s.match(/^(このターン|次の自分のターンのはじめまで)、(.+?)(\d+)体は、?(?:相手の)?シールドをさらに(\d+)(?:枚|つ)ブレイクする$/);
+    const xsel = xn && parseSel(xn[2]);
+    if (xn && xsel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: xsel, count: { n: +xn[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `${xn[2]}を${xn[3]}体選ぶ` },
+        { op: 'grant', target: { ref: 'it' }, kws: [`ブレイク+${xn[4]}`], until: xn[1] === 'このターン' ? 'turn' : 'nextOwnTurn' },
+      ];
     const xb = s.match(/^(このターン|次の自分のターンのはじめまで)、(.+?)は、?(?:相手の)?シールドをさらに(\d+)(?:枚|つ)ブレイクする$/);
     const t = xb && refTarget(xb[2]);
     if (xb && t) return [{ op: 'grant', target: t, kws: [`ブレイク+${xb[3]}`], until: xb[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
@@ -722,6 +730,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (tt && sel) return [{ op: 'useMarked', key: '能力', perLooked: sel }];
   }
   if (/^ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  // ガチャ 「ドギラゴン・ガチャを3度回す」「もう1度ドキンダム・ガチャを回して、その能力を使う」
+  {
+    const ga = s.match(/^(?:もう)?(\d+)?度?(ドギラゴン|ドキンダム)・ガチャを(?:(\d+)度)?回(?:す|して、その能力を使う)$/);
+    if (ga) return [{ op: 'gacha', kind: ga[2] === 'ドギラゴン' ? 'dogiragon' : 'dokindam', times: +(ga[3] ?? ga[1] ?? 1) }];
+    if (/^回すたびに、その能力を使う$/.test(s)) return [];
+  }
   {
     const me = s.match(/^(相手|自分)は?(?:自身|自分)?の山札を一番下の(\d+)枚を残してすべて墓地に置く$/) ?? s.match(/^(相手)は(?:自身|自分)の山札を一番下の(\d+)枚を残してすべて墓地に置く$/);
     if (me) return [{ op: 'millExcept', who: me[1] === '相手' ? 'opp' : 'self', keep: +me[2] }];

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { HashRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { backend } from './backend';
 import { AppProvider, useApp } from './context';
@@ -8,6 +8,9 @@ import Home from './pages/Home';
 import RoomEntry from './pages/RoomEntry';
 import RoomPage from './pages/RoomPage';
 import Settings from './pages/Settings';
+
+// 開発時だけの確認ページ
+const GachaPreview = lazy(() => import('./game/GachaPreview'));
 
 function Login() {
   const [name, setName] = useState('');
@@ -81,6 +84,16 @@ function Gate() {
               <Route path="/decks/:id" element={<DeckEditor />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/play/:mode" element={<RoomEntry />} />
+              {import.meta.env.DEV && (
+                <Route
+                  path="/dev/gacha"
+                  element={
+                    <Suspense fallback={null}>
+                      <GachaPreview />
+                    </Suspense>
+                  }
+                />
+              )}
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Shell>

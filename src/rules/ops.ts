@@ -126,6 +126,8 @@ export type Op =
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
   | { op: 'useMarked'; key: string; others?: number; perLooked?: Sel }
+  /** ドギラゴン・ガチャ / ドキンダム・ガチャを回して、その能力を使う */
+  | { op: 'gacha'; kind: 'dogiragon' | 'dokindam'; times: number }
   /** ターンの残りをとばす */
   | { op: 'skipTurn' }
   /** 山札を一番下のN枚を残してすべて墓地に置く */

@@ -24,6 +24,7 @@ import {
 import type { Exec, GameState, ZoneName } from './types';
 import { canBeChosen, isSealed } from './statics';
 import { spellEffectLines } from '../lib/triggers';
+import { GACHA } from '../rules/gacha';
 
 // ---------- 解析結果のキャッシュ ----------
 const progCache = new Map<string, ReturnType<typeof parseEffect>>();
@@ -939,6 +940,21 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'drawItPlus': {
         const d = drawCards(s, ex.player, ex.it.length * (op.mult ?? 1) + op.plus);
         log(s, ex.player, `カードを${d}枚引いた`);
+        break;
+      }
+      case 'gacha': {
+        // 1〜6 のどれかが出て、その能力を使う (出た順に解決する)
+        const g = GACHA[op.kind];
+        const abilities: GameState['pending'] = [];
+        for (let k = 0; k < op.times; k++) {
+          const roll = Math.floor(rand(s) * 6);
+          const face = g.faces[roll];
+          (s.gachaLog ??= []).push({ kind: op.kind, roll, player: ex.player });
+          log(s, ex.player, `${g.name}: ${face.label}`);
+          const c = s.cards[ex.src];
+          abilities.push({ kind: 'ability', player: ex.player, src: ex.src, cid: c.cid, face: c.face, event: 'spell', text: `${g.name} ${face.label}: ${face.effect}`, effect: face.effect, optional: false, auto: false });
+        }
+        s.pending.unshift(...abilities);
         break;
       }
       case 'skipTurn': {
