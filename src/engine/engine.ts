@@ -166,6 +166,11 @@ export function moveCard(
   if (from === 'battle' && to !== 'battle' && !opts.silent && c.exShield != null && s.cards[c.exShield]?.zone === 'shield') {
     const sh = c.exShield;
     c.exShield = undefined;
+    // エクストラEXライフ: 次のシールドが残っていれば、また離れない
+    while (c.exExtra?.length && c.exShield == null) {
+      const nx = c.exExtra.shift()!;
+      if (s.cards[nx]?.zone === 'shield') c.exShield = nx;
+    }
     moveCard(s, L, sh, 'grave', { silent: true });
     log(s, c.owner, `EXライフ: ${q(card?.faces[c.face]?.name ?? '')} は離れるかわりにシールドを1つ墓地に置いた`);
     return 'battle';
@@ -1999,7 +2004,18 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       c.sick = false; // 進化クリーチャーは召喚酔いしない
       c.tapped = wasTapped;
     }
-    if (face.kw.exLife) {
+    const extraEx = face.text.some((l) => /^エクストラEXライフ/.test(normText(l)));
+    if (face.kw.exLife || extraEx) {
+      if (extraEx) {
+        const top2 = s.players[p].deck.pop();
+        if (top2 != null) {
+          s.cards[top2].zone = 'shield';
+          s.cards[top2].faceUp = false;
+          s.players[p].shield.push(top2);
+          c.exExtra = [top2];
+          log(s, p, 'エクストラEXライフ: 山札の上から1枚をシールドに追加');
+        }
+      }
       const top = s.players[p].deck.pop();
       if (top != null) {
         s.cards[top].zone = 'shield';
