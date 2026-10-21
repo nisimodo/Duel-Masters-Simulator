@@ -1826,8 +1826,8 @@ function parseEffectRaw(text: string): Program {
     const pre: Program = modal[1].trim() ? parseEffect(modal[1]) : { ops: [], complete: true, unparsed: [] };
     const pick = modal[2] === 'ひとつ' ? 1 : +modal[2].replace(/つ|回/, '');
     // 「(同じものを選んでもよい)」: 1つずつ選ぶのを pick 回くり返す
-    const same = /同じものを選んでもよい/.test(text);
-    const rest = modal[3].replace(/[(（]?同じものを選んでもよい[)）]?。?/, '');
+    const same = /同じものを(?:\d+回|２回)?選んでもよい/.test(text);
+    const rest = modal[3].replace(/[(（]?同じものを(?:\d+回)?選んでもよい。?[)）]?。?/, '');
     const raw = rest.includes('▼') ? rest.split('▼') : rest.split('。');
     const options = raw.map((x) => x.trim()).filter(Boolean);
     const parsed = options.map((o) => ({ label: o, prog: parseEffect(o) }));
