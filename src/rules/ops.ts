@@ -103,7 +103,11 @@ export type Cond =
   /** 自分と相手のシールドの数の合計がN以下 */
   | { c: 'totalShieldsLE'; n: number }
   /** 相手の (手札/マナ/シールド) が自分より多い */
-  | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield'; self?: boolean }
+  | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield' | 'battle'; self?: boolean }
+  /** このクリーチャーの下にその種類のカードがある (タマシードから進化している) */
+  | { c: 'underHas'; kind: 'tamaseed' }
+  /** このクリーチャーにカードがN枚以上含まれている */
+  | { c: 'selfCardsGE'; n: number }
   /** 自分のマナゾーンのカードがすべてその文明 */
   | { c: 'manaAllCiv'; civ: Civ }
   /** 両方を満たす */

@@ -129,6 +129,8 @@ function purposeOf(sel: Sel, verb: string): Purpose {
 
 function parseCond(c: string): Cond | null {
   let m: RegExpMatchArray | null;
+  if ((m = c.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あ$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +m[1] };
+  if (/^(?:バトルゾーンにある)?自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
   if (!/^自分の(墓地|マナゾーン|手札)に/.test(c)) {
     if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
       const sel = parseSel('自分の' + m[1]);
@@ -202,6 +204,18 @@ function parseCond(c: string): Cond | null {
     .replace(/^相手のマナゾーンにあるカードの(?:数|枚数)が、?自分のより多(い場合)?/, '相手のマナゾーンのカードが自分のより多')
     .replace(/^相手のマナゾーンのカードが自分(?:のマナゾーンのカード)?より多/, '相手のマナゾーンのカードが自分のより多')
     .replace(/^相手の手札(?:の枚数)?が自分(?:の手札)?より多/, '相手の手札が自分のより多');
+  if ((m = c.match(/^バトルゾーンまたはマナゾーンに自分の(.+?)が合計(\d+)(?:枚|体|つ)以上あ$/))) {
+    const sel = parseSel('自分の' + m[1]);
+    if (sel) return { c: 'count', sel: { ...sel, zones: ['battle', 'mana'] }, cmp: '>=', n: +m[2] };
+  }
+  if (/^(?:この(?:クリーチャー|タマシード)が)?タマシードから進化してい$/.test(c)) return { c: 'underHas', kind: 'tamaseed' };
+  if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上あ$/)))
+    return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] }, cmp: '>=', n: +m[2] };
+  if ((m = c.match(/^相手の手札が(\d+)枚もな(?:けれ|け)?$/))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] - 1 };
+  if (/^バトルゾーンにある自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
+  if ((m = c.match(/^これが(NEO)?進化クリーチャー(?:であ|で)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', self: true, evolution: true }, cmp: '>=', n: 1 };
+  if ((m = c.match(/^自分のシールドが(\d+)(?:枚|つ)(?:であ|で)?$/))) return { c: 'shields', who: 'self', cmp: '==', n: +m[1] };
+  if ((m = c.match(/^このクリーチャーにカードが(\d+)枚以上含まれてい$/))) return { c: 'selfCardsGE', n: +m[1] };
   if ((m = c.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であ|で)?$/))) return { c: 'manaAllCiv', civ: ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光'] };
   if ((m = c.match(/^自分の(手札|シールド)(?:の数|の枚数)?が相手(?:の(?:手札|シールド))?より多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield', self: true };
   if ((m = c.match(/^相手の(シールド|手札)(?:の数|の枚数)?が自分(?:の(?:手札|シールド)|のより|より)多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield' };
