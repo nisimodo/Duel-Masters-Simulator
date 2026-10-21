@@ -66,9 +66,13 @@ export function PayDialog({
   const fromGrave = s.cards[iid].zone === 'grave';
   const graveAlts = fromGrave ? ([mugen && 'mugen', fushigi && 'fushigi', statics.some((x) => x.s === 'abyss') && 'abyss'].filter(Boolean) as ('mugen' | 'fushigi' | 'abyss')[]) : [];
   const inGrave = fromGrave && !!mugen;
-  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'tapCast' | undefined>(inMana ? 'mana' : graveAlts[0]);
+  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'tapCast' | 'vivid' | undefined>(inMana ? 'mana' : graveAlts[0]);
   const isAura = /オーラ/.test(f.type);
   const tapCast = statics.find((x) => x.s === 'tapCast');
+  const vivid = statics.find((x) => x.s === 'vivid');
+  const vividOk = !!vivid && s.cards[iid].vividTurn === s.turn && s.cards[iid].zone === 'hand';
+  const buzz = statics.find((x) => x.s === 'buzz');
+  const [buzzN, setBuzzN] = useState(0);
   const [taps, setTaps] = useState<number[]>([]);
   const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], alt, taps, ...opts }, face);
@@ -101,7 +105,8 @@ export function PayDialog({
   // ソウルシフト・NEO進化の軽減は進化元によって変わる
   const costEvo = evo.length && statics.some((x) => x.s === 'soulShift' || x.s === 'neoDiscount') ? playCost(s, L, me, { t: 'play', iid, face, pay: [], evo, alt, taps, sasa, he, gzero }, face) : cost;
   const realCost = typeof costEvo === 'number' ? costEvo : cost;
-  const ok = realCost != null && pay.length === realCost && (realCost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
+  const totalCost = realCost != null && buzz && buzz.s === 'buzz' ? realCost + buzzN * buzz.n : realCost;
+  const ok = totalCost != null && pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
   const needEvo = (f.isEvolution && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);
@@ -144,6 +149,27 @@ export function PayDialog({
             </label>
           ))}
         </div>
+      )}
+      {vividOk && vivid && vivid.s === 'vivid' && (
+        <label className="small">
+          <input
+            type="checkbox"
+            checked={alt === 'vivid'}
+            onChange={(e) => {
+              const v = e.target.checked ? 'vivid' : undefined;
+              setAlt(v);
+              refreshPay({ sasa, he, gzero, alt: v, taps });
+            }}
+          />{' '}
+          ビビッドロー (コスト{vivid.cost}で召喚)
+        </label>
+      )}
+      {buzz && buzz.s === 'buzz' && (
+        <label className="small">
+          バズレンダ: 追加でコスト{buzz.n}を
+          <input type="number" min={0} max={20} value={buzzN} style={{ width: 48 }} onChange={(e) => setBuzzN(Math.max(0, +e.target.value || 0))} />
+          回支払う (能力を{1 + buzzN}回使う / 合計コスト {(cost ?? 0) + buzzN * buzz.n})
+        </label>
       )}
       {tapCast && tapCast.s === 'tapCast' && (
         <div className="col" style={{ gap: 2 }}>
@@ -353,7 +379,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

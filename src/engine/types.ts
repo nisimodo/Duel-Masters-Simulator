@@ -53,6 +53,10 @@ export interface CardInst {
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
   cellOf?: number;
+  /** バズレンダで追加で支払った回数 */
+  buzz?: number;
+  /** ビビッドローで表向きにしたターン */
+  vividTurn?: number;
   /** 封印としてこのカードの上に置かれている (付いているカード) */
   sealOf?: number;
   /** 裏向きのマナ (文明を持たない) */
@@ -183,6 +187,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** 次のターンのはじめに支払うコスト (逆転撃) */
+  debts?: { player: number; cost: number }[];
   /** 直前に選んだ種族・文明・数字 */
   chosenValue?: { race?: string; civ?: string; num?: number };
   /** このターンに誘発した能力の数 (無限ループ防止) */
@@ -235,7 +241,9 @@ export type Action =
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
       /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
-      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast';
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast' | 'vivid';
+      /** バズレンダで追加で支払う回数 */
+      buzz?: number;
       /** ムゲンクライムでタップする自分のクリーチャー */
       taps?: number[];
     }

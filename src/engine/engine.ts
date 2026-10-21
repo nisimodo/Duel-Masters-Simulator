@@ -385,6 +385,11 @@ export function moveCard(
       const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b));
       if (host != null) removeSeal(s, L, host);
     }
+    if (dest === 'battle' && from !== 'battle' && card?.faces[c.face]?.marked?.OL && (card.faces[c.face].statics ?? []).some((x) => x.s === 'buzz')) {
+      const eff = card.faces[c.face].marked!.OL;
+      for (let k = 0; k < 1 + (c.buzz ?? 0); k++)
+        s.pending.push({ kind: 'ability', player: c.owner, src: iid, cid: c.cid, face: c.face, event: 'enter', text: `バズレンダ: ${eff}`, effect: eff, optional: false, auto: false });
+    }
     if (dest === 'battle' && from !== 'battle') {
       if (card?.faces[c.face]?.groups?.some((g) => g.kind === 'sforce')) c.forceShield = s.players[c.owner].shield[s.players[c.owner].shield.length - 1];
       gLink(s, L, iid);
@@ -629,6 +634,9 @@ function isPartnerCard(s: GameState, iid: number) {
   return s.partnerIids.includes(iid);
 }
 
+/** ドロー時の判定 (ビビッドロー) に使うカード情報。applyAction のたびに設定する */
+let vividLookup: Lookup | null = null;
+
 export function drawCards(s: GameState, p: number, n: number) {
   const pl = s.players[p];
   let drawn = 0;
@@ -640,6 +648,11 @@ export function drawCards(s: GameState, p: number, n: number) {
     c.faceUp = true;
     pl.hand.push(top);
     drawn++;
+    // ビビッドロー: 自分のターン中、攻撃の前にドローしたら表向きにする
+    if (s.active === p && !s.attack && s.phase !== 'over' && (vividLookup?.(c.cid)?.faces[0]?.statics ?? []).some((x) => x.s === 'vivid')) {
+      c.vividTurn = s.turn;
+      c.revealed = true;
+    }
   }
   return drawn;
 }
@@ -775,6 +788,18 @@ function startTurn(s: GameState, L: Lookup) {
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
   }
   log(s, null, `── ターン${s.turn}: ${pl.name} ──`);
+  // 逆転撃: 支払えなければ負け
+  for (const d of (s.debts ?? []).filter((x) => x.player === p)) {
+    const avail = pl.mana.filter((m) => !s.cards[m].tapped);
+    if (avail.length >= d.cost) {
+      for (const m of avail.slice(0, d.cost)) s.cards[m].tapped = true;
+      log(s, p, `コスト${d.cost}を支払った`);
+    } else {
+      log(s, p, `コスト${d.cost}を支払えないのでゲームに負けた`);
+      pl.lost = true;
+    }
+  }
+  s.debts = (s.debts ?? []).filter((x) => x.player !== p);
   // ターンのはじめの能力 → (advance で) ドロー
   fireWatchers(s, L, p, null, 'turnStartOwn', 'turnStartOpp');
   // 表向きのシールド (ギャラクシールド等) の「自分のターンのはじめに」
@@ -1307,6 +1332,7 @@ export function isManual(a: Action) {
 /** アクションを適用する。不正なら状態を変えずにエラー文字列を返す。 */
 export function applyAction(s0: GameState, p: number, a: Action, L: Lookup): { state: GameState; error: Result } {
   const s = structuredClone(s0);
+  vividLookup = L;
   try {
     const err = apply(s, p, a, L);
     if (err) return { state: s0, error: err };
@@ -1471,6 +1497,11 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
       return `タップしていない自分のクリーチャーを${d.n}体選んでください`;
     return d.cost;
   }
+  if (a.alt === 'vivid') {
+    const d = statics.find((x) => x.s === 'vivid');
+    if (!d || d.s !== 'vivid' || c.vividTurn !== s.turn || c.zone !== 'hand') return 'ビビッドローは使えません';
+    return d.cost;
+  }
   if (a.alt === 'tapCast') {
     const d = statics.find((x) => x.s === 'tapCast');
     if (!d || d.s !== 'tapCast') return 'この方法では使えません';
@@ -1509,6 +1540,8 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
     return 0;
   }
   let cost = costOf(s, L, p, a.iid, fi);
+  const bz = statics.find((x) => x.s === 'buzz');
+  if (a.buzz && bz && bz.s === 'buzz') cost += a.buzz * bz.n;
   // ソウルシフト: 進化元のコストだけ少なく / NEO進化として召喚するならN少なく
   const base = a.evo?.find((b) => s.cards[b]?.owner === p);
   if (base != null && statics.some((x) => x.s === 'soulShift')) cost = Math.max(1, cost - (faceOf(s, L, base)?.cost ?? 0));
@@ -1640,6 +1673,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);
+    c.buzz = a.buzz;
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };

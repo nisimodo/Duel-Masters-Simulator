@@ -104,6 +104,9 @@ const db = buildDB(
     { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
     cr('sealer', 2, 2000, ['このクリーチャーが出た時、相手のクリーチャーを1体選び、相手はそれに封印をひとつ付ける。']),
     { id: 'cmd', n: 'cmd', img: '', f: [{ n: 'cmd', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ドラゴン・コマンド'], x: [] }] },
+    cr('buzz', 2, 2000, ['バズレンダ [ff01](このクリーチャーのコストを支払う時、追加で [ff01]を好きな回数支払ってもよい。このクリーチャーがバトルゾーンに出た時、その{OL} 能力を1回と、追加で [ff01]支払った回数、使う)', '{OL}カードを1枚引く。']),
+    cr('vivid', 7, 7000, ['ビビッドロー [ff02](自分のターン中、攻撃の前にこのクリーチャーをドローした時、表向きにしてもよい。そうしたら、このターンこのクリーチャーを [ff02] 支払って召喚してもよい)']),
+    { id: 'gyaku', n: 'gyaku', img: '', f: [{ n: 'gyaku', t: '呪文', c: 'F', co: 9, p: null, r: [], x: ['逆転撃{ff05}:クリーチャーが自分を攻撃する時、その攻撃中にまだ「逆転撃」を使っていなければ、この呪文を自分の手札からコストを支払わずに唱えてもよい。そうしたら、次の自分のターンのはじめに{ff05}を支払う。支払えなければ、自分はゲームに負ける。', 'カードを1枚引く。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -649,5 +652,32 @@ describe('named mechanics', () => {
     expect(applyAction(s, 1, { t: 'attack', attacker: g, player: 0 }, L).error).toBeTruthy();
     s = act(s, 1, { t: 'play', iid: find(s, 1, 'hand', 'cmd')!, face: 0, pay: freeMana(s, 1, 1) });
     expect(s.cards[g].under.some((u) => s.cards[u].sealOf === g)).toBe(false);
+  });
+
+  it('バズレンダ: pays extra and uses the OL ability that many more times', () => {
+    let s = setup([{ p: 0, cid: 'buzz', zone: 'hand' }], 4);
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'buzz')!, face: 0, pay: freeMana(s, 0, 4), buzz: 2 });
+    for (let k = 0; k < 6 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(s.players[0].hand.length).toBe(hand - 1 + 3);
+  });
+
+  it('ビビッドロー: drawn during own turn can be summoned for its vivid cost', () => {
+    let s = setup([{ p: 0, cid: 'vivid', zone: 'hand' }], 2);
+    // 山札の一番上に置いて引く
+    const v = find(s, 0, 'hand', 'vivid')!;
+    s.players[0].hand = s.players[0].hand.filter((x) => x !== v);
+    s.cards[v].zone = 'deck';
+    s.players[0].deck.push(v);
+    s = act(s, 0, { t: 'draw', n: 1 });
+    expect(s.cards[v].vividTurn).toBe(s.turn);
+    s = act(s, 0, { t: 'play', iid: v, face: 0, pay: freeMana(s, 0, 2), alt: 'vivid' });
+    expect(s.cards[v].zone).toBe('battle');
+  });
+
+  it('逆転撃: cast when attacked, pay at next turn start or lose', () => {
+    const f = L('gyaku')!.faces[0];
+    expect(f.triggers.some((t) => t.fromHand && t.events.includes('oppAttack'))).toBe(true);
+    expect(programOf(f.triggers[0].effect).complete).toBe(true);
   });
 });

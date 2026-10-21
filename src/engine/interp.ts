@@ -888,6 +888,11 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'payLater': {
+        (s.debts ??= []).push({ player: ex.player, cost: op.cost });
+        log(s, ex.player, `次の自分のターンのはじめにコスト${op.cost}を支払う (支払えなければ負け)`);
+        break;
+      }
       case 'gachinkoLoop': {
         let wins = 0;
         for (let k = 0; k < (op.times ?? 40); k++) {

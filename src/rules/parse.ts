@@ -316,6 +316,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'stackUnder', what: 'self' },
       ];
   }
+  // 逆転撃: 次の自分のターンのはじめに支払う。支払えなければ負ける
+  {
+    const pl = s.match(/^次の自分のターンのはじめに\[[a-z]*(\d+)\]を支払う$/);
+    if (pl) return [{ op: 'payLater', cost: +pl[1] }];
+    if (/^支払えなければ、自分はゲームに負ける$/.test(s)) return [];
+  }
   // 効果で唱えた呪文を、唱えた後に山札の下へ
   if (/^(?:こうして呪文を唱えたなら、)?それを唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   if (/^相手は(?:自身|自分)の山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'opp' }];

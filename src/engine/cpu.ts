@@ -339,7 +339,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       // G・ゼロが使えるならコストを支払わずに
       const gz = playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], gzero: true }, fi) === 0;
       // マナ爆誕 (マナゾーンから) / J・O・E・B・A・D (普通に出せない時だけ軽くして出す)
-      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | undefined;
+      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'vivid' | undefined;
       let taps: number[] | undefined;
       const st = f.statics ?? [];
       const mg = st.find((x) => x.s === 'mugen');
@@ -360,6 +360,8 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         if (free.length < mg.n) return;
         alt = 'mugen';
         taps = free.slice(0, mg.n);
+      } else if (s.cards[h].vividTurn === s.turn && st.some((x) => x.s === 'vivid' && x.cost < costOf(s, L, p, h, fi))) {
+        alt = 'vivid';
       } else if (!gz && costOf(s, L, p, h, fi) > mana) {
         const d = st.find((x) => x.s === 'discountSummon');
         if (d && d.s === 'discountSummon') alt = d.kind;
@@ -367,8 +369,12 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       }
       const altCost = alt ? playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], alt, taps }, fi) : null;
       if (alt && typeof altCost !== 'number') return;
-      const cost = gz ? 0 : alt ? (altCost as number) : costOf(s, L, p, h, fi);
+      let cost = gz ? 0 : alt ? (altCost as number) : costOf(s, L, p, h, fi);
       if (cost > mana) return;
+      // バズレンダ: 余ったマナで追加で支払う
+      const bz = st.find((x) => x.s === 'buzz');
+      const buzz = bz && bz.s === 'buzz' && !alt && !gz ? Math.floor((mana - cost) / bz.n) : 0;
+      cost += buzz * (bz && bz.s === 'buzz' ? bz.n : 0);
       const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost);
       if (!pay) return;
       const rv = removalValue(card, fi);
@@ -407,7 +413,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
         if (alt === 'joe' || alt === 'bad' || alt === 'abyss') value = value * 0.6; // ターンの終わりに離れる
         if (alt === 'galaxy') value = value * 0.4; // シールドとして置くだけ
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps }, value });
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined }, value: value + buzz * 8 });
       } else if (/オーラ/.test(f.type)) {
         // オーラ: 一番強い自分のGRクリーチャーに (いなければGR召喚して) 付ける
         const holder = me.battle.filter((b) => /GR/.test(faceOf(s, L, b)?.type ?? '')).sort((a, b) => power(s, L, b) - power(s, L, a))[0];

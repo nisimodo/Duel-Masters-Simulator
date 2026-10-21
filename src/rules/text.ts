@@ -19,6 +19,9 @@ export function normText(s: string): string {
     .replace(/^\s*覚醒\s*\(サイキック\)\s*リンク\s*[-ー―:]\s*/, '')
     // 革命Nトリガー: 「クリーチャーが自分を攻撃する時、〜」は相手のクリーチャーが攻撃する時の、手札からの能力
     .replace(/^\s*革命\d+トリガー\s*[-ー―:]\s*クリーチャーが自分を攻撃する時/, '相手のクリーチャーが自分を攻撃する時')
+    // 逆転撃{ll03}:クリーチャーが自分を攻撃する時、その攻撃中にまだ「逆転撃」を使っていなければ、〜
+    .replace(/^\s*逆転撃\s*\{[a-z]*\d+\}\s*[:：]\s*クリーチャーが自分を攻撃する時、(その攻撃中にまだ「逆転撃」を使っていなければ、)?/, '相手のクリーチャーが自分を攻撃する時、')
+    .replace(/\{([a-z]*)(\d+)\}/g, '[$1$2]')
     .replace(/^\s*(覚醒|龍解)\s*[-ー―:]\s*/, '')
     .trim();
 }
@@ -149,6 +152,11 @@ export function splitAbilities(lines: string[]): {
       main.push(raw);
       tap = [];
       inTap = true;
+      continue;
+    }
+    // バズレンダの {OL} 能力
+    if (/^\s*\{OL\}/.test(raw.normalize('NFKC'))) {
+      (marked['OL'] ??= []).push(t.replace(/。$/, ''));
       continue;
     }
     // 「このクリーチャーの q 能力を使う」などで使われる、記号つきの能力
