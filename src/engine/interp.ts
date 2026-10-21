@@ -216,6 +216,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return me.shield.length + opp.shield.length <= c.n;
     case 'oppMore':
       return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
+    case 'finalRev':
+      if (me.finalRevTurn === s.turn) return false;
+      me.finalRevTurn = s.turn;
+      return true;
     case 'underHas':
       return (s.cards[ex.src]?.under ?? []).some((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '').includes('タマシード'));
     case 'selfCardsGE':

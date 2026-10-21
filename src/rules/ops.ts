@@ -108,6 +108,8 @@ export type Cond =
   | { c: 'underHas'; kind: 'tamaseed' }
   /** このクリーチャーにカードがN枚以上含まれている */
   | { c: 'selfCardsGE'; n: number }
+  /** そのターン中に他の「ファイナル革命」をまだ使っていない (満たせば使ったことにする) */
+  | { c: 'finalRev' }
   /** 自分のマナゾーンのカードがすべてその文明 */
   | { c: 'manaAllCiv'; civ: Civ }
   /** 両方を満たす */

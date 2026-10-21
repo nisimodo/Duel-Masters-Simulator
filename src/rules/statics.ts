@@ -240,6 +240,17 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
     const sel = parseSel('自分の' + m[1]);
     if (sel) return { cond: { c: 'countLess', sel, n: m[2] ? +m[2] : 1 }, rest: m[3] };
   }
+  if ((m = t.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上(あれば|なければ)、(.+)$/))) {
+    const sel: Sel = { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [CIV_OF[m[1]]] };
+    return { cond: m[3] === 'あれば' ? { c: 'countAtLeast', sel, n: +m[2] } : { c: 'countLess', sel, n: +m[2] }, rest: m[4] };
+  }
+  if ((m = t.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上(あれば|なければ)、(.+)$/))) {
+    const sel: Sel = { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true };
+    return { cond: m[2] === 'あれば' ? { c: 'countAtLeast', sel, n: +m[1] } : { c: 'countLess', sel, n: +m[1] }, rest: m[3] };
+  }
+  if ((m = t.match(/^バトルゾーンまたはマナゾーンに自分の(.+?)が合計(\d+)(?:枚|体|つ)以上あれば、(.+)$/)) && parseSel('自分の' + m[1])) {
+    return { cond: { c: 'countAtLeast', sel: { ...parseSel('自分の' + m[1])!, zones: ['battle', 'mana'] }, n: +m[2] }, rest: m[3] };
+  }
   if ((m = t.match(/^自分のマナゾーンにあるカードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
   if ((m = t.match(/^(?:ラビリンス[:：])?自分のシールド(?:の数)?が相手(?:のシールド)?より多ければ、(.+)$/))) return { cond: { c: 'shieldsMore' }, rest: m[1] };
   if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
@@ -267,6 +278,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/。$/, '')
     .replace(/はすべて、(「)/, 'は$1')
     .replace(/^革命\d+[:：―\-－ー]/, '')
+    .replace(/^水晶武装\d*[:：]/, '')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '');
   let m: RegExpMatchArray | null;
 

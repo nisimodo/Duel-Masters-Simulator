@@ -208,6 +208,7 @@ function parseCond(c: string): Cond | null {
     const sel = parseSel('自分の' + m[1]);
     if (sel) return { c: 'count', sel: { ...sel, zones: ['battle', 'mana'] }, cmp: '>=', n: +m[2] };
   }
+  if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
   if (/^(?:この(?:クリーチャー|タマシード)が)?タマシードから進化してい$/.test(c)) return { c: 'underHas', kind: 'tamaseed' };
   if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上あ$/)))
     return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] }, cmp: '>=', n: +m[2] };
@@ -277,7 +278,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^そのプレイヤーは、?(自分自身|自身)の/, '相手は自身の')
     .replace(/^そのプレイヤーは、?/, '相手は')
     .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
-    .replace(/^(龍?マナ武装|レインボーナス)\d*[:：]/, '')
+    .replace(/^(龍?マナ武装|レインボーナス|水晶武装|ファイナル革命)\d*[:：]/, '')
     .replace(/^鬼タイム\s*[:：]\s*(?=自分と相手のシールド)/, '')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
     .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
