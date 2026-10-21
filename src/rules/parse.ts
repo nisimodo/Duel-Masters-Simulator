@@ -209,6 +209,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
     .replace(/^このターンが終わるまで、/, 'このターン、')
     .replace(/^そのターンの終わりまで、/, 'このターン、')
+    .replace(/^このターンの攻撃中、/, 'このターン、')
+    .replace(/^自分の山札のカードを、?上から(\d+)枚表向きにする$/, '自分の山札の上から$1枚を表向きにする')
     .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
     .replace(/(その|選んだ|選ばれた)種族の/g, '〈種族〉の')
     .replace(/(その|選んだ|選ばれた)文明の/g, '〈文明〉の')
@@ -322,6 +324,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const pl = s.match(/^次の自分のターンのはじめに\[[a-z]*(\d+)\]を支払う$/);
     if (pl) return [{ op: 'payLater', cost: +pl[1] }];
     if (/^支払えなければ、自分はゲームに負ける$/.test(s)) return [];
+  }
+  // 手札を裏向きのまま新しいシールドに
+  {
+    const hs = s.match(/^自分の手札を(\d+)枚(まで)?、?裏向きのまま、?新しいシールドとして(?:自分の)?シールドゾーンに(?:置く|加える)$/);
+    if (hs)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +hs[1], upTo: !!hs[2] }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'シールドにする手札を選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: 'shield' },
+      ];
+  }
+  if (/^表向きにしたカードを(すべて)?(自分の)?マナゾーンに置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'mana' }];
+  {
+    const dp = s.match(/^バトルゾーンにある(相手|自分)のクリーチャーと同じ枚数のカードを引く$/);
+    if (dp) return [{ op: 'drawPer', sel: { owner: dp[1] === '相手' ? 'opp' : 'self', zones: ['battle'], kind: 'creature' } }];
+  }
+  {
+    const ap = s.match(/^(?:このターン、)?(.+?)は相手プレイヤーを攻撃できない$/);
+    const t = ap && refTarget(ap[1]);
+    if (ap && t) return [{ op: 'restrict', target: t, what: 'attackOpp' }];
   }
   // 効果で唱えた呪文を、唱えた後に山札の下へ
   if (/^(?:こうして呪文を唱えたなら、)?それを唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];

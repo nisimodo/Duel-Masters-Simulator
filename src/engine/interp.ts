@@ -464,6 +464,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           if (op.what === 'untap') c.noUntap = true;
           else if (op.what === 'attack') c.noAttack = true;
           else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
+          else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: mainOpp(s, ex.player) };
           else c.restrict = { attack: true, block: true, until: ex.player };
         }
         break;
@@ -887,6 +888,12 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           (c.grants ??= []).push({ kws: op.kws, until: op.until === 'turn' ? -1 : op.until === 'perm' ? -2 : ex.player });
           log(s, ex.player, `${q(nameOf(s, L, i))} に${op.kws.map((k) => `「${k}」`).join('')}を与えた`);
         }
+        break;
+      }
+      case 'drawPer': {
+        const n = candidates(s, L, ex, op.sel).length;
+        const d = drawCards(s, ex.player, n);
+        log(s, ex.player, `カードを${d}枚引いた`);
         break;
       }
       case 'janken': {

@@ -681,7 +681,8 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
   // 2. 除去・召喚・呪文 (価値の高い順)
   if (s.phase === 'main') {
     const cands = playCandidates(s, p, L);
-    if (cands.length) return cands[0].a;
+    // 実際に実行できるものだけ (コストの見積もりが合わない等で失敗するものは飛ばす)
+    for (const c of cands.slice(0, 8)) if (!applyAction(s, p, c.a, L).error) return c.a;
   }
 
   // 2.5 ハイパー化 (攻撃できないクリーチャーだけでタップできる時) / タップして使う能力 / クロス
@@ -717,13 +718,31 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
   if (!atk) {
     const must = mustAttackers(s, L, p)[0];
     if (must != null) {
+      // 実際に宣言できる攻撃先を選ぶ
       const tg = attackTargets(s, L, must);
-      atk = tg.players.length ? { t: 'attack', attacker: must, player: tg.players[0] } : { t: 'attack', attacker: must, player: s.cards[tg.cards[0]].owner, card: tg.cards[0] };
+      const tries: Action[] = [
+        ...tg.players.map((pl) => ({ t: 'attack' as const, attacker: must, player: pl })),
+        ...tg.cards.map((c) => ({ t: 'attack' as const, attacker: must, player: s.cards[c].owner, card: c })),
+      ];
+      atk = tries.find((a) => !applyAction(s, p, a, L).error) ?? null;
     }
   }
   if (atk && atk.t === 'attack') {
     const lures = luresFor(s, L, atk.attacker);
     if (lures.length && !(atk.card != null && lures.includes(atk.card))) atk = { t: 'attack', attacker: atk.attacker, player: s.cards[lures[0]].owner, card: lures[0] };
+    // 宣言できない攻撃なら、ターンを終える (攻撃の強制で終われない時は別の攻撃先を試す)
+    if (applyAction(s, p, atk, L).error) atk = null;
+  }
+  if (!atk) {
+    for (const b of mustAttackers(s, L, p)) {
+      const tg = attackTargets(s, L, b);
+      const tries: Action[] = [
+        ...tg.players.map((pl) => ({ t: 'attack' as const, attacker: b, player: pl })),
+        ...tg.cards.map((c) => ({ t: 'attack' as const, attacker: b, player: s.cards[c].owner, card: c })),
+      ];
+      atk = tries.find((a) => !applyAction(s, p, a, L).error) ?? null;
+      if (atk) break;
+    }
   }
   if (atk) return atk;
 

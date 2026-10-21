@@ -103,7 +103,7 @@ export type Op =
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
   | { op: 'power'; target: Target; delta: number; until: 'turn' }
-  | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' | 'attackMe' }
+  | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp' }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
   | { op: 'shuffle'; who?: 'opp' }
@@ -148,6 +148,8 @@ export type Op =
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */
   | { op: 'payLater'; cost: number }
+  /** sel に合うカードの数だけ引く */
+  | { op: 'drawPer'; sel: Sel }
   /** 相手とジャンケンで勝敗を決める (勝てば did) */
   | { op: 'janken' }
   /** 負けるまで (times: N回) ガチンコ・ジャッジし、勝った数を数える */
