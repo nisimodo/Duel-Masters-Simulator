@@ -76,6 +76,14 @@ export function mergeModal(lines: string[]): string[] {
       out[out.length - 1] = prev.replace(/次の能力を(\d+)回行う/, `次の能力を$1回[鬼${oniRep[1]}:${oniRep[2]}]行う`);
       continue;
     }
+    // 「そうしたら、真上の▪能力をもうN度使う」: 直前の行の文をくり返す
+    const again = t.match(/^(.*?)そうしたら、真上の.{0,3}能力をもう(\d+)度使う。?$/);
+    if (again && prev) {
+      const ss = stripReminder(prev).split('。').map((x) => x.trim()).filter(Boolean);
+      const rep = Array.from({ length: +again[2] }, () => ss.map((x) => `そうしたら、${x}。`).join('')).join('');
+      out.push(again[1] + rep);
+      continue;
+    }
     if (/^[▼▶►・]/.test(t) && out.length && /次のうちいずれか|選ぶ/.test(stripReminder(out[out.length - 1]))) out[out.length - 1] += '▼' + t.replace(/^[▼▶►・]/, '');
     else out.push(l);
   }

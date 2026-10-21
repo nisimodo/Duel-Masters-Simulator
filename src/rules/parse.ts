@@ -192,6 +192,10 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(/^このターンに(\d+)つ以上自分のシールドがブレイクされてい(な(?:け)?)?$/))) return { c: 'brokenGE', n: +m[1], neg: !!m[2] };
   if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
+  c = c
+    .replace(/^相手のマナゾーンにあるカードの(?:数|枚数)が、?自分のより多(い場合)?/, '相手のマナゾーンのカードが自分のより多')
+    .replace(/^相手のマナゾーンのカードが自分(?:のマナゾーンのカード)?より多/, '相手のマナゾーンのカードが自分のより多')
+    .replace(/^相手の手札(?:の枚数)?が自分(?:の手札)?より多/, '相手の手札が自分のより多');
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
@@ -261,6 +265,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/クリ[―‐-]チャー/g, 'クリーチャー')
+    .replace(/^自分のターンの終わりに、/, 'このターンの終わりに、')
+    .replace(/^([^、]+?)より(多|少な)い場合、/, '$1より$2ければ、')
     .replace(/、?(自分の)?マナゾーンに加える$/, '$1マナゾーンに置く')
     .replace(/、?(自分の)?マナゾーンに加えてもよい$/, '$1マナゾーンに置いてもよい')
     .replace(/^その中から(\d+)枚、/, 'その中からカードを$1枚選び、')
@@ -397,6 +404,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^自分はゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^(?:その|それと同じ)枚数と同じ数のカードを引く$|^その枚数と同じ枚数のカードを引く$|^それと同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItPlus', plus: 0 }];
   if (/^(この|その)クリーチャーは、?可能(であれば|なら)ブロックする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['強制ブロック'], until: 'nextOwnTurn' }];
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
