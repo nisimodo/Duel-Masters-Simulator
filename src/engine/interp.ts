@@ -862,6 +862,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'moveOthers': {
+        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const ids = [...s.players[who][op.zone]].filter((i) => !ex.it.includes(i));
+        for (const i of ids) moveTo(s, L, ex, i, op.to, true);
+        if (ids.length) log(s, ex.player, `${ids.length}枚を${op.to === 'grave' ? '墓地' : op.to}に置いた`);
+        break;
+      }
       case 'afterBattle': {
         (s.afterBattleExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
         break;

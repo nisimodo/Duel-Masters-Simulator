@@ -274,6 +274,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/マナゾーンでタップされているカード/, 'マナゾーンにあるタップされているカード')
+    .replace(/呪文カード/g, '呪文')
     .replace(/シールドを(\d+)(枚|つ)裏向きのまま選び/, 'シールドを$1$2選び')
     .replace(/シールドを裏向きのまま(\d+)(枚|つ)(まで)?選び、表にして/, 'シールドを$1$2$3選び、')
     .replace(/^そうした場合、/, 'そうしたら、')
@@ -472,6 +474,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  {
+    const mo = s.match(/^(相手は)?(?:自分の|自身の)?(マナゾーン|手札)から(?:カードを)?(\d+)枚選び、それ以外を(?:自分の|持ち主の)?(墓地|手札)に(?:置く|戻す)$/) ?? s.match(/^(相手は)?カードを(\d+)枚、自身の(マナゾーン)から選び、それ以外を(?:自分の|持ち主の)?(墓地)に置く$/);
+    if (mo) {
+      const opp = !!mo[1];
+      const zoneW = mo[2] === 'マナゾーン' || mo[3] === 'マナゾーン' ? 'mana' : 'hand';
+      const n = +(/^\d+$/.test(mo[3] ?? '') ? mo[3] : mo[2]);
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: opp ? 'opp' : 'self', zones: [zoneW], kind: 'card' }, count: { n, upTo: false }, chooser: opp ? 'opp' : 'self' }, purpose: 'benefit', prompt: `残すカードを${n}枚選ぶ` },
+        { op: 'moveOthers', zone: zoneW, who: opp ? 'opp' : 'self', to: mo[4] === '手札' ? 'hand' : 'grave' },
+      ];
+    }
+  }
   // ランチャーE: 唱える時に自分のその種族をタップする / 「この呪文を唱えた時にタップした〇〇1体につき〜」
   {
     const le = s.match(/^ランチャーE[:：](.+)$/);
