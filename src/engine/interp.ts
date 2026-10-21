@@ -649,6 +649,18 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
         continue;
       }
+      case 'forEachPlayer': {
+        ex.ops.shift();
+        const me0 = ex.player;
+        const order = s.players.map((_, k) => (s.active + k) % s.players.length).filter((q) => !s.players[q].lost);
+        const seq: Op[] = order.flatMap((q): Op[] => [{ op: 'setPlayer', p: q }, ...op.body]);
+        ex.ops.unshift(...seq, { op: 'setPlayer', p: me0 });
+        continue;
+      }
+      case 'setPlayer':
+        ex.player = op.p;
+        ex.it = [];
+        break;
       case 'repeatPer': {
         ex.ops.shift();
         const n = Math.min(20, candidates(s, L, ex, op.sel).length);

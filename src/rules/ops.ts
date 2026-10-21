@@ -144,6 +144,10 @@ export type Op =
   | { op: 'repeat'; n: number; body: Op[] }
   /** sel に合うカードの数だけ body をくり返す (「自分の〇〇1体につき、〜」) */
   | { op: 'repeatPer'; sel: Sel; body: Op[] }
+  /** 各プレイヤーが (手番のプレイヤーから順に) body を行う */
+  | { op: 'forEachPlayer'; body: Op[] }
+  /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */
+  | { op: 'setPlayer'; p: number }
   /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
   | { op: 'repeatIt'; sel?: Sel; body: Op[] }
   /** キーワード能力を一時的に与える */

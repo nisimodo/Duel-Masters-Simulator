@@ -1475,6 +1475,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const body = sentence(m[2], ctx);
     if (sel !== null && body?.length) return [{ op: 'repeatIt', sel: sel ? { ...sel, owner: 'any' } : undefined, body }];
   }
+  // 「各プレイヤーは(自身の)〜」: プレイヤーごとに行う
+  if ((m = s.match(/^各プレイヤーは、?(.+)$/))) {
+    const rest = m[1].replace(/^バトルゾーンにある自身の/, '自分の').replace(/自身の/g, '自分の').replace(/それぞれの/g, '自分の').replace(/(\d+)(体|枚)ずつ/g, '$1$2');
+    const body = sentence(rest, ctx);
+    if (body?.length) return [{ op: 'forEachPlayer', body }];
+  }
   // 「自分の〇〇1体につき、〜」: その数だけくり返す
   if ((m = s.match(/^(?:バトルゾーンにある)?((?:自分|相手)の.+?)1(?:体|枚|つ)につき、?(.+)$/))) {
     const sel = parseSel(m[1]);

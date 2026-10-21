@@ -130,6 +130,7 @@ const db = buildDB(
     { id: 'jbig', n: 'jbig', img: '', f: [{ n: 'jbig', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ジョーカーズ'], x: ['このクリーチャーが出た時、Jビッグ1する。(自分の他のジョーカーズの、Jビッグ1以外の、出た時にトリガーする能力を1つ使う)'] }] },
     { id: 'md', n: 'md', img: '', f: [{ n: 'md', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['魔導具'], x: [] }] },
     { id: 'mug', n: 'mug', img: '', f: [{ n: 'mug', t: 'クリーチャー', c: 'D', co: 9, p: '12000', r: ['テスト'], x: ['無月の門：自分の魔導具をバトルゾーンに出した時、自分の魔導具をバトルゾーンと墓地から２つずつ選び、このクリーチャーを自分の手札または墓地からそれら４枚の上にコストを支払わずに召喚してもよい。'] }] },
+    { id: 'eachSp', n: 'eachSp', img: '', f: [{ n: 'eachSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['各プレイヤーは自身のマナゾーンからカードを1枚ずつ選び、それぞれの手札に戻す。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -453,6 +454,22 @@ describe('named mechanics', () => {
     expect(s.cards[mug].zone).toBe('battle');
     expect(s.cards[mug].under.length).toBe(4);
     expect(s.players[0].battle.length).toBe(1);
+  });
+
+  it('各プレイヤーは: each player chooses for themselves', () => {
+    let s = setup([{ p: 0, cid: 'eachSp', zone: 'hand' }]);
+    const h0 = s.players[0].hand.length;
+    const h1 = s.players[1].hand.length;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'eachSp')!, face: 0, pay: freeMana(s, 0, 1) });
+    const choosers: number[] = [];
+    for (let k = 0; k < 8 && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.kind === 'choice') choosers.push(top.player);
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: top.options.slice(0, 1), options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(choosers).toEqual([0, 1]);
+    expect(s.players[0].hand.length).toBe(h0 - 1 + 1);
+    expect(s.players[1].hand.length).toBe(h1 + 1);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {
