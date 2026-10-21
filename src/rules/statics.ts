@@ -124,6 +124,8 @@ export type StaticSpec =
   | { s: 'destroyAfterAttack' }
   /** このクリーチャーはシールドをブレイクできない */
   | { s: 'noBreak' }
+  /** G・ブレイカー: 相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする */
+  | { s: 'gBreaker' }
   /** 相手のカードはマナゾーンにタップして置かれる */
   | { s: 'oppManaTapped' }
   /** バトルに勝っても、バトルの後に破壊される */
@@ -250,7 +252,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーはタップして出て、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
   if (/^(各ターン、)?このクリーチャーの(最初の)?攻撃の終わりに、このクリーチャーをアンタップする$/.test(t0)) return [{ s: 'untapAfterAttack' }];
   if (/^このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する$/.test(t0)) return [{ s: 'destroyAfterAttack' }];
-  if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0)) return [{ s: 'noBreak' }];
+  if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
+  if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^相手のクリーチャーが攻撃する場合、可能であればこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^このクリーチャーを、自分の墓地から召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'grave' }];
   if ((m = t0.match(/^この呪文を(?:自分の)?(マナゾーン|墓地)から唱えてもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : 'mana' }];

@@ -445,6 +445,7 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
   const k = kwOf(s, L, iid);
   const powered = (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'poweredBreaker') || staticKws(s, L, iid).includes('パワード・ブレイカー') || (s.cards[iid].grants ?? []).some((g) => g.kws.includes('パワード・ブレイカー'));
   if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noBreak')) return 0;
+  if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'gBreaker')) return 99;
   return powered ? k.breaker + Math.floor(power(s, L, iid, true) / 6000) : k.breaker;
 }
 
@@ -1049,6 +1050,10 @@ function advance(s: GameState, L: Lookup): boolean {
         ac.tapped = false;
         ac.grants = ac.grants?.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ`);
+      }
+      if (ac && (L(ac.cid)?.faces[ac.face]?.statics ?? []).some((x) => x.s === 'gBreaker') && s.players[a.owner].shield.length) {
+        log(s, a.owner, 'G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイク');
+        breakShields(s, L, a.owner, [...s.players[a.owner].shield], a.owner);
       }
       if (ac?.zone === 'battle' && (faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'destroyAfterAttack')) {
         log(s, a.owner, `攻撃の終わりに ${q(nameOf(s, L, a.attacker))} を破壊`);
