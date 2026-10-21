@@ -153,6 +153,15 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return (c.who === 'self' ? me : opp).shield.length < c.n;
     case 'selfTapped':
       return !!s.cards[ex.src]?.tapped;
+    case 'equippedTapped': {
+      const par = s.cards[ex.src]?.parent;
+      return par != null && s.cards[par].zone === 'battle' && s.cards[par].tapped;
+    }
+    case 'linked': {
+      const root = s.cards[ex.src]?.linkedTo ?? ex.src;
+      const on = s.cards[root]?.under.some((u) => s.cards[u].linkedTo === root) ?? false;
+      return c.neg ? !on : on;
+    }
   }
 }
 
@@ -165,7 +174,8 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       return base.filter((i) => s.cards[i].zone !== 'gone');
     }
     case 'self':
-      return [ex.src];
+      // G・リンクで下になったゴッドの「このクリーチャー」はリンクしたクリーチャー全体
+      return [s.cards[ex.src]?.linkedTo ?? ex.src];
     case 'rest':
       return ex.looked.filter((i) => !ex.it.includes(i));
     case 'saved':
@@ -202,6 +212,19 @@ function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal
   log(s, ex.player, `${hidden && !reveal ? 'カード' : q(nm)} を${ZONE_JA[zone]}へ`);
 }
 const ZONE_JA: Record<string, string> = { grave: '墓地', hand: '手札', mana: 'マナゾーン', shield: 'シールド', deck: '山札', battle: 'バトルゾーン' };
+
+/** ドラグハート・ウエポンを、この能力のクリーチャー (いなければ一番強い自分のクリーチャー) に装備する */
+function equipWeapon(s: GameState, L: Lookup, ex: Exec, w: number) {
+  const pl = s.players[s.cards[w].owner];
+  const isCr = (i: number) => s.cards[i].zone === 'battle' && !!L(s.cards[i].cid)?.faces[s.cards[i].face]?.isCreature;
+  const holder = isCr(ex.src) && s.cards[ex.src].owner === s.cards[w].owner ? ex.src : [...pl.battle].filter(isCr).sort((a, b) => power(s, L, b) - power(s, L, a))[0];
+  if (holder == null || s.cards[w].zone !== 'battle') return;
+  pl.battle = pl.battle.filter((b) => b !== w);
+  s.cards[w].zone = 'under';
+  s.cards[w].parent = holder;
+  s.cards[holder].under.push(w);
+  log(s, ex.player, `${q(nameOf(s, L, w))} を ${q(nameOf(s, L, holder))} に装備した`);
+}
 
 const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
 
@@ -439,6 +462,7 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
           if (op.mode === 'put') {
             log(s, ex.player, `${q(card.faces[fi].name)} をバトルゾーンに出した`);
             moveCard(s, L, i, 'battle', { face: fi });
+            if (/ドラグハート・ウエポン/.test(card.faces[fi].type)) equipWeapon(s, L, ex, i);
           } else {
             const owner = c.owner;
             playCard(s, owner, { t: 'play', iid: i, face: fi, pay: [], free: true, force: true }, L);
@@ -544,9 +568,26 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         for (const i of resolveRef(s, ex, op.target) ?? []) {
           const c = s.cards[i];
           const card = L(c.cid);
-          if (!card || card.faces.length < 2 || card.twin || c.zone !== 'battle') continue;
+          if (!card || card.faces.length < 2 || card.twin) continue;
+          if (c.zone !== 'battle' && !(c.zone === 'under' && op.to === 'creature')) continue;
           const before = nameOf(s, L, i);
-          c.face = (c.face + 1) % card.faces.length;
+          const costs = card.faces.map((f) => f.cost);
+          let next = (c.face + 1) % card.faces.length;
+          if (op.to === 'big') next = costs.indexOf(Math.max(...costs));
+          else if (op.to === 'small') next = costs.indexOf(Math.min(...costs));
+          else if (op.to === 'creature') next = Math.max(0, card.faces.findIndex((f) => f.isCreature));
+          if (next === c.face) continue;
+          // 装備・クロスされていたドラグハートは、クリーチャーになって単独でバトルゾーンに残る
+          if (c.zone === 'under' && c.parent != null) {
+            const par = s.cards[c.parent];
+            par.under = par.under.filter((u) => u !== i);
+            c.parent = null;
+            c.zone = 'battle';
+            s.players[c.owner].battle.push(i);
+            c.sick = false;
+          }
+          c.face = next;
+          if (op.to === 'creature') c.tapped = false;
           log(s, ex.player, `${q(before)} を裏返して ${q(card.faces[c.face].name)} に`);
         }
         break;

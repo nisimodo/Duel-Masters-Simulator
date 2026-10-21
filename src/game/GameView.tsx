@@ -7,7 +7,7 @@ import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { attackTargets, canAttackWith, decider, faceOf, nameOf, power, untappedMana } from '../engine/engine';
+import { attackTargets, autoPay, canAttackWith, crossCost, decider, faceOf, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { costOf } from '../engine/statics';
@@ -244,6 +244,25 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
               onClick: () => setPick({ title: `ハイパー化: タップするクリーチャーを${hz.n}体選ぶ`, n: hz.n, cands, picks: [], done: (taps) => act({ t: 'hyperize', iid, taps }) }),
             });
           }
+        }
+        if (own && f && /クロスギア/.test(f.type)) {
+          const cands = s.players[me].battle.filter((b) => faceOf(s, L, b)?.isCreature);
+          items.push({
+            label: 'クリーチャーにクロスする…',
+            disabled: !isMyTurn || !cands.length,
+            onClick: () =>
+              setPick({
+                title: `${f.name} をクロスするクリーチャーを選ぶ`,
+                n: 1,
+                cands,
+                picks: [],
+                done: ([onto]) => {
+                  const pay = autoPay(s, L, me, f.civs, crossCost(s, L, iid, onto));
+                  if (!pay) alert('マナが足りません');
+                  else act({ t: 'cross', iid, onto, pay });
+                },
+              }),
+          });
         }
         items.push({ label: c.tapped ? 'アンタップ' : 'タップ', onClick: () => act({ t: 'tap', iid, v: !c.tapped }) });
         items.push({ label: 'パワー +1000', onClick: () => act({ t: 'power', iid, delta: 1000 }) });

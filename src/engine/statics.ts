@@ -57,8 +57,10 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
         for (const g of effGroups(s, L, iid)) for (const spec of g.statics) out.push({ src: iid, owner: p, spec });
       for (const u of c.under) {
         const uc = s.cards[u];
-        const uf = L(uc.cid)?.faces[0];
-        for (const spec of uf?.statics ?? []) if (isCrossSpec(spec)) out.push({ src: u, owner: p, spec });
+        const uf = L(uc.cid)?.faces[uc.face];
+        // G・リンクしたゴッドの能力は、リンクしたクリーチャー全体の能力
+        if (uc.linkedTo === iid) for (const spec of uf?.statics ?? []) out.push({ src: iid, owner: p, spec });
+        else for (const spec of uf?.statics ?? []) if (isCrossSpec(spec)) out.push({ src: u, owner: p, spec });
       }
     }
   });
@@ -133,6 +135,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
       return s.players[a.owner].shield.length + s.players[mainOpp(s, a.owner)].shield.length <= cond.n;
     case 'countAtLeast':
       return countRel(s, L, a, cond.sel) >= cond.n;
+    case 'linked':
+      return isLinked(s, a.src);
   }
 }
 
@@ -171,6 +175,14 @@ export function staticKws(s: GameState, L: Lookup, iid: number): string[] {
     out.push(...sp.kws);
   }
   return out;
+}
+
+/** G・リンクしているか (一番上のカード / 下のカードどちらでも) */
+export function isLinked(s: GameState, iid: number): boolean {
+  const c = s.cards[iid];
+  if (!c) return false;
+  if (c.linkedTo != null) return true;
+  return c.under.some((u) => s.cards[u].linkedTo === iid);
 }
 
 /** そのカード自身が持つ常在型能力 */

@@ -52,8 +52,19 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
   const base: Keywords = f ? f.kw : EMPTY_KW;
   const g = s.cards[iid].grants;
   const extra = s.cards[iid].zone === 'battle' ? staticKws(s, L, iid) : [];
-  if (!g?.length && !extra.length) return base;
+  const links = s.cards[iid].under.filter((u) => s.cards[u].linkedTo === iid);
+  if (!g?.length && !extra.length && !links.length) return base;
   const k: Keywords = { ...base };
+  for (const u of links) {
+    const lk = L(s.cards[u].cid)?.faces[s.cards[u].face]?.kw;
+    if (!lk) continue;
+    k.breaker = Math.max(k.breaker, lk.breaker);
+    k.blocker ||= lk.blocker;
+    k.speedAttacker ||= lk.speedAttacker;
+    k.machFighter ||= lk.machFighter;
+    k.slayer ||= lk.slayer;
+    k.powerAttacker += lk.powerAttacker;
+  }
   for (const kw of [...(g ?? []).flatMap((x) => x.kws), ...extra]) {
     if (kw === 'ブロッカー') k.blocker = true;
     else if (kw === 'スピードアタッカー') k.speedAttacker = true;
@@ -80,6 +91,7 @@ export function power(s: GameState, L: Lookup, iid: number, attacking = false, c
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   let p = (f?.power ?? 0) + c.powerMod;
+  for (const u of c.under) if (s.cards[u].linkedTo === iid) p += L(s.cards[u].cid)?.faces[s.cards[u].face]?.power ?? 0;
   // 「次の自分のターンのはじめまでパワー+N」は一時的な能力として持っている
   for (const g of c.grants ?? []) for (const k of g.kws) if (/^パワー[+-]\d+$/.test(k)) p += +k.slice(3);
   if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
@@ -153,6 +165,17 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // 解除: 離れるかわりにコストの小さいほうに裏返す
+    if (own.some((x) => x.s === 'release') && card && card.faces.length > 1) {
+      const costs = card.faces.map((f) => f.cost);
+      const small = costs.indexOf(Math.min(...costs));
+      if (c.face !== small) {
+        const before = card.faces[c.face].name;
+        c.face = small;
+        log(s, c.owner, `解除: ${q(before)} はバトルゾーンを離れるかわりに ${q(card.faces[small].name)} に裏返った`);
+        return 'battle';
+      }
+    }
     if (own.some((x) => x.s === 'leaveToHand') && to !== 'hand') {
       log(s, c.owner, `エターナル・Ω: ${q(card!.faces[c.face].name)} は手札に戻る`);
       return moveCard(s, L, iid, 'hand', opts);
@@ -197,6 +220,36 @@ export function moveCard(
     fc.tapped = c.tapped;
     c.under = [];
     log(s, c.owner, `スター進化: ${q(nameOf(s, L, first))} がバトルゾーンに残る`);
+  }
+  // G・リンク: 離れるのは1枚だけで、残りのゴッドはバトルゾーンに残る
+  if (from === 'battle' && to !== 'battle') {
+    const links = c.under.filter((u) => s.cards[u].linkedTo === iid);
+    if (links.length) {
+      const [first, ...rest] = links;
+      const fc = s.cards[first];
+      const arr = s.players[fc.owner].battle;
+      arr.splice(arr.indexOf(iid) >= 0 ? arr.indexOf(iid) : arr.length, 0, first);
+      fc.zone = 'battle';
+      fc.parent = null;
+      fc.linkedTo = undefined;
+      fc.tapped = c.tapped;
+      fc.under = [...rest, ...c.under.filter((u) => !links.includes(u) && /クロスギア|ドラグハート/.test(L(s.cards[u].cid)?.faces[0]?.type ?? ''))];
+      for (const u of fc.under) {
+        s.cards[u].parent = first;
+        if (s.cards[u].linkedTo != null) s.cards[u].linkedTo = first;
+      }
+      c.under = c.under.filter((u) => !links.includes(u) && !fc.under.includes(u));
+      log(s, c.owner, `G・リンク: ${q(nameOf(s, L, first))} がバトルゾーンに残る`);
+    }
+    // クロスギアはクリーチャーが離れてもバトルゾーンに残る
+    for (const u of [...c.under]) {
+      const uc = s.cards[u];
+      if (!/クロスギア/.test(L(uc.cid)?.faces[0]?.type ?? '')) continue;
+      c.under = c.under.filter((x) => x !== u);
+      uc.parent = null;
+      uc.zone = 'battle';
+      s.players[uc.owner].battle.push(u);
+    }
   }
   const under = from === 'battle' ? [...c.under] : [];
   detach(s, iid);
@@ -262,11 +315,46 @@ export function moveCard(
     }
     if (dest === 'grave' && from !== 'grave') fireSelf(s, L, iid, prevFace, ['toGrave']);
     if (dest === 'battle' && from !== 'battle') {
+      gLink(s, L, iid);
       fireSelf(s, L, iid, c.face, ['enter']);
       fireWatchers(s, L, c.owner, iid, 'otherOwnEnter', 'oppEnter');
     }
   }
   return dest;
+}
+
+/** クロスギアをクロスするコスト (「〜にクロスする時、コストを少なく」を含む) */
+export function crossCost(s: GameState, L: Lookup, gear: number, onto: number): number {
+  const gf = faceOf(s, L, gear);
+  let cost = gf?.cost ?? 0;
+  for (const x of gf?.statics ?? []) if (x.s === 'crossDiscount' && matchesSel(s, L, onto, x.sel)) cost = Math.max(1, cost - x.n);
+  return cost;
+}
+
+/** G・リンク: 出たゴッドを、条件に合う自分のゴッドにリンクする (リンク先が一番上のまま、出たゴッドが下に入る) */
+function gLink(s: GameState, L: Lookup, iid: number) {
+  const c = s.cards[iid];
+  const gl = (L(c.cid)?.faces[c.face]?.statics ?? []).find((x) => x.s === 'glink');
+  if (!gl || gl.s !== 'glink') return;
+  const glOf = (i: number) => (L(s.cards[i].cid)?.faces[s.cards[i].face]?.statics ?? []).find((x) => x.s === 'glink');
+  const group = (top: number) => [top, ...s.cards[top].under.filter((u) => s.cards[u].linkedTo === top)];
+  const ok = (top: number) => {
+    if (top === iid || !faceOf(s, L, top)?.isCreature) return false;
+    const g = group(top);
+    if (gl.names) return g.some((i) => gl.names!.some((n) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.name.includes(n)));
+    const sides = g.map((i) => glOf(i)).map((x) => (x && x.s === 'glink' ? x.side : undefined));
+    if (sides.includes(gl.side)) return false;
+    return sides.some((x) => x && x !== gl.side);
+  };
+  const top = s.players[c.owner].battle.find(ok);
+  if (top == null) return;
+  const t = s.cards[top];
+  s.players[c.owner].battle = s.players[c.owner].battle.filter((b) => b !== iid);
+  c.zone = 'under';
+  c.parent = top;
+  c.linkedTo = top;
+  t.under.push(iid);
+  log(s, c.owner, `G・リンク: ${q(nameOf(s, L, iid))} が ${q(nameOf(s, L, top))} とリンクした`);
 }
 
 // ---------- 誘発型能力 ----------
@@ -306,6 +394,16 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
     const ev = spec.events.find((e) => events.includes(e));
     if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
   }
+  // リンクしているゴッドの「このクリーチャーが〜時」
+  if (s.cards[iid].zone === 'battle')
+    for (const u of s.cards[iid].under) {
+      if (s.cards[u].linkedTo !== iid) continue;
+      const uf = L(s.cards[u].cid)?.faces[s.cards[u].face];
+      for (const spec of uf?.triggers ?? []) {
+        const ev = spec.events.find((e) => events.includes(e) && e !== 'enter');
+        if (ev) pushAbility(s, L, u, s.cards[u].face, spec, ev);
+      }
+    }
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
@@ -325,6 +423,17 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
         // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
         if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
         pushAbility(s, L, iid, s.cards[iid].face, spec, ev);
+      }
+      // 下にあるリンクしたゴッド・装備したドラグハート・クロスギアの能力 (龍解など)
+      for (const u of s.cards[iid].under) {
+        const uc = s.cards[u];
+        const ucard = L(uc.cid);
+        if (uc.linkedTo !== iid && !/ドラグハート|クロスギア/.test(ucard?.faces[uc.face]?.type ?? '')) continue;
+        for (const spec of ucard?.faces[uc.face]?.triggers ?? []) {
+          if (!spec.events.includes(ev)) continue;
+          if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
+          pushAbility(s, L, u, uc.face, spec, ev);
+        }
       }
     }
   }
@@ -1070,6 +1179,31 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       for (const b of taps) s.cards[b].tapped = true;
       c.face = 1;
       log(s, p, `ハイパー化: ${q(card.faces[0].name)} (${taps.map((b) => q(nameOf(s, L, b))).join('、')} をタップ)`);
+      return null;
+    }
+    case 'cross': {
+      const g = s.cards[a.iid];
+      const onto = s.cards[a.onto];
+      const gf = faceOf(s, L, a.iid);
+      if (g.owner !== p || !gf || !/クロスギア/.test(gf.type)) return '自分のクロスギアを選んでください';
+      if (g.zone !== 'battle' && g.zone !== 'under') return 'バトルゾーンにあるクロスギアを選んでください';
+      if (!onto || onto.owner !== p || onto.zone !== 'battle' || !faceOf(s, L, a.onto)?.isCreature) return 'クロスする自分のクリーチャーを選んでください';
+      if (g.parent === a.onto) return '既にそのクリーチャーにクロスしています';
+      if (s.turnStep !== 'main' || s.attack) return '今はクロスできません';
+      const cost = crossCost(s, L, a.iid, a.onto);
+      for (const m of a.pay) {
+        const mc = s.cards[m];
+        if (mc.owner !== p || mc.zone !== 'mana' || mc.tapped) return 'マナの選択が不正です';
+      }
+      if (new Set(a.pay).size !== a.pay.length || a.pay.length !== cost) return `コスト${cost}分のマナを選んでください`;
+      if (cost > 0 && !payCovers(L, s, a.pay, gf.civs)) return '文明が足りません';
+      for (const m of a.pay) s.cards[m].tapped = true;
+      if (g.zone === 'under' && g.parent != null) s.cards[g.parent].under = s.cards[g.parent].under.filter((u) => u !== a.iid);
+      else s.players[p].battle = s.players[p].battle.filter((b) => b !== a.iid);
+      g.zone = 'under';
+      g.parent = a.onto;
+      onto.under.push(a.iid);
+      log(s, p, `${q(gf.name)} を ${q(nameOf(s, L, a.onto))} にクロスした`);
       return null;
     }
     case 'tapAbility': {

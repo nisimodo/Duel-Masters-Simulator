@@ -12,7 +12,8 @@ export type StaticWhen = 'battle' | 'attack' | 'block' | 'oppTurn' | 'ownTurn' |
 export type StaticCond =
   | { c: 'powerAtLeast'; n: number }
   | { c: 'totalShieldsLE'; n: number } // 鬼タイム: 自分と相手のシールドの合計
-  | { c: 'countAtLeast'; sel: Sel; n: number };
+  | { c: 'countAtLeast'; sel: Sel; n: number }
+  | { c: 'linked' };
 
 export type StaticSpec =
   | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond }
@@ -56,7 +57,13 @@ export type StaticSpec =
   /** シンカライズ: このタマシードを進化元にできる */
   | { s: 'sinkalize' }
   /** ムゲンクライムN: 自分のクリーチャーをN体タップし、コストを支払って手札か墓地から召喚 */
-  | { s: 'mugen'; n: number; cost: number };
+  | { s: 'mugen'; n: number; cost: number }
+  /** 解除: バトルゾーンを離れるかわりにコストの小さいほうに裏返す */
+  | { s: 'release' }
+  /** クロスする時のコスト軽減 */
+  | { s: 'crossDiscount'; sel: Sel; n: number }
+  /** G・リンク: 指定の名前のゴッド (names) か、左/右/中央 G・リンクを持つゴッドとリンクする */
+  | { s: 'glink'; names?: string[]; side?: 'L' | 'R' | 'C' };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -111,6 +118,19 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^ハイパー化[:：]自分の他のクリーチャーを(\d+)体タップする/))) return [{ s: 'hyperize', n: +m[1] }];
   if (/^Zラッシュ/.test(t0)) return [{ s: 'zrush' }];
   if (/^シンカライズ/.test(t0)) return [{ s: 'sinkalize' }];
+  if (/^解除$/.test(t0) || /^(このクリーチャーが)?バトルゾーンを離れる時、(バトルゾーンを離れる)?かわりに、?(コストの小さいほう|フォートレス側)に裏返す$/.test(t0) || /^バトルゾーンを離れるかわりに、?(コストの小さいほう|フォートレス側)に裏返す$/.test(t0))
+    return [{ s: 'release' }];
+  if ((m = t0.match(/^このカードを(.+?)にクロスする時、そのコストを(?:最大)?(\d+)少なくしてもよい/))) {
+    const sel = parseSel(m[1]);
+    return sel ? [{ s: 'crossDiscount', sel, n: +m[2] }] : null;
+  }
+  if ((m = t0.match(/^(左|右|中央)G・リンク$/))) return [{ s: 'glink', side: m[1] === '左' ? 'L' : m[1] === '右' ? 'R' : 'C' }];
+  if (/^G・リンク/.test(t0)) {
+    const names = [...t0.matchAll(/《([^》]+)》/g)].map((x) => x[1]);
+    return names.length ? [{ s: 'glink', names }] : null;
+  }
+  if ((m = t0.match(/^このクリーチャーは、?リンクしている(?:時|間)、?((?:「[^」]+」(?:と|、)?)+)を得る$/)))
+    return [{ s: 'grant', target: { t: 'self' }, kws: [...m[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond: { c: 'linked' } }];
   if ((m = full.replace(/\s+/g, '').match(/^ムゲンクライム(\d+).*?\[[a-z]*(\d+)\]/))) return [{ s: 'mugen', n: +m[1], cost: +m[2] }];
   if ((m = t0.match(/^このクリーチャーが破壊される時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
     const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';

@@ -69,6 +69,10 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }
+  /** これを装備/クロスしたクリーチャーがタップしている */
+  | { c: 'equippedTapped' }
+  /** このクリーチャーがリンクしている (neg: していない) */
+  | { c: 'linked'; neg?: boolean }
 
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' }
@@ -102,7 +106,7 @@ export type Op =
   /** 相手の手札を見る (looked に入れる) */
   | { op: 'lookHand'; who: 'opp' }
   /** 裏返す (覚醒・解除など) */
-  | { op: 'flip'; target: Target }
+  | { op: 'flip'; target: Target; to?: 'big' | 'small' | 'creature' }
   /** 攻撃 (バトル) が終わった後に実行する */
   | { op: 'afterAttack'; body: Op[] }
   /** 相手 (各プレイヤー) に対して同じ処理 */

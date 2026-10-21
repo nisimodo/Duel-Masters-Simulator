@@ -14,6 +14,8 @@ export function normText(s: string): string {
     .replace(/そのあと、/g, 'その後、')
     .replace(/自分自身/g, '自身')
     .replace(/　/g, ' ')
+    // 「覚醒-自分のターンのはじめに、〜裏返す」「龍解:〜」は、そのまま誘発型能力として読む
+    .replace(/^\s*(覚醒|龍解)\s*[-ー―:]\s*/, '')
     .trim();
 }
 

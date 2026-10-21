@@ -33,6 +33,27 @@ const db = buildDB(
     { id: 'sv2', n: 'sv2', img: '', f: [{ n: 'sv2', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['サバイバー'], x: [] }] },
     cr('wave', 1, 1000, ['ウェーブストライカー(バトルゾーンに「ウェーブストライカー」を持つクリーチャーが他に2体以上あれば、このクリーチャーは次の能力を得る)', 'W・ブレイカー']),
     cr('mugen', 7, 7000, ['ムゲンクライム2(自分のクリーチャーを2体タップし、[ff02]支払って、このクリーチャーを自分の手札または墓地から召喚してもよい)']),
+    { id: 'gear', n: 'gear', img: '', f: [{ n: 'gear', t: 'クロスギア', c: 'F', co: 2, p: null, r: [], x: ['クロスギア', 'これをクロスしたクリーチャーのパワーは+3000される。'] }] },
+    {
+      id: 'psy',
+      n: 'psy',
+      img: '',
+      f: [
+        { n: 'psy', t: 'サイキック・クリーチャー', c: 'F', co: 5, p: '5000', r: ['テスト'], x: ['覚醒-自分のターンのはじめに、このクリーチャーをコストの大きいほうに裏返す。'] },
+        { n: 'psy覚醒', t: 'サイキック・クリーチャー', c: 'F', co: 10, p: '15000', r: ['テスト'], x: ['解除(このクリーチャーがバトルゾーンを離れる時、バトルゾーンを離れるかわりに、コストの小さいほうに裏返す)'] },
+      ],
+    },
+    { id: 'godA', n: 'godA', img: '', f: [{ n: '神A', t: 'クリーチャー', c: 'F', co: 3, p: '3000', r: ['ゴッド'], x: ['G・リンク《神B》の左横'] }] },
+    { id: 'godB', n: 'godB', img: '', f: [{ n: '神B', t: 'クリーチャー', c: 'F', co: 3, p: '4000', r: ['ゴッド'], x: ['G・リンク《神A》の右横', 'W・ブレイカー'] }] },
+    {
+      id: 'dh',
+      n: 'dh',
+      img: '',
+      f: [
+        { n: 'dh', t: 'ドラグハート・ウエポン', c: 'F', co: 2, p: null, r: [], x: ['龍解:自分のターンの終わりに、これを装備したクリーチャーがタップされていれば、このドラグハートをクリーチャー側に裏返し、アンタップする。'] },
+        { n: 'dh龍', t: 'ドラグハート・クリーチャー', c: 'F', co: 7, p: '9000', r: ['テスト'], x: [] },
+      ],
+    },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -210,5 +231,60 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid: m, face: 0, pay: freeMana(s, 0, 2), alt: 'mugen', taps });
     expect(s.cards[m].zone).toBe('battle');
     expect(taps.every((b) => s.cards[b].tapped)).toBe(true);
+  });
+
+  it('クロスギア: crosses onto a creature and stays when the creature leaves', () => {
+    let s = setup([
+      { p: 0, cid: 'gear', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const g = find(s, 0, 'battle', 'gear')!;
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    s = act(s, 0, { t: 'cross', iid: g, onto: v, pay: freeMana(s, 0, 2) });
+    expect(s.cards[g].parent).toBe(v);
+    expect(power(s, L, v)).toBe(4000);
+    s = act(s, 0, { t: 'move', iid: v, to: 'grave' });
+    expect(s.cards[g].zone).toBe('battle');
+  });
+
+  it('覚醒 / 解除: flips up at turn start and flips back instead of leaving', () => {
+    let s = setup([{ p: 0, cid: 'psy', zone: 'battle' }]);
+    const ps = find(s, 0, 'battle', 'psy')!;
+    const face = L('psy')!.faces;
+    expect(face[0].triggers.length).toBe(1);
+    expect(face[1].statics.some((x) => x.s === 'release')).toBe(true);
+    s.cards[ps].face = 1;
+    s = act(s, 0, { t: 'move', iid: ps, to: 'grave' });
+    expect(s.cards[ps].zone).toBe('battle');
+    expect(s.cards[ps].face).toBe(0);
+  });
+
+  it('G・リンク: links gods into one creature with summed power', () => {
+    let s = setup([
+      { p: 0, cid: 'godA', zone: 'battle' },
+      { p: 0, cid: 'godB', zone: 'hand' },
+    ]);
+    const a = find(s, 0, 'battle', 'godA')!;
+    const b = find(s, 0, 'hand', 'godB')!;
+    s = act(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 3) });
+    expect(s.cards[b].linkedTo).toBe(a);
+    expect(power(s, L, a)).toBe(7000);
+    expect(kwOf(s, L, a).breaker).toBe(2);
+    s = act(s, 0, { t: 'move', iid: a, to: 'grave' });
+    expect(s.cards[b].zone).toBe('battle');
+  });
+
+  it('龍解: equipped dragheart flips to a creature at end of turn if the holder is tapped', () => {
+    let s = setup([
+      { p: 0, cid: 'dh', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle', tapped: true },
+    ]);
+    const d = find(s, 0, 'battle', 'dh')!;
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    s = act(s, 0, { t: 'stack', iid: d, onto: v });
+    s = act(s, 0, { t: 'endTurn' });
+    for (let k = 0; k < 5 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(s.cards[d].zone).toBe('battle');
+    expect(s.cards[d].face).toBe(1);
   });
 });

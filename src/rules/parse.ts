@@ -80,7 +80,10 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^コストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
   if (m(/^コストを支払わずに(使う|実行する|プレイする)$/)) return [{ op: 'play', target, mode: 'use' }];
   if (m(/^捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
-  if (m(/^(コストの(大きい|小さい)ほうに|もう一方の面に)?裏返す$/)) return [{ op: 'flip', target }];
+  if (m(/^コストの大きいほうに裏返す$/)) return [{ op: 'flip', target, to: 'big' }];
+  if (m(/^コストの小さいほうに裏返す$/)) return [{ op: 'flip', target, to: 'small' }];
+  if (m(/^クリーチャー側に裏返(す|し、アンタップする)$/)) return [{ op: 'flip', target, to: 'creature' }];
+  if (m(/^(もう一方の面に)?裏返す$/)) return [{ op: 'flip', target }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン|超次元ゾーン)から(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン)からコストを支払わずに召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン)からコストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
@@ -140,6 +143,9 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
+  if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
+  if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
+  if (/^このクリーチャーがリンクしていない$/.test(c)) return { c: 'linked', neg: true };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     return sel ? { c: 'itMatches', sel } : null;
@@ -585,7 +591,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^その(2|２)体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'it' }, b: { ref: 'it' } }];
 
   // ---- このクリーチャー ----
-  if ((m = s.match(/^この(?:クリーチャー|カード|呪文|タマシード|クロスギア)を(.+)$/))) {
+  if ((m = s.match(/^この(?:クリーチャー|カード|呪文|タマシード|クロスギア|ドラグハート|フォートレス)を(.+)$/))) {
     const ops = verbOps(m[1], { ref: 'self' });
     if (ops) return ops;
   }
@@ -671,7 +677,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 /** 「このクリーチャー」「そのクリーチャー」「自分のクリーチャーすべて」等 */
 function refTarget(phrase: string): Target | null {
   const p = phrase.replace(/\s+/g, '');
-  if (/^この(クリーチャー|カード|タマシード)$/.test(p)) return { ref: 'self' };
+  if (/^この(クリーチャー|カード|タマシード|ドラグハート|クロスギア|フォートレス)$/.test(p)) return { ref: 'self' };
   if (IT.test(p) && p.replace(IT, '') === '') return { ref: 'it' };
   const m = p.match(/^(.+?)(すべて|全体)$/);
   if (m) {

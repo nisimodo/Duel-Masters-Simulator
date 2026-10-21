@@ -49,6 +49,8 @@ export interface CardInst {
   endOfTurn?: 'joe' | 'bad';
   /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
   hyperUntil?: number;
+  /** G・リンクで下に重なっているゴッド (リンク先の一番上のカード) */
+  linkedTo?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
   grants?: { kws: string[]; until: number }[];
 }
@@ -212,6 +214,8 @@ export type Action =
     }
   | { t: 'hyperize'; iid: number; taps: number[] }
   | { t: 'tapAbility'; iid: number }
+  /** クロスギアをクリーチャーにクロスする */
+  | { t: 'cross'; iid: number; onto: number; pay: number[] }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }
   | { t: 'attackOpt'; iid: number | null }
   | { t: 'block'; blocker?: number | null; ninja?: number; guard?: number }

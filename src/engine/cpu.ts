@@ -16,6 +16,7 @@ import {
   attackTargets,
   autoPay,
   canAttackWith,
+  crossCost,
   playCost,
   cardCivs,
   faceOf,
@@ -386,6 +387,9 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
         if (alt === 'joe' || alt === 'bad') value = value * 0.6; // ターンの終わりに離れる
         cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps }, value });
+      } else if (/クロスギア/.test(f.type)) {
+        // クロスギア: クリーチャーがいる時だけジェネレート
+        if (me.battle.some((b) => faceOf(s, L, b)?.isCreature)) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });
       } else if (f.isSpell) {
         if (rv <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
         cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 6 + rv });
@@ -614,8 +618,16 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
     if (cands.length) return cands[0].a;
   }
 
-  // 2.5 ハイパー化 (攻撃できないクリーチャーだけでタップできる時) / タップして使う能力
+  // 2.5 ハイパー化 (攻撃できないクリーチャーだけでタップできる時) / タップして使う能力 / クロス
   if (s.phase === 'main') {
+    const creatures = me.battle.filter((b) => faceOf(s, L, b)?.isCreature).sort((a, b) => threatOf(s, L, b) - threatOf(s, L, a));
+    for (const g of me.battle) {
+      const gf = faceOf(s, L, g);
+      if (!gf || !/クロスギア/.test(gf.type) || !creatures.length) continue;
+      const onto = creatures[0];
+      const pay = autoPay(s, L, p, gf.civs as Civ[], crossCost(s, L, g, onto));
+      if (pay) return { t: 'cross', iid: g, onto, pay };
+    }
     const idle = me.battle.filter((b) => !s.cards[b].tapped && faceOf(s, L, b)?.isCreature && !canAttackWith(s, L, b));
     for (const iid of me.battle) {
       const card = L(s.cards[iid].cid);
