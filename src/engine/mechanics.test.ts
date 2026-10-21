@@ -108,6 +108,8 @@ const db = buildDB(
     cr('vivid', 7, 7000, ['ビビッドロー [ff02](自分のターン中、攻撃の前にこのクリーチャーをドローした時、表向きにしてもよい。そうしたら、このターンこのクリーチャーを [ff02] 支払って召喚してもよい)']),
     { id: 'gyaku', n: 'gyaku', img: '', f: [{ n: 'gyaku', t: '呪文', c: 'F', co: 9, p: null, r: [], x: ['逆転撃{ff05}:クリーチャーが自分を攻撃する時、その攻撃中にまだ「逆転撃」を使っていなければ、この呪文を自分の手札からコストを支払わずに唱えてもよい。そうしたら、次の自分のターンのはじめに{ff05}を支払う。支払えなければ、自分はゲームに負ける。', 'カードを1枚引く。'] }] },
     cr('odr', 2, 2000, ['O・ドライブ 火x2 (このクリーチャーを召喚する時、自分のマナゾーンで火のカードをさらに2枚タップしてもよい。そうした場合、次の能力を得る)', 'このクリーチャーが出た時、カードを2枚引く。', 'W・ブレイカー']),
+    { id: 'devo', n: 'devo', img: '', f: [{ n: 'devo', t: '進化クリーチャー', c: 'F', co: 2, p: '9000', r: ['テスト'], x: ['デッキ進化-自分の山札の上から1枚目を表向きにする。そのカードがクリーチャーであれば、このクリーチャーをその上に重ねつつバトルゾーンに出す。そのカードがクリーチャー以外であれば、このクリーチャーを自分の手札に戻す。'] }] },
+    cr('dyn', 1, 3000, ['ダイナモ(バトルが始まる時、あるいはこのクリーチャーで攻撃できる時、このクリーチャーをタップしてもよい。そうした場合、そのターンの終わりまで、このクリーチャーのパワーと能力をバトルゾーンにある自分の他のダイナモ1体に加える)']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -697,5 +699,20 @@ describe('named mechanics', () => {
     t = act(t, 0, { t: 'play', iid: o2, face: 0, pay: t.players[0].mana.slice(0, 2) });
     for (let k = 0; k < 4 && t.pending.length; k++) t = act(t, t.pending[0].player, { t: 'resolve', use: true });
     expect(t.players[0].hand.length).toBe(h2 - 1);
+  });
+
+  it('デッキ進化 / ダイナモ', () => {
+    let s = setup([
+      { p: 0, cid: 'devo', zone: 'hand' },
+      { p: 0, cid: 'dyn', zone: 'battle' },
+      { p: 0, cid: 'dyn', zone: 'battle' },
+    ]);
+    const d = find(s, 0, 'hand', 'devo')!;
+    s = act(s, 0, { t: 'play', iid: d, face: 0, pay: freeMana(s, 0, 2), evo: [] });
+    expect(s.cards[d].zone).toBe('battle');
+    expect(s.cards[d].under.length).toBe(1);
+    const [a, b] = s.players[0].battle.filter((x) => s.cards[x].cid === 'dyn');
+    s = act(s, 0, { t: 'dynamo', iid: a, onto: b });
+    expect(power(s, L, b)).toBe(6000);
   });
 });

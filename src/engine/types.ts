@@ -255,6 +255,8 @@ export type Action =
     }
   | { t: 'hyperize'; iid: number; taps: number[] }
   | { t: 'tapAbility'; iid: number }
+  /** ダイナモ: iid をタップして onto にパワーと能力を加える */
+  | { t: 'dynamo'; iid: number; onto: number }
   /** クロスギアをクリーチャーにクロスする */
   | { t: 'cross'; iid: number; onto: number; pay: number[] }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }

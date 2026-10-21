@@ -406,7 +406,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined, odrivePay: odPay.length ? odPay : undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type) && !statics.some((x) => x.s === 'deckEvo'))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined, odrivePay: odPay.length ? odPay : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

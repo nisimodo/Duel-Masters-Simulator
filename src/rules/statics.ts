@@ -104,6 +104,10 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** ダイナモ: タップして、パワーと能力を自分の他のダイナモ1体に加える */
+  | { s: 'dynamo' }
+  /** デッキ進化: 山札の上のクリーチャーを進化元にする */
+  | { s: 'deckEvo' }
   /** O・ドライブ: 召喚する時に、文明ごとに追加でN枚タップすれば能力を得る */
   | { s: 'odrive'; reqs: { civ: string; n: number }[] }
   /** バズレンダ: 追加でコストNを好きな回数支払い、{OL} 能力を 1+その回数 使う */
@@ -179,6 +183,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^ダイナモ$/.test(t0)) return [{ s: 'dynamo' }];
+  if (/^デッキ進化[-ー―:：]/.test(t0)) return [{ s: 'deckEvo' }];
   if (/^O・ドライブ/.test(t0)) {
     const reqs = [...t0.matchAll(/(光|水|闇|火|自然)x(\d+)/g)].map((x) => ({ civ: x[1], n: +x[2] }));
     if (reqs.length) return [{ s: 'odrive', reqs }];

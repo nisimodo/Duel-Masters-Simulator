@@ -237,6 +237,14 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             disabled: !isMyTurn || !canAttackWith(s, L, iid),
             onClick: () => setMode({ kind: 'attack', attacker: iid }),
           });
+          if ((f.statics ?? []).some((x) => x.s === 'dynamo')) {
+            const cands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'dynamo'));
+            items.push({
+              label: 'ダイナモ (パワーと能力を他のダイナモに加える)',
+              disabled: !isMyTurn || !cands.length || !canAttackWith(s, L, iid),
+              onClick: () => setPick({ title: 'パワーと能力を加えるダイナモを選ぶ', n: 1, cands, picks: [], done: ([onto]) => act({ t: 'dynamo', iid, onto }) }),
+            });
+          }
           if (f.tapAbility) items.push({ label: 'タップして能力を使う (攻撃のかわり)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'tapAbility', iid }) });
           const hz = card.hyper && c.face === 0 ? card.faces[0].statics.find((x) => x.s === 'hyperize') : undefined;
           if (hz && hz.s === 'hyperize') {

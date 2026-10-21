@@ -1456,6 +1456,23 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       log(s, p, `${q(gf.name)} を ${q(nameOf(s, L, a.onto))} にクロスした`);
       return null;
     }
+    case 'dynamo': {
+      const c = s.cards[a.iid];
+      const o = s.cards[a.onto];
+      const isDyn = (i: number) => (faceOf(s, L, i)?.statics ?? []).some((x) => x.s === 'dynamo');
+      if (c.owner !== p || c.zone !== 'battle' || !isDyn(a.iid)) return 'ダイナモを持つ自分のクリーチャーを選んでください';
+      if (!o || o.owner !== p || o.zone !== 'battle' || a.onto === a.iid || !isDyn(a.onto)) return '他のダイナモを持つ自分のクリーチャーを選んでください';
+      if (s.turnStep !== 'main' || s.attack) return '今は使えません';
+      if (!canAttackWith(s, L, a.iid)) return 'このクリーチャーは攻撃できる状態ではありません';
+      c.tapped = true;
+      const pw = power(s, L, a.iid);
+      o.powerMod += pw;
+      const k = kwOf(s, L, a.iid);
+      const kws = [k.breaker >= 99 ? 'ワールド・ブレイカー' : k.breaker === 4 ? 'Q・ブレイカー' : k.breaker === 3 ? 'T・ブレイカー' : k.breaker === 2 ? 'W・ブレイカー' : '', k.blocker ? 'ブロッカー' : '', k.slayer ? 'スレイヤー' : ''].filter(Boolean);
+      if (kws.length) (o.grants ??= []).push({ kws, until: -1 });
+      log(s, p, `ダイナモ: ${q(nameOf(s, L, a.iid))} のパワー${pw}と能力を ${q(nameOf(s, L, a.onto))} に加えた`);
+      return null;
+    }
     case 'tapAbility': {
       const c = s.cards[a.iid];
       const f = faceOf(s, L, a.iid);
@@ -1689,6 +1706,21 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       const ef = (face.statics ?? []).find((x) => x.s === 'evoFrom');
       const baseZone = ef && ef.s === 'evoFrom' ? ef.zone : 'battle';
       bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === baseZone && s.cards[b].owner === p && b !== a.iid);
+      // デッキ進化: 山札の上がクリーチャーならその上に、そうでなければ手札に戻る
+      if (!bases.length && (face.statics ?? []).some((x) => x.s === 'deckEvo')) {
+        const deck = s.players[p].deck;
+        const top = deck[deck.length - 1];
+        const tf = top != null ? L(s.cards[top].cid)?.faces[0] : undefined;
+        if (top != null && tf?.isCreature) {
+          log(s, p, `デッキ進化: 山札の上の ${q(tf.name)} の上に重ねる`);
+          moveCard(s, L, top, 'battle', { silent: true });
+          bases = [top];
+        } else {
+          log(s, p, `デッキ進化: 山札の上がクリーチャーではないので ${q(face.name)} は手札に戻る`);
+          if (top != null) s.cards[top].revealed = true;
+          return null;
+        }
+      }
       // NEO進化・G-NEO進化は進化元なしでも召喚できる
       if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
       // 進化GV / 超無限進化: 必要な数の進化元

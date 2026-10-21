@@ -394,8 +394,10 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
               return bf && (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && bc && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
             })
             .sort((a, b) => power(s, L, a) - power(s, L, b))[0];
-          if (base == null) return;
-          evo = [base];
+          if (base == null) {
+            if (!(f.statics ?? []).some((x) => x.s === 'deckEvo')) return;
+            evo = [];
+          } else evo = [base];
         }
         // 革命チェンジ/侵略持ちは、攻撃時に使える場面なら温存
         if (
