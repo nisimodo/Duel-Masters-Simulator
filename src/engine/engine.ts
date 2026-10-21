@@ -267,6 +267,11 @@ export function moveCard(
       }
     }
   }
+  // 相手のターン中に手札から捨てられる時、かわりにバトルゾーンへ
+  if (from === 'hand' && to === 'grave' && s.active !== c.owner && !opts.noReplace && (card?.faces[0]?.statics ?? []).some((x) => x.s === 'discardToBattle')) {
+    log(s, c.owner, `${q(card!.faces[0].name)} は捨てられるかわりにバトルゾーンに出る`);
+    return moveCard(s, L, iid, 'battle', { ...opts, noReplace: true });
+  }
   // 表向きのシールド (ギャラクシールド等) が離れる時、かわりに墓地へ
   if (from === 'shield' && c.faceUp && to !== 'grave' && to !== 'battle' && !opts.noReplace && (card?.faces[0]?.statics ?? []).some((x) => x.s === 'faceUpShieldToGrave')) {
     log(s, c.owner, `${q(card!.faces[0].name)} はシールドゾーンを離れるかわりに墓地へ`);
@@ -1179,7 +1184,8 @@ function blockStep(s: GameState, L: Lookup) {
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
-        if (!(f?.isCreature && kwOf(s, L, b).blocker && !s.cards[b].tapped && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
+        const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
+        if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
         return !ownStatics(s, L, a.attacker).some(
@@ -1920,8 +1926,12 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       }
       if (a.blocker != null) {
         if (!top.blockers.includes(a.blocker) || s.cards[a.blocker].zone !== 'battle') return 'ブロックできないクリーチャーです';
-        s.cards[a.blocker].tapped = true;
-        fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['tapped']);
+        // アンタップしてブロックするクリーチャーはアンタップする
+        if (s.cards[a.blocker].tapped && (faceOf(s, L, a.blocker)?.statics ?? []).some((x) => x.s === 'untapBlocker')) s.cards[a.blocker].tapped = false;
+        else {
+          s.cards[a.blocker].tapped = true;
+          fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['tapped']);
+        }
         at.blocked = a.blocker;
         log(s, p, `${q(nameOf(s, L, a.blocker))} でブロック`);
         fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['block']);

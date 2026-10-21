@@ -104,6 +104,10 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** タップしていても、アンタップしてブロックできる */
+  | { s: 'untapBlocker' }
+  /** 相手のターン中に手札から捨てられる時、かわりにバトルゾーンに出す */
+  | { s: 'discardToBattle' }
   /** ダイナモ: タップして、パワーと能力を自分の他のダイナモ1体に加える */
   | { s: 'dynamo' }
   /** デッキ進化: 山札の上のクリーチャーを進化元にする */
@@ -183,6 +187,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^このクリーチャーをアンタップして、相手クリーチャーの攻撃先をこのクリーチャー(または自分のタップしているクリーチャー)?に変更してもよい$/.test(t0)) return [{ s: 'untapBlocker' }];
+  if (/^(相手のターン中に|相手の呪文の効果またはクリーチャーの能力によって、)このクリーチャーが(自分の)?手札から捨てられる時、墓地に置くかわりに(自分の)?バトルゾーンに出(してもよい|す)$/.test(t0)) return [{ s: 'discardToBattle' }];
+  if ((m = t0.match(/^このクリーチャーが?、?リンクしている(?:間|時)、このクリーチャーはシールドをさらに(\d+)枚ブレイクする$/)))
+    return [{ s: 'grant', target: { t: 'self' }, kws: [`ブレイク+${m[1]}`], when: 'always', cond: { c: 'linked' } }];
   if (/^ダイナモ$/.test(t0)) return [{ s: 'dynamo' }];
   if (/^デッキ進化[-ー―:：]/.test(t0)) return [{ s: 'deckEvo' }];
   if (/^O・ドライブ/.test(t0)) {
@@ -342,8 +350,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
 
   // ---- コスト ----
-  if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:[、。]?ただし.*)?$/)) ||
-    (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:[、。]?ただし.*)?$/))) {
+  if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/)) ||
+    (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/))) {
     const sel = parseSel(m[2], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
     if (sel) {
       const action = m[3] === '召喚' ? 'summon' : m[3] === '唱える' ? 'cast' : 'use';
