@@ -41,7 +41,9 @@ export type StaticSpec =
   | { s: 'noAttacked' }
   | { s: 'attackUntapped' }
   | { s: 'cantAttackCreatures' }
-  | { s: 'unblockableBy'; maxPower?: number; smallerThanSelf?: boolean }
+  | { s: 'unblockableBy'; maxPower?: number; smallerThanSelf?: boolean; sel?: Sel }
+  /** このクリーチャーは sel に攻撃されない */
+  | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
   | { s: 'rainbowMana' }
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper' }
@@ -485,6 +487,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?(タップされていない|アンタップしている|アンタップされている)クリーチャーを攻撃できる$/.test(t0)) return [{ s: 'attackUntapped' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
+  if ((m = t0.match(/^このクリーチャーは、?(.+?)に(攻撃(?:また|も)はブロック|攻撃|ブロック)されない$/)) && parseSel(m[1])) {
+    const sel = parseSel(m[1])!;
+    const out: StaticSpec[] = [];
+    if (/攻撃/.test(m[2])) out.push({ s: 'noAttackedBy', sel });
+    if (/ブロック/.test(m[2])) out.push({ s: 'unblockableBy', sel });
+    return out;
+  }
+  if ((m = t0.match(/^(.+?)は、?このクリーチャーを攻撃(?:することが)?できない$/)) && parseSel(m[1])) return [{ s: 'noAttackedBy', sel: parseSel(m[1])! }];
   if (/^このクリーチャーは、?(このクリーチャー|これ)よりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'unblockableBy', smallerThanSelf: true }];
   if (/^このクリーチャーは、?(呪文によって)?相手に選ばれない$/.test(t0) || /^(呪文の効果(によって|で))?(バトルゾーンにある自分のクリーチャーを相手が|相手がバトルゾーンにあるクリーチャーを|相手がクリーチャーを)選ぶ時、このクリーチャーを?は?選(ぶことはできない|ばれない|べない)$/.test(t0))
     return [{ s: 'untargetable', bySpellOnly: /呪文/.test(t0) }];

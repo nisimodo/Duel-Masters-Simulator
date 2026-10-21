@@ -1259,7 +1259,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
-      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked') || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
+      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };
@@ -1334,7 +1334,7 @@ function blockStep(s: GameState, L: Lookup) {
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
         return !ownStatics(s, L, a.attacker).some(
-          (x) => x.s === 'unblockableBy' && ((x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap)),
+          (x) => x.s === 'unblockableBy' && ((x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap) || (x.sel != null && matchesSel(s, L, b, x.sel))),
         );
       });
   const manaCount = s.players[def].mana.length;
