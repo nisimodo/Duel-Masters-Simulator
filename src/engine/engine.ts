@@ -8,6 +8,7 @@ import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp'
 import { activeStatics, ALL_CIVS, costOf, effGroups, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
+import { normText } from '../rules/text';
 
 export type Lookup = (cid: string) => Card | undefined;
 
@@ -344,6 +345,7 @@ export function moveCard(
     }
     if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
     if (dest === 'battle' && from !== 'battle') {
+      if (card?.faces[c.face]?.groups?.some((g) => g.kind === 'sforce')) c.forceShield = s.players[c.owner].shield[s.players[c.owner].shield.length - 1];
       gLink(s, L, iid);
       fireSelf(s, L, iid, c.face, ['enter']);
       fireWatchers(s, L, c.owner, iid, 'otherOwnEnter', 'oppEnter');
@@ -732,6 +734,7 @@ function finishEndTurn(s: GameState, L: Lookup) {
       drawCards(s, p, 1);
     }
   }
+  s.brokeThisTurn = [];
   for (const c of s.cards) {
     c.powerMod = 0;
     c.noAttack = false;
@@ -1155,6 +1158,7 @@ function resolveAttack(s: GameState, L: Lookup) {
     return;
   }
   const n = Math.min(breakCount(s, L, a.attacker), def.shield.length);
+  if (n > 0) (s.brokeThisTurn ??= []).push(a.attacker);
   a.step = 'breaking';
   if (n < def.shield.length) {
     s.pending.unshift({ kind: 'breakSel', player: a.owner, target: a.targetPlayer, count: n });
@@ -1498,6 +1502,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
+    s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
     if (a.alt === 'abyss') {
       c.endOfTurn = 'abyss';
       (c.grants ??= []).push({ kws: ['スピードアタッカー'], until: -1 });
@@ -1557,10 +1562,20 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         auto: lines.length === 1 && isAutoEffect(lines[0], false),
       });
     }
-    moveCard(s, L, a.iid, charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
+    const kwLine = (re: RegExp) => face.text.some((l) => re.test(normText(l)));
+    // ナイト・マジック: 自分のナイトがいれば、もう一度使ってもよい
+    if (lines.length && kwLine(/^ナイト・マジック/) && s.players[p].battle.some((b) => (faceOf(s, L, b)?.races ?? []).some((r) => r.includes('ナイト')))) {
+      const effect = lines.join('\n');
+      s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: `ナイト・マジック: ${effect}`, effect, optional: true, auto: false });
+    }
+    // サイクロン: 直前にクリーチャーを召喚していれば手札に戻る
+    const cyclone = kwLine(/^サイクロン/) && me.lastPlay?.turn === s.turn && me.lastPlay.kind === 'creature';
+    if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
+    moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
+    me.lastPlay = { turn: s.turn, kind: 'spell' };
   } else if (/オーラ/.test(face.type)) {
     // オーラ: 自分のGRクリーチャーに付ける (選んでいなければGR召喚して付ける)
     let holder = (a.evo ?? []).find((b) => s.cards[b]?.zone === 'battle' && s.cards[b].owner === p && faceOf(s, L, b)?.isCreature);

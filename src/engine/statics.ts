@@ -33,6 +33,9 @@ export function effGroups(s: GameState, L: Lookup, iid: number): AbilityGroup[] 
       if (n < 2) continue;
     }
     if (g.kind === 'accel' && !c.under.some((u) => /クロスギア/.test(L(s.cards[u].cid)?.faces[0]?.type ?? ''))) continue;
+    if (g.kind === 'meta' && s.players[c.owner].mana.length < 7) continue;
+    if (g.kind === 'turbo' && !(s.brokeThisTurn ?? []).some((b) => b !== iid && s.cards[b].owner === c.owner)) continue;
+    if (g.kind === 'sforce' && (c.forceShield == null || s.cards[c.forceShield].zone !== 'shield')) continue;
     out.push(g);
   }
   if (f.races.some((r) => r.includes('サバイバー')))

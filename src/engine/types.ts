@@ -53,6 +53,8 @@ export interface CardInst {
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
   cellOf?: number;
+  /** シールド・フォースで選んだシールド */
+  forceShield?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
   grants?: { kws: string[]; until: number }[];
 }
@@ -76,6 +78,8 @@ export interface PlayerState {
   /** このプレイヤーだけが見ているカード (山札の上を見る等) */
   peek: number[];
   charged: boolean;
+  /** このターン最後に使ったカードの種類 (サイクロン用) */
+  lastPlay?: { turn: number; kind: 'creature' | 'spell' | 'other' };
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
@@ -168,6 +172,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** このターンにシールドをブレイクしたクリーチャー (ターボラッシュ用) */
+  brokeThisTurn?: number[];
   mode: DeckType;
   rng: number;
   players: PlayerState[];

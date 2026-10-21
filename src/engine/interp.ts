@@ -71,6 +71,10 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.colorless && civs.length) return false;
   if (sel.multicolor && civs.length < 2) return false;
   if (sel.monocolor && civs.length >= 2) return false;
+  if (sel.civInMana) {
+    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
+    if (!civs.every((x) => have.has(x))) return false;
+  }
   if (sel.mono && civs.length !== 1) return false;
   if (sel.races?.length && !sel.races.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.nameHas && !f.name.includes(sel.nameHas) && !card.name.includes(sel.nameHas)) return false;
@@ -99,7 +103,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor && !sel.civInMana) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -486,14 +490,16 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         continue;
       }
       case 'modal': {
+        // 爆進ダブル等: 条件を満たせば両方とも選べる
+        const all = !!op.bonus && evalCond(s, L, ex, op.bonus);
         ask(s, ex, {
           player: ex.player,
           mode: 'modal',
-          prompt: `${ex.name}: 次のうちいずれか${op.pick}つを選ぶ`,
+          prompt: `${ex.name}: 次のうちいずれか${op.pick}つを選ぶ${all ? ' (すべて選んでもよい)' : ''}`,
           options: [],
           labels: op.options.map((o) => o.label),
           min: Math.min(op.pick, op.options.length),
-          max: Math.min(op.pick, op.options.length),
+          max: all ? op.options.length : Math.min(op.pick, op.options.length),
           purpose: 'benefit',
         });
         return;

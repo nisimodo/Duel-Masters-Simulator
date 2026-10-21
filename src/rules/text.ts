@@ -58,13 +58,18 @@ export function mergeModal(lines: string[]): string[] {
   return out;
 }
 
-export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul';
+export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce';
 
 const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^ウェーブストライカー/, 'wave'],
   [/^アクセル/, 'accel'],
   [/^超魂X/, 'soul'],
+  [/^メタモーフ/, 'meta'],
+  [/^ターボラッシュ/, 'turbo'],
+  [/^シールド・フォース/, 'sforce'],
 ];
+/** 次の行を「このクリーチャーの能力」として使うキーワード */
+const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*)\s*[(（]/;
 export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわりに|代わりに)、タップして次の能力を使ってもよい/;
 /** サイレントスキル: 自分のターンのはじめに、タップしていればアンタップするかわりに次の能力を使ってもよい */
 const SILENT_SKILL = /^サイレントスキル/;
@@ -94,8 +99,19 @@ export function splitAbilities(lines: string[]): {
   let inTap = false;
   let silent: string[] | null = null;
   let inSilent = false;
+  let nextAbility = false;
   for (const raw of lines) {
     const t = normText(raw).trim();
+    if (nextAbility) {
+      nextAbility = false;
+      (marked['能力'] ??= []).push(t.replace(/。$/, ''));
+      continue;
+    }
+    if (NEXT_ABILITY_HEAD.test(t)) {
+      main.push(raw);
+      nextAbility = true;
+      continue;
+    }
     if (inSilent) {
       if (!silent!.length) {
         silent!.push(t.replace(/。$/, ''));

@@ -205,5 +205,5 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン)$/.test(l));
 }

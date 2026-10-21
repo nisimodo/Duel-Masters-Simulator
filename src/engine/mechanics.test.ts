@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { applyAction, breakCount, createGame, kwOf, power } from './engine';
+import { programOf } from './interp';
+import { spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
 const cr = (id: string, cost: number, power: number, text: string[], civ = 'F') => ({
@@ -87,6 +89,10 @@ const db = buildDB(
     cr('silent', 2, 2000, ['サイレントスキル(自分のターンのはじめに、このクリーチャーがタップされていたら、アンタップするかわりに次の能力を使ってもよい)', 'カードを2枚引く。']),
     { id: 'aura', n: 'aura', img: '', f: [{ n: 'aura', t: 'オレガ・オーラ', c: 'F', co: 2, p: '+6000', r: [], x: ['これを付けたクリーチャーのパワーを+6000する。', 'これを付けたクリーチャーに「パワード・ブレイカー」を与える。'] }] },
     { id: 'grc', n: 'grc', img: '', f: [{ n: 'grc', t: 'GRクリーチャー', c: 'F', co: 2, p: '2000', r: [], x: [] }] },
+    cr('marshal', 3, 3000, ['マーシャル・タッチ(このクリーチャーをバトルゾーンに出した時、自分の他のクリーチャーを1体、バトルゾーンから手札に戻してもよい。そうした場合、このクリーチャーの能力を使う)', 'カードを2枚引く。']),
+    cr('meta', 3, 3000, ['メタモーフ(自分のマナゾーンに7枚以上カードがあれば、このクリーチャーは次の能力を得る)', 'W・ブレイカー']),
+    { id: 'cyc', n: 'cyc', img: '', f: [{ n: 'cyc', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['サイクロン(このターン、この呪文を唱える直前にクリーチャーを召喚していれば、この呪文を唱えた後、墓地に置くかわりに自分の手札に戻す)', 'カードを1枚引く。'] }] },
+    { id: 'baku2', n: 'baku2', img: '', f: [{ n: 'baku2', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次のうちいずれかひとつを選ぶ。', '▶カードを1枚引く。', '▶カードを2枚引く。', '爆進ダブル(バトルゾーンに自分の進化クリーチャーがあれば、この効果を両方とも選んでもよい)'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -479,5 +485,47 @@ describe('named mechanics', () => {
     expect(s.cards[au].parent).toBe(g);
     expect(power(s, L, g)).toBe(8000);
     expect(breakCount(s, L, g)).toBe(2);
+  });
+
+  it('マーシャル・タッチ: returning another creature uses its own ability', () => {
+    let s = setup([
+      { p: 0, cid: 'marshal', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'marshal')!, face: 0, pay: freeMana(s, 0, 3) });
+    for (let k = 0; k < 8 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: [v] }) : { t: 'resolve', use: true });
+    }
+    expect(s.cards[v].zone).toBe('hand');
+    // 手札: -1 (召喚) +1 (戻した) +2 (能力)
+    expect(s.players[0].hand.length).toBe(hand + 2);
+  });
+
+  it('メタモーフ: gains the ability with 7+ mana', () => {
+    const few = setup([{ p: 0, cid: 'meta', zone: 'battle' }], 3);
+    expect(kwOf(few, L, find(few, 0, 'battle', 'meta')!).breaker).toBe(1);
+    const many = setup([{ p: 0, cid: 'meta', zone: 'battle' }], 7);
+    expect(kwOf(many, L, find(many, 0, 'battle', 'meta')!).breaker).toBe(2);
+  });
+
+  it('サイクロン: returns to hand when a creature was summoned right before', () => {
+    let s = setup([
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+      { p: 0, cid: 'cyc', zone: 'hand' },
+    ]);
+    const cy = find(s, 0, 'hand', 'cyc')!;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'vanilla')!, face: 0, pay: freeMana(s, 0, 1) });
+    s = act(s, 0, { t: 'play', iid: cy, face: 0, pay: freeMana(s, 0, 1) });
+    expect(s.cards[cy].zone).toBe('hand');
+  });
+
+  it('爆進ダブル: both options are allowed only with an evolution creature', () => {
+    const f = L('baku2')!.faces[0];
+    const prog = programOf(spellEffectLines(f.text).join('。'));
+    const mod = prog.ops.find((o) => o.op === 'modal');
+    expect(mod && mod.op === 'modal' && mod.bonus).toBeTruthy();
   });
 });

@@ -229,6 +229,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 表向きにした/残りのカードを山札の下へ
   if (/^(表向きにした|残りの|見た)カードをすべて、?(好きな順序で)?(自分の)?山札の(一番)?下に(戻す|置く)$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
 
+  // マーシャル・タッチ / 返霊 「そうした場合、このクリーチャーの能力を使う」
+  if (/^このクリーチャーの能力を使う$/.test(s)) return [{ op: 'useMarked', key: '能力' }];
+  // 跳次元召喚N
+  {
+    const jd = s.match(/^跳次元召喚(\d+)$/);
+    if (jd) {
+      const sel: Sel = { owner: 'self', zones: ['hyper'], kind: 'creature', costMax: +jd[1], civInMana: true };
+      return [
+        {
+          op: 'optional',
+          body: [
+            { op: 'choose', target: { ref: 'sel', sel, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `コスト${jd[1]}以下のクリーチャーを超次元ゾーンから選ぶ` },
+            { op: 'play', target: { ref: 'it' }, mode: 'summon' },
+          ],
+          prompt: `跳次元召喚${jd[1]}`,
+        },
+      ];
+    }
+  }
   // 記号つきの能力を使う 「このクリーチャーの q 能力を使ってもよい」「このクリーチャーと自分の他のクリーチャー1体の oP 能力を使う」
   {
     const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|◇)能力を(?:1回)?使(う|ってもよい)$/);
@@ -749,8 +768,27 @@ function fixPurposes(ops: Op[]) {
 
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
-  const prog = parseEffectRaw(text);
+  // 爆進ダブル / 「バトルゾーンに自分の〇〇があれば、両方を選んでもよい」
+  let bonus: Cond | undefined;
+  let body = text;
+  if (/爆進ダブル/.test(body)) {
+    bonus = { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', evolution: true }, cmp: '>=', n: 1 };
+    body = body.replace(/爆進ダブル(\s*[(（][^)）]*[)）])?。?/g, '');
+  }
+  const both = normText(body).match(/(?:^|。)\s*(?:バトルゾーンに)?自分の(.+?)が(?:あれば|ある場合は)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
+  if (both) {
+    const sel = parseSel('自分の' + both[1]);
+    if (sel) {
+      bonus = { c: 'count', sel, cmp: '>=', n: 1 };
+      body = normText(body).replace(both[0], both[0].startsWith('。') ? '。' : '');
+    }
+  }
+  const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);
+  if (bonus) {
+    const mod = prog.ops.find((o) => o.op === 'modal');
+    if (mod && mod.op === 'modal') mod.bonus = bonus;
+  }
   return prog;
 }
 

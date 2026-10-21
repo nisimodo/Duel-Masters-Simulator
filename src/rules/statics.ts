@@ -142,6 +142,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
+  if ((m = t0.match(/^パワード・ブロッカー\+?(\d+)/))) return [{ s: 'power', target: { t: 'self' }, delta: +m[1], when: 'block' }];
   if (/^このクリーチャーは、?可能(であれば|なら(ば)?)、?毎ターン攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^相手は呪文を唱えることができない$/.test(t0)) return [{ s: 'oppSpellLock' }];

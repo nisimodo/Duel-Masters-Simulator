@@ -20,6 +20,8 @@ export interface Sel {
   multicolor?: boolean;
   /** 多色ではない */
   monocolor?: boolean;
+  /** その文明がすべて自分のマナゾーンにある */
+  civInMana?: boolean;
   mono?: boolean;
   races?: string[];
   nameHas?: string;
@@ -97,7 +99,7 @@ export type Op =
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }
   | { op: 'optional'; body: Op[]; prompt: string }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
-  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[] }
+  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond }
   | { op: 'repeat'; n: number; body: Op[] }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
