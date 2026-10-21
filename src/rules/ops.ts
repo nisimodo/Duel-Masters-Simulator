@@ -46,6 +46,8 @@ export interface Sel {
   /** この種族ではない */
   racesNot?: string[];
   nameHas?: string;
+  /** 《名前》のカード */
+  name?: string;
   costMin?: number;
   costMax?: number;
   powerMin?: number;

@@ -106,6 +106,13 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
 
   // 末尾の種類
   let kindSet = false;
+  const nm = p.match(/^《([^》]+)》$/);
+  if (nm) {
+    sel.name = nm[1];
+    sel.kind = 'card';
+    p = '';
+    kindSet = true;
+  }
   for (const [re, kind, extra] of KINDS) {
     const m = p.match(re);
     if (m) {
