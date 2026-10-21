@@ -223,6 +223,8 @@ export interface GameState {
   curSpellBy?: number;
   /** ターンの終わりに実行する効果 */
   endTurnExecs?: Exec[];
+  /** 「バトルの後で〜」(今のバトルが終わった後に実行) */
+  afterBattleExecs?: Exec[];
   /** このターンだけの誘発型能力 */
   tempTriggers?: { player: number; src: number; turn: number; event: string; effect: string; optional: boolean }[];
   /** 「次の自分のターンのはじめに〜」(そのプレイヤーのターンのはじめに実行) */

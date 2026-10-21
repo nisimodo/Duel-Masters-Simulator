@@ -170,6 +170,8 @@ export type Op =
   | { op: 'pickSameName'; n: number }
   /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */
   | { op: 'mugetsu'; each?: number; total?: number }
+  /** バトルの後で body を行う */
+  | { op: 'afterBattle'; body: Op[] }
   /** 攻撃しているクリーチャーを破壊する */
   | { op: 'destroyAttacker' }
   /** このターン (または次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない */

@@ -1055,6 +1055,10 @@ function advance(s: GameState, L: Lookup): boolean {
     }
     if (a.step === 'breaking' || a.step === 'done') {
       s.attack = null;
+      // バトルの後に解決した能力の「バトルの後で〜」
+      const after = s.afterBattleExecs ?? [];
+      s.afterBattleExecs = [];
+      for (const ex of after) runExec(s, L, ex);
       // 「攻撃の終わりに、アンタップする」
       const ac = s.cards[a.attacker];
       if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack') || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
@@ -1390,6 +1394,10 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
     }
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
+  // 「バトルの後で〜」
+  const after = s.afterBattleExecs ?? [];
+  s.afterBattleExecs = [];
+  for (const ex of after) runExec(s, L, ex);
 }
 
 export function breakShields(s: GameState, L: Lookup, target: number, shields: number[], by: number | null, breaker: number | null = null) {

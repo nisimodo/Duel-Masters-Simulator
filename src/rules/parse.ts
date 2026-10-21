@@ -63,6 +63,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
     .replace(/^好きな順(序)?で、?/, '')
     .replace(/^シャッフルし、/, '');
   const m = (re: RegExp) => re.test(v);
+  if (m(/^選ぶ$/)) return [];
   if (m(/^破壊する$/)) return [{ op: 'destroy', target }];
   if (m(/^(持ち主の|自分の)?手札に(戻す|加える)$/)) return [{ op: 'move', target, to: 'hand' }];
   if (m(/^相手に見せ(てから|て)?、?(持ち主の|自分の)?手札に(加える|戻す)$/)) return [{ op: 'move', target, to: 'hand', reveal: true }];
@@ -267,6 +268,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^それ以外のカード(?:であれば|なら)、/, 'それ以外なら、')
+    .replace(/^自分の山札のカードを上から(\d+)枚(?:を)?見る$/, '自分の山札の上から$1枚を見る')
     .replace(/^([゠-ヿー・]+)以外をすべて/, '$1以外のクリーチャーをすべて')
     .replace(/^好きな(?:枚)?数の(.+?)を(?=自分の(?:墓地|手札|マナゾーン)から)/, '$1を99枚まで、')
     .replace(/^自分の山札の一番上のカードを表にして、?(?:自分の)?マナゾーンに置(く|いてもよい)$/, '自分の山札の上から1枚目をマナゾーンに置$1')
@@ -442,6 +445,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  {
+    const ab = s.match(/^(?:その)?バトルの後(?:で|、)(.+)$/) ?? s.match(/^このクリーチャーのバトルの後、(.+)$/);
+    const body = ab && sentence(ab[1], ctx);
+    if (body) return [{ op: 'afterBattle', body }];
+  }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
   {
     const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);

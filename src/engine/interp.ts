@@ -857,6 +857,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'afterBattle': {
+        (s.afterBattleExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
+        break;
+      }
       case 'destroyAttacker': {
         const at = s.attack?.attacker;
         if (at != null && s.cards[at].zone === 'battle') {
