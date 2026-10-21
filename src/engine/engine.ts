@@ -1965,8 +1965,14 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
   } else if (face.isSpell) {
     const me = s.players[p];
-    if ((me.spellLockUntil != null || me.spellLockTurn === s.turn) && (me.spellLockCost == null || costOf(s, L, p, a.iid, card.faces.indexOf(face)) <= me.spellLockCost)) {
-      if (!a.force) return me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
+    const lockCost = costOf(s, L, p, a.iid, card.faces.indexOf(face));
+    if (
+      (me.spellLockUntil != null || me.spellLockTurn === s.turn) &&
+      (me.spellLockCost == null || lockCost <= me.spellLockCost) &&
+      (me.spellLockCostEq == null || (face.cost ?? 0) === me.spellLockCostEq)
+    ) {
+      if (!a.force)
+        return me.spellLockCostEq != null ? `コスト${me.spellLockCostEq}の呪文は唱えられません` : me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
     if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock')) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));

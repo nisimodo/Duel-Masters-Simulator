@@ -532,21 +532,25 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const hand = s.players[who].hand;
         if (!hand.length) break;
         if ('all' in op.count) {
-          for (const i of [...hand]) moveTo(s, L, ex, i, 'grave', true);
+          ex.it = [...hand];
+          for (const i of ex.it) moveTo(s, L, ex, i, 'grave', true);
           break;
         }
         const n = Math.min(op.count.n, hand.length);
         if (op.how === 'random') {
+          ex.it = [];
           for (let k = 0; k < n; k++) {
             const h = s.players[who].hand;
             const pick = h[Math.floor(rand(s) * h.length)];
+            ex.it.push(pick);
             moveTo(s, L, ex, pick, 'grave', true);
           }
           break;
         }
         const chooser = op.how === 'ownerChooses' ? who : ex.player;
         if (hand.length <= n && !op.count.upTo) {
-          for (const i of [...hand]) moveTo(s, L, ex, i, 'grave', true);
+          ex.it = [...hand];
+          for (const i of ex.it) moveTo(s, L, ex, i, 'grave', true);
           break;
         }
         ask(s, ex, { player: chooser, mode: 'cards', prompt: `${ex.name}: 手札を${n}枚${op.count.upTo ? 'まで' : ''}選んで捨てる`, options: [...hand], min: op.count.upTo ? 0 : n, max: n, purpose: chooser === who ? 'sacrifice' : 'hostile' });
@@ -636,6 +640,19 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'repeat': {
         ex.ops.shift();
         for (let k = 0; k < op.n; k++) ex.ops.unshift(...op.body);
+        continue;
+      }
+      case 'repeatIt': {
+        ex.ops.shift();
+        const pool = ex.it.length ? ex.it : ex.looked;
+        const n = Math.min(20, op.sel ? pool.filter((i) => matchesSel(s, L, i, { ...op.sel!, zones: [s.cards[i].zone as never] })).length : pool.length);
+        for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
+        continue;
+      }
+      case 'repeatPer': {
+        ex.ops.shift();
+        const n = Math.min(20, candidates(s, L, ex, op.sel).length);
+        for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
         continue;
       }
       case 'note':
@@ -968,6 +985,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           if (op.until === 'turn') s.players[o].spellLockTurn = s.turn;
           else s.players[o].spellLockUntil = ex.player;
           s.players[o].spellLockCost = op.costMax;
+          s.players[o].spellLockCostEq = op.costRef ? (s.chosenValue?.num ?? -1) : undefined;
         }
         log(s, ex.player, `相手は${op.until === 'turn' ? 'このターン' : '次のターンのはじめまで'}呪文を唱えられない`);
         break;

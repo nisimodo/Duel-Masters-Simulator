@@ -142,6 +142,10 @@ export type Op =
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
   | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean }
   | { op: 'repeat'; n: number; body: Op[] }
+  /** sel に合うカードの数だけ body をくり返す (「自分の〇〇1体につき、〜」) */
+  | { op: 'repeatPer'; sel: Sel; body: Op[] }
+  /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
+  | { op: 'repeatIt'; sel?: Sel; body: Op[] }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
@@ -199,7 +203,7 @@ export type Op =
   /** タップしていればアンタップ、していなければタップ */
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
-  | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number }
+  | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number; costRef?: boolean }
   /** it の枚数 + plus 枚引く */
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */

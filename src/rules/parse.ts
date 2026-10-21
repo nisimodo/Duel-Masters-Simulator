@@ -259,6 +259,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文|カード)(なら|であれば)、/, 'それが$1なら、')
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
+    .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
     .replace(/^(光|水|闇|火|自然)[:：]/, '')
     .replace(/(すべてのプレイヤーに|相手に)見せてから/g, '')
     .replace(/^その中から(.+?)を(\d+)(体|枚)(?:見せ|表向きにし)、/, 'その中から$1を$2$3選び、')
@@ -947,8 +948,17 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // 呪文を唱えられない
   {
-    const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の)?呪文を唱えられない$/);
-    if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined }];
+    const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の|(〈数字コスト〉の))?呪文を唱えられない$/);
+    if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined, costRef: lk[3] ? true : undefined }];
+    // 「相手は〈数字コスト〉の呪文を唱えられず、〈数字コスト〉の相手のクリーチャーは攻撃もブロックもできない」
+    const lk2 = s.match(/^次の自分のターンのはじめまで、相手は〈数字コスト〉の呪文を唱えられず、(?:同じコストを持つ|〈数字コスト〉の)相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
+    if (lk2)
+      return [
+        { op: 'lockSpells', until: 'nextOwnTurn', costRef: true },
+        { op: 'restrict', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costRef: true }, count: { all: true }, chooser: 'self' }, what: 'attackBlock' },
+      ];
+    const rs = s.match(/^次の自分のターンのはじめまで、〈数字コスト〉の相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
+    if (rs) return [{ op: 'restrict', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costRef: true }, count: { all: true }, chooser: 'self' }, what: 'attackBlock' }];
   }
 
   // 「このターン、そのクリーチャーのパワーを+2000し、「ブロッカー」を与える」: パワーと残りの効果に分ける
@@ -1441,6 +1451,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = selTarget(m[1], m[2], m[3], false, 'self');
     const ops = t && verbOps(m[4], { ref: 'it' });
     if (t && ops && t.ref === 'sel') return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, m[4]), prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
+  }
+  // 「こうして捨てたカード1枚につき、〜」: 直前のカードの数だけくり返す
+  if ((m = s.match(/^(?:こうして|このようにして)(?:相手が)?(?:捨てた|墓地に置いた|破壊した|手札に戻した|手札に加えた|マナゾーンに置いた|見せた|アンタップした|タップした|選んだ)(.+?)1(?:体|枚|つ)につき、?(.+)$/))) {
+    const noun = m[1].replace(/^(カード|手札|シールド)$/, '');
+    const sel = noun ? parseSel(noun) : undefined;
+    const body = sentence(m[2], ctx);
+    if (sel !== null && body?.length) return [{ op: 'repeatIt', sel: sel ? { ...sel, owner: 'any' } : undefined, body }];
+  }
+  // 「自分の〇〇1体につき、〜」: その数だけくり返す
+  if ((m = s.match(/^(?:バトルゾーンにある)?((?:自分|相手)の.+?)1(?:体|枚|つ)につき、?(.+)$/))) {
+    const sel = parseSel(m[1]);
+    const body = sentence(m[2], ctx);
+    if (sel && body?.length) return [{ op: 'repeatPer', sel, body }];
   }
   return null;
 }

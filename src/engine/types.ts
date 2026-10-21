@@ -98,6 +98,8 @@ export interface PlayerState {
   lastPlay?: { turn: number; kind: 'creature' | 'spell' | 'other' };
   /** 唱えられない呪文のコストの上限 (なければすべて) */
   spellLockCost?: number;
+  /** 唱えられないのはこのコストの呪文だけ */
+  spellLockCostEq?: number;
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
