@@ -434,6 +434,8 @@ export function moveCard(
       fireWatchers(s, L, c.owner, null, 'ownManaPut', null, iid);
     }
     if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
+    if (dest === 'shield' && from !== 'shield') fireWatchers(s, L, c.owner, null, 'ownShieldAdded', null, iid);
+    if (from === 'shield' && dest !== 'shield') fireWatchers(s, L, c.owner, null, 'ownShieldLeft', null, iid);
     if (dest === 'battle' && from !== 'battle' && (card?.faces[c.face]?.races ?? []).some((r) => r.includes('コマンド'))) {
       const civs = cardCivs(L, c.cid);
       const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b) && (cardCivs(L, s.cards[b].cid).some((x) => civs.includes(x)) || !cardCivs(L, s.cards[b].cid).length));

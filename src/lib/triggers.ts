@@ -44,7 +44,9 @@ export type TrigEvent =
   | 'unsealedAll' // このカードの封印がすべてなくなった時
   | 'evolvedOn' // シンカパワー: このクリーチャーが進化する時
   | 'mugetsuUsed' // 自分の「無月の門」能力を使った時
-  | 'flipped'; // このクリーチャーが龍解した時 / 覚醒した時
+  | 'flipped' // このクリーチャーが龍解した時 / 覚醒した時
+  | 'ownShieldAdded' // 自分のシールドゾーンにカードが置かれた時
+  | 'ownShieldLeft'; // カードが自分のシールドゾーンを離れた時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -87,6 +89,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   evolvedOn: '進化する時',
   mugetsuUsed: '「無月の門」能力を使った時',
   flipped: '龍解・覚醒した時',
+  ownShieldAdded: 'シールドゾーンにカードが置かれた時',
+  ownShieldLeft: 'シールドゾーンを離れた時',
   spell: '呪文の効果',
 };
 
@@ -196,6 +200,11 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/この(クリーチャー|タマシード)が進化する時/.test(clause)) ev.add('evolvedOn');
     if (/自分の「無月の門」能力を使った時/.test(clause)) ev.add('mugetsuUsed');
     if (/この(?:クリーチャー|ドラグハート)が(?:龍解|覚醒)した時/.test(clause)) ev.add('flipped');
+    if (/自分のシールドゾーンにカードが置かれた時/.test(clause)) ev.add('ownShieldAdded');
+    if (/カードが自分のシールドゾーンを離れた時|自分のシールドが(?:シールドゾーンを)?離れた時/.test(clause)) ev.add('ownShieldLeft');
+    if (/他のクリーチャーが破壊された時/.test(clause) && !own && !opp) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
+    if (/このクリーチャーがバトルした時/.test(clause)) ev.add('battle');
+    if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
