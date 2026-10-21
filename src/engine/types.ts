@@ -197,6 +197,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** ターンの残りをとばす */
+  skipTurnRest?: boolean;
   /** 実行中の効果が呪文なら、唱えたプレイヤー */
   curSpellBy?: number;
   /** ターンの終わりに実行する効果 */

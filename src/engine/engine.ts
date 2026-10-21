@@ -1046,6 +1046,14 @@ function advance(s: GameState, L: Lookup): boolean {
 function settle(s: GameState, L: Lookup) {
   for (let i = 0; i < 200; i++) {
     checkState(s, L);
+    // 「ターンの残りをとばす」: 処理が終わったらターンを終える
+    if (s.skipTurnRest && !s.pending.length && !s.attack && s.phase !== 'over') {
+      s.skipTurnRest = false;
+      if (s.turnStep === 'main') {
+        beginEndTurn(s, L);
+        continue;
+      }
+    }
     if (!advance(s, L)) break;
   }
   checkState(s, L);

@@ -805,7 +805,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.pending.push({ kind: 'ability', player: ex.player, src: iid, cid: c.cid, face: c.face, event: 'spell', text: `${op.key} ${eff}`, effect: eff, optional: false, auto: false });
           log(s, ex.player, `${q(nameOf(s, L, iid))} の ${op.key} 能力を使う`);
         };
-        push(root);
+        // 「表向きにしたX1体につき、次の能力を1回」
+        const times = op.perLooked ? ex.looked.filter((i) => matchesSel(s, L, i, { ...op.perLooked!, zones: [s.cards[i].zone as never] })).length : 1;
+        for (let k = 0; k < times; k++) push(root);
         if (op.others) {
           const others = s.players[ex.player].battle.filter((b) => b !== root && L(s.cards[b].cid)?.faces[s.cards[b].face]?.marked?.[op.key]);
           others.sort((a, b) => power(s, L, b) - power(s, L, a));
@@ -934,6 +936,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'drawItPlus': {
         const d = drawCards(s, ex.player, ex.it.length * (op.mult ?? 1) + op.plus);
         log(s, ex.player, `カードを${d}枚引いた`);
+        break;
+      }
+      case 'skipTurn': {
+        s.skipTurnRest = true;
+        log(s, ex.player, 'ターンの残りをとばす');
+        break;
+      }
+      case 'millExcept': {
+        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const deck = s.players[who].deck;
+        // 配列の先頭が山札の一番下
+        const ids = deck.slice(op.keep).reverse();
+        for (const i of ids) moveCard(s, L, i, 'grave');
+        log(s, ex.player, `山札を${ids.length}枚墓地に置いた`);
         break;
       }
       case 'atTurnEnd': {

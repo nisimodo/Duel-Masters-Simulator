@@ -71,6 +71,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
   if (m(/^(裏向きにして|裏向きのまま)、?(自分の)?シールド(ゾーン)?に(加える|置く)$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(自分の)?手札から捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
+  if (m(/^(自分の墓地から)?表向きでシールド化する$/)) return [{ op: 'move', target, to: 'shieldUp' }];
   if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
   if (m(/^(好きな順序で)?(自身の|持ち主の|自分の)?山札の上か下(のどちらか)?に(置く|戻す)$/)) return [{ op: 'topOrBottom', target, chooser: 'self' }];
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
@@ -679,6 +680,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 表向きにした/残りのカードを山札の下へ
   if (/^(表向きにした|残りの|見た)カードをすべて、?(好きな順序で)?(自分の)?山札の(一番)?下に(戻す|置く)$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
 
+  // スリリング・スリー 「表向きにしたXまたはY1体につき、次の能力を1回行う」
+  {
+    const tt = s.match(/^表向きにした(.+?)(\d+)体につき、次の能力を(\d+)回行う$/);
+    const sel = tt && parseSel(tt[1], { zones: ['deck'] });
+    if (tt && sel) return [{ op: 'useMarked', key: '能力', perLooked: sel }];
+  }
+  if (/^ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  {
+    const me = s.match(/^(相手|自分)は?(?:自身|自分)?の山札を一番下の(\d+)枚を残してすべて墓地に置く$/) ?? s.match(/^(相手)は(?:自身|自分)の山札を一番下の(\d+)枚を残してすべて墓地に置く$/);
+    if (me) return [{ op: 'millExcept', who: me[1] === '相手' ? 'opp' : 'self', keep: +me[2] }];
+    const gs = s.match(/^(相手|自分)は?、?(?:自身|自分)?の墓地をシャッフルし、(?:自身の)?山札の(?:一番)?下に置く$/);
+    if (gs) return [{ op: 'move', target: { ref: 'sel', sel: { owner: gs[1] === '相手' ? 'opp' : 'self', zones: ['grave'], kind: 'card' }, count: { all: true }, chooser: 'self' }, to: 'deckBottom' }];
+    const dp = s.match(/^(?:その後、)?その枚数より(\d+)枚多くカードを引く$/);
+    if (dp) return [{ op: 'drawItPlus', plus: +dp[1] }];
+  }
   // マーシャル・タッチ / 返霊 「そうした場合、このクリーチャーの能力を使う」
   if (/^このクリーチャーの能力を使う$/.test(s)) return [{ op: 'useMarked', key: '能力' }];
   // 跳次元召喚N

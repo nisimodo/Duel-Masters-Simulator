@@ -78,7 +78,7 @@ const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^シールド・フォース/, 'sforce'],
 ];
 /** 次の行を「このクリーチャーの能力」として使うキーワード */
-const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*)\s*[(（]/;
+const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*|スリリング・スリー\s*[:：][^(（]*)\s*[(（]/;
 export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわりに|代わりに)、タップして次の能力を使ってもよい/;
 /** サイレントスキル: 自分のターンのはじめに、タップしていればアンタップするかわりに次の能力を使ってもよい */
 const SILENT_SKILL = /^サイレントスキル/;
