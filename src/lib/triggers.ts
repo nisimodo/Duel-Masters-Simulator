@@ -99,6 +99,8 @@ export interface TriggerSpec {
   auto: boolean;
   /** 手札にある時に使う能力 (「このカードを自分の手札から実行してもよい」など) */
   fromHand?: boolean;
+  /** 墓地にある時にも使う能力 (無月の門) */
+  fromGrave?: boolean;
 }
 
 const SKIP = /^(ブロッカー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|S・トリガー|シールド・トリガー|スーパー・S・トリガー|G・ストライク|スピードアタッカー|マッハファイター|ジャストダイバー|スレイヤー|[WTQ]・ブレイカー|ワールド・ブレイカー|EXライフ|チャージャー|G・ゼロ|シンパシー|パワーアタッカー)/;
@@ -209,7 +211,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
     const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || undefined });
+    const fromGrave = /このクリーチャーを自分の手札または墓地から/.test(eff0);
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined });
   }
   return out;
 }

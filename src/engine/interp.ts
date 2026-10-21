@@ -814,6 +814,51 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'attachTo': {
+        const holder = ex.it.find((i) => s.cards[i].zone === 'battle');
+        const c = s.cards[ex.src];
+        if (holder == null || !c || c.zone === 'battle' || c.zone === 'under') break;
+        const fi = Math.max(0, L(c.cid)?.faces.findIndex((f) => /オーラ/.test(f.type)) ?? 0);
+        playCard(s, ex.player, { t: 'play', iid: ex.src, face: fi, pay: [], free: true, force: true, evo: [holder] }, L);
+        break;
+      }
+      case 'mugetsu': {
+        const me = s.players[ex.player];
+        const self = s.cards[ex.src];
+        if (!self || (self.zone !== 'hand' && self.zone !== 'grave')) break;
+        const isM = (i: number) => i !== ex.src && (L(s.cards[i].cid)?.faces[s.cards[i].face]?.races ?? []).some((r) => r.includes('魔導具'));
+        const bz = me.battle.filter(isM);
+        const gv = me.grave.filter(isM);
+        let picks: number[];
+        if (op.each != null) {
+          if (bz.length < op.each || gv.length < op.each) break;
+          picks = [...bz.slice(0, op.each), ...gv.slice(0, op.each)];
+        } else {
+          const all = [...bz, ...gv];
+          if (all.length < (op.total ?? 1)) break;
+          picks = all.slice(0, op.total ?? 1);
+        }
+        playCard(s, ex.player, { t: 'play', iid: ex.src, face: s.cards[ex.src].face, pay: [], free: true, force: true }, L);
+        if ((self.zone as string) !== 'battle') break;
+        for (const i of picks) {
+          const c = s.cards[i];
+          const subs = c.zone === 'battle' ? [i, ...c.under] : [i];
+          if (c.zone === 'battle') {
+            const arr = me.battle;
+            arr.splice(arr.indexOf(i), 1);
+            c.under = [];
+          } else me.grave.splice(me.grave.indexOf(i), 1);
+          for (const x of subs) {
+            s.cards[x].zone = 'under';
+            s.cards[x].parent = ex.src;
+            s.cards[x].tapped = false;
+          }
+          self.under.push(...subs);
+        }
+        log(s, ex.player, `無月の門: ${picks.map((i) => q(nameOf(s, L, i))).join('、')} の上に ${q(nameOf(s, L, ex.src))} を召喚`);
+        ex.it = [ex.src];
+        break;
+      }
       case 'pickSameName': {
         const all = s.players.flatMap((pl) => pl.battle).filter((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.isCreature);
         const cnt = new Map<string, number>();

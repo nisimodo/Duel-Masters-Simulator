@@ -650,13 +650,14 @@ function fireHand(s: GameState, L: Lookup, actor: number, ownEv: TrigEvent | nul
     if (pl.lost) return;
     const ev = p === actor ? ownEv : oppEv;
     if (!ev) return;
-    for (const h of pl.hand) {
+    for (const h of [...pl.hand, ...pl.grave]) {
       const card = L(s.cards[h].cid);
+      const inGrave = s.cards[h].zone === 'grave';
       card?.faces.forEach((f, fi) => {
         for (const spec of f.triggers ?? []) {
-          if (!spec.fromHand || !spec.events.includes(ev)) continue;
+          if (!spec.fromHand || !spec.events.includes(ev) || (inGrave && !spec.fromGrave)) continue;
           if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
-          pushAbility(s, L, h, fi, spec, ev);
+          pushAbility(s, L, h, fi, spec, ev, subject);
         }
       });
     }

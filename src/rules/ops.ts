@@ -151,6 +151,10 @@ export type Op =
   | { op: 'actLimit'; n: number }
   /** バトルゾーンに同じ名前のクリーチャーがN体以上あるものを it にする */
   | { op: 'pickSameName'; n: number }
+  /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */
+  | { op: 'mugetsu'; each?: number; total?: number }
+  /** このオーラを it のクリーチャーに付ける */
+  | { op: 'attachTo' }
   /** ターンの残りをとばす */
   | { op: 'skipTurn' }
   /** 山札を一番下のN枚を残してすべて墓地に置く */

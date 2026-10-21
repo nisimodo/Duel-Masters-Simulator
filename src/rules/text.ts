@@ -59,8 +59,23 @@ export function num(s: string): number {
 /** ▼▶で始まる選択肢の行を前の行に連結 */
 export function mergeModal(lines: string[]): string[] {
   const out: string[] = [];
+  let rep = false; // 直前の行が「次の能力をN回行う。」
   for (const l of lines) {
     const t = normText(l);
+    const prev = out.length ? normText(out[out.length - 1]) : '';
+    // 「次の能力をN回行う。」の次の行がその能力
+    if (rep) {
+      rep = false;
+      out[out.length - 1] = prev.replace(/。?\s*$/, '。') + t.replace(/^[▶►▪■・?？️\s]+/, '').replace(/\?(\d)/g, '-$1');
+      continue;
+    }
+    if (/次の能力を\d+回行う。?$/.test(stripReminder(t))) rep = true;
+    // 鬼タイム「この能力をN回のかわりにM回行う」
+    const oniRep = t.replace(/\s+/g, '').match(/^鬼タイム[:：]?自分と相手のシールドの数が合計(\d+)つ以下なら、この能力を\d+回のかわりに(\d+)回行う/);
+    if (oniRep && /次の能力を\d+回行う/.test(prev)) {
+      out[out.length - 1] = prev.replace(/次の能力を(\d+)回行う/, `次の能力を$1回[鬼${oniRep[1]}:${oniRep[2]}]行う`);
+      continue;
+    }
     if (/^[▼▶►・]/.test(t) && out.length && /次のうちいずれか|選ぶ/.test(stripReminder(out[out.length - 1]))) out[out.length - 1] += '▼' + t.replace(/^[▼▶►・]/, '');
     else out.push(l);
   }

@@ -128,6 +128,8 @@ const db = buildDB(
     cr('space2', 1, 1000, ['スペース・チャージ（自分のマナゾーンにカードが置かれた時、そのカードの文明に合うq能力を使ってもよい）', 'q 光：カードを1枚引く。', 'q 火：カードを2枚引く。']),
     { id: 'jokA', n: 'jokA', img: '', f: [{ n: 'jokA', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ジョーカーズ'], x: ['このクリーチャーが出た時、カードを2枚引く。'] }] },
     { id: 'jbig', n: 'jbig', img: '', f: [{ n: 'jbig', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ジョーカーズ'], x: ['このクリーチャーが出た時、Jビッグ1する。(自分の他のジョーカーズの、Jビッグ1以外の、出た時にトリガーする能力を1つ使う)'] }] },
+    { id: 'md', n: 'md', img: '', f: [{ n: 'md', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['魔導具'], x: [] }] },
+    { id: 'mug', n: 'mug', img: '', f: [{ n: 'mug', t: 'クリーチャー', c: 'D', co: 9, p: '12000', r: ['テスト'], x: ['無月の門：自分の魔導具をバトルゾーンに出した時、自分の魔導具をバトルゾーンと墓地から２つずつ選び、このクリーチャーを自分の手札または墓地からそれら４枚の上にコストを支払わずに召喚してもよい。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -425,6 +427,32 @@ describe('named mechanics', () => {
       s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
     }
     expect(s.players[0].hand.length).toBe(hand + 1);
+  });
+
+  it('無月の門: summons from the graveyard on top of 2+2 魔導具', () => {
+    let s = setup([
+      { p: 0, cid: 'md', zone: 'battle' },
+      { p: 0, cid: 'md', zone: 'hand' },
+      { p: 0, cid: 'md', zone: 'mana' },
+      { p: 0, cid: 'md', zone: 'mana' },
+      { p: 0, cid: 'mug', zone: 'mana' },
+    ]);
+    // 2枚の魔導具と mug を墓地へ
+    for (const cid of ['md', 'md', 'mug']) {
+      const i = s.players[0].mana.find((m) => s.cards[m].cid === cid)!;
+      s.players[0].mana.splice(s.players[0].mana.indexOf(i), 1);
+      s.cards[i].zone = 'grave';
+      s.players[0].grave.push(i);
+    }
+    const mug = find(s, 0, 'grave', 'mug')!;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'md')!, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[mug].zone).toBe('battle');
+    expect(s.cards[mug].under.length).toBe(4);
+    expect(s.players[0].battle.length).toBe(1);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

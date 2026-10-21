@@ -245,6 +245,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^そのプレイヤーは、?/, '相手は')
     .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
     .replace(/^(龍?マナ武装|レインボーナス)\d*[:：]/, '')
+    .replace(/^鬼タイム\s*[:：]\s*(?=自分と相手のシールド)/, '')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
     .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
     .replace(/^相手の手札を見て(?!、)/, '相手の手札を見て、')
@@ -360,6 +361,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sn = s.match(/^バトルゾーンに同じ名前のクリーチャーが(\d+)体以上あれば、それらをすべて破壊する$/);
     if (sn) return [{ op: 'pickSameName', n: +sn[1] }, { op: 'destroy', target: { ref: 'it' } }];
     if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?手札に戻す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'hand' }];
+  }
+  if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
+  // 無月の門
+  {
+    const mg = s.match(/^自分の魔導具をバトルゾーンと墓地から(\d+)つずつ選び、このクリーチャーを自分の手札または墓地からそれら\d+枚の上にコストを支払わずに召喚(?:する|してもよい)$/);
+    if (mg) return [{ op: 'mugetsu', each: +mg[1] }];
+    const mt = s.match(/^自分の魔導具をバトルゾーン(?:また|と)は?墓地から合計(\d+)(?:つ|枚)選び、このクリーチャーを自分の手札または墓地からそれら\d+枚の上にコストを支払わずに召喚(?:する|してもよい)$/);
+    if (mt) return [{ op: 'mugetsu', total: +mt[1] }];
+  }
+  // 「相手の光のクリーチャー、水のクリーチャー、…を1体ずつ破壊する」
+  {
+    const ec = s.match(/^相手の((?:(?:光|水|闇|火|自然)のクリーチャー、?)+)を(\d+)体(?:ずつ)?(破壊する|持ち主の手札に戻す|持ち主のマナゾーンに置く)$/);
+    if (ec) {
+      const CIV: Record<string, string> = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' };
+      return [...ec[1].matchAll(/(光|水|闇|火|自然)のクリーチャー/g)].flatMap((x): Op[] => [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', civs: [CIV[x[1]] as never] }, count: { n: +ec[2], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: `相手の${x[1]}のクリーチャーを選ぶ` },
+        ec[3] === '破壊する' ? { op: 'destroy', target: { ref: 'it' } } : { op: 'move', target: { ref: 'it' }, to: ec[3] === '持ち主の手札に戻す' ? 'hand' : 'mana' },
+      ]);
+    }
   }
   const al = s.match(/^次の自分のターンのはじめまで、相手は各ターン(\d+)度しか、?クリーチャーで攻撃もブロックもできない$/);
   if (al) return [{ op: 'actLimit', n: +al[1] }];
@@ -1452,6 +1472,18 @@ function parseEffectRaw(text: string): Program {
   const ops: Op[] = [];
   const unparsed: string[] = [];
 
+  // 「次の能力をN回行う。〜」 (鬼タイムなら M 回)
+  const rep = t.match(/^(.*?)次の能力を(\d+)回(?:\[鬼(\d+):(\d+)\])?行う。(.+)$/);
+  if (rep) {
+    const pre: Program = rep[1].trim() ? parseEffect(rep[1]) : { ops: [], complete: true, unparsed: [] };
+    const body = parseEffect(rep[5]);
+    const r = (n: number): Op => ({ op: 'repeat', n, body: body.ops });
+    return {
+      ops: [...pre.ops, rep[3] ? { op: 'if', cond: { c: 'totalShieldsLE', n: +rep[3] }, body: [r(+rep[4])], else: [r(+rep[2])] } : r(+rep[2])],
+      complete: pre.complete && body.complete,
+      unparsed: [...pre.unparsed, ...body.unparsed],
+    };
+  }
   // 選択肢 「次のうちいずれかひとつを選ぶ。▼A ▼B」
   const modal = t.match(/^(.*?)次の(?:うちいずれか|中から)(ひとつ|1つ|\d+つ|\d+回)(?:を|まで)?選ぶ。?(.*)$/);
   if (modal) {
