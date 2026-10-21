@@ -245,7 +245,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/選びタップする$/, '選び、タップする')
     .replace(/^そのターン、/, 'このターン、')
     .replace(/^(山札の)?上から(\d+)枚/, '自分の山札の上から$2枚')
-    .replace(/を好きな(数|枚数)、?/g, 'を99枚まで')
+    .replace(/を、?好きな(数|枚数)、?/g, 'を99枚まで')
     .replace(/(\d+)枚ずつ/g, '$1枚')
     .replace(/(\d+)体ずつ/g, '$1体')
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
@@ -461,6 +461,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  // ランチャーE: 唱える時に自分のその種族をタップする / 「この呪文を唱えた時にタップした〇〇1体につき〜」
+  {
+    const le = s.match(/^ランチャーE[:：](.+)$/);
+    const lsel = le && parseSel(le[1].replace(/^種族に(.+?)とある$/, '$1'));
+    if (le && lsel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { ...lsel, owner: 'self', zones: ['battle'], tapped: false, nonEvolution: true }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `ランチャーE: タップする${le[1]}を選ぶ` },
+        { op: 'tap', target: { ref: 'it' } },
+        { op: 'save' },
+      ];
+    const lt = s.match(/^(?:その中から、)?この呪文を唱えた時に?タップした(.+?)1体につき(?:1枚)?、(.+)$/);
+    const body = lt && sentence(lt[2], ctx);
+    if (lt && body) return [{ op: 'repeatIt', saved: true, body }];
+  }
   if (/^このターン、(?:すべての)?クリーチャーは攻撃(?:することが)?できない$/.test(s))
     return [{ op: 'restrict', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, what: 'attack' }];
   if (/^相手は、?自身のシールドをすべて(?:自身の)?手札に加える$/.test(s))

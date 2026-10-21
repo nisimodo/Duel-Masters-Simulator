@@ -651,7 +651,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'repeatIt': {
         ex.ops.shift();
-        const pool = ex.it.length ? ex.it : ex.looked;
+        const pool = op.saved ? (ex.saved ?? []) : ex.it.length ? ex.it : ex.looked;
         const n = Math.min(20, op.sel ? pool.filter((i) => matchesSel(s, L, i, { ...op.sel!, zones: [s.cards[i].zone as never] })).length : pool.length);
         for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
         continue;

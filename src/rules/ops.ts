@@ -151,7 +151,7 @@ export type Op =
   /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */
   | { op: 'setPlayer'; p: number }
   /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
-  | { op: 'repeatIt'; sel?: Sel; body: Op[] }
+  | { op: 'repeatIt'; sel?: Sel; body: Op[]; saved?: boolean }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
