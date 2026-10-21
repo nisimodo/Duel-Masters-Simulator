@@ -9,6 +9,7 @@ import {
   breakShields,
   cardCivs,
   drawCards,
+  fireMugetsu,
   log,
   lose,
   moveCard,
@@ -1017,6 +1018,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           self.under.push(...subs);
         }
         log(s, ex.player, `無月の門: ${picks.map((i) => q(nameOf(s, L, i))).join('、')} の上に ${q(nameOf(s, L, ex.src))} を召喚`);
+        fireMugetsu(s, L, ex.player);
         ex.it = [ex.src];
         break;
       }

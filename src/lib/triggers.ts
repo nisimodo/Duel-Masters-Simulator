@@ -42,7 +42,8 @@ export type TrigEvent =
   | 'ownWinBattle' // 自分のクリーチャーがバトルに勝った時
   | 'unsealOne' // このカードから封印が外された時
   | 'unsealedAll' // このカードの封印がすべてなくなった時
-  | 'evolvedOn'; // シンカパワー: このクリーチャーが進化する時
+  | 'evolvedOn' // シンカパワー: このクリーチャーが進化する時
+  | 'mugetsuUsed'; // 自分の「無月の門」能力を使った時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -83,6 +84,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   unsealOne: '封印が外された時',
   unsealedAll: '封印がすべてなくなった時',
   evolvedOn: '進化する時',
+  mugetsuUsed: '「無月の門」能力を使った時',
   spell: '呪文の効果',
 };
 
@@ -190,6 +192,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/タップ(した|された)時/.test(clause) && self && !/攻撃/.test(clause)) ev.add('tapped');
     if (/封印がすべて(なくなった|外れた)時/.test(clause)) ev.add('unsealedAll');
     if (/この(クリーチャー|タマシード)が進化する時/.test(clause)) ev.add('evolvedOn');
+    if (/自分の「無月の門」能力を使った時/.test(clause)) ev.add('mugetsuUsed');
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
@@ -214,7 +217,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
     const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
-    const fromGrave = /このクリーチャーを自分の手札または墓地から/.test(eff0);
+    const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
     out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined });
   }
   return out;

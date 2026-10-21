@@ -144,6 +144,7 @@ const db = buildDB(
         { n: 'rin呪文', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['カードを1枚引く。'] },
       ],
     },
+    cr('hakuyon', 2, 2000, ['自分の「無月の門」能力を使った時、このクリーチャーを自分の墓地からバトルゾーンにタップして出してもよい。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -525,6 +526,31 @@ describe('named mechanics', () => {
     expect(s.cards[iid].zone).toBe('battle');
     expect(s.players[0].hand.length).toBe(hand + 2);
     expect(s.players[0].mana.filter((m) => s.cards[m].tapped).length).toBe(1);
+  });
+
+  it('無月の門能力を使った時: a graveyard creature comes back tapped', () => {
+    let s = setup([
+      { p: 0, cid: 'md', zone: 'battle' },
+      { p: 0, cid: 'md', zone: 'hand' },
+      { p: 0, cid: 'md', zone: 'mana' },
+      { p: 0, cid: 'md', zone: 'mana' },
+      { p: 0, cid: 'mug', zone: 'mana' },
+      { p: 0, cid: 'hakuyon', zone: 'mana' },
+    ]);
+    for (const cid of ['md', 'md', 'mug', 'hakuyon']) {
+      const i = s.players[0].mana.find((m) => s.cards[m].cid === cid)!;
+      s.players[0].mana.splice(s.players[0].mana.indexOf(i), 1);
+      s.cards[i].zone = 'grave';
+      s.players[0].grave.push(i);
+    }
+    const hk = find(s, 0, 'grave', 'hakuyon')!;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'md')!, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 8 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[hk].zone).toBe('battle');
+    expect(s.cards[hk].tapped).toBe(true);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

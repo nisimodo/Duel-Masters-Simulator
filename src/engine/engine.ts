@@ -628,6 +628,11 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
+/** 「無月の門」能力を使った時 */
+export function fireMugetsu(s: GameState, L: Lookup, p: number) {
+  fireWatchers(s, L, p, null, 'mugetsuUsed', null);
+}
+
 function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | null, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null = exclude) {
   fireHand(s, L, actor, ownEv, oppEv, subject);
   // 「このターン、〜した時」の一時的な能力
