@@ -19,6 +19,8 @@ export type StaticCond =
   | { c: 'spellsThisTurn'; n: number }
   /** 自分のシールドが N 枚以下 */
   | { c: 'shieldsLE'; n: number }
+  /** 自分の手札が N 枚以下 */
+  | { c: 'handLE'; n: number }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -130,6 +132,8 @@ export type StaticSpec =
   | { s: 'noBreak' }
   /** G・ブレイカー: 相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする */
   | { s: 'gBreaker' }
+  /** このクリーチャーは召喚できない */
+  | { s: 'noSummon' }
   /** 〇ステルス: 相手のマナゾーンにその文明のカードがあればブロックされない */
   | { s: 'stealth'; civ: Civ }
   /** 〇スレイヤー: その文明のクリーチャーとバトルした時、相手を破壊する */
@@ -203,6 +207,7 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)以下(?:の時|なら|であれば)、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)があれば、(.+)$/)) && !/\d+(?:体|枚|つ)以上$/.test(m[1])) {
@@ -222,7 +227,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   const t0 = stripReminder(full)
     .replace(/\s+/g, '')
     .replace(/。$/, '')
-    .replace(/はすべて、(「)/, 'は$1');
+    .replace(/はすべて、(「)/, 'は$1')
+    .replace(/^革命\d+[:：]/, '');
   let m: RegExpMatchArray | null;
 
   // ---- キーワード系 ----
@@ -267,6 +273,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する$/.test(t0)) return [{ s: 'destroyAfterAttack' }];
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
+  if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)ステルス/))) return [{ s: 'stealth', civ: CIV_OF[m[1]] }];
   if ((m = t0.match(/^((?:光|水|闇|火|自然)(?:・(?:光|水|闇|火|自然))*)スレイヤー/))) return [{ s: 'civSlayer', civs: m[1].split('・').map((x) => CIV_OF[x]) }];
   if (/^このクリーチャーは、?タップしてバトルゾーンに置かれる$/.test(t0)) return [{ s: 'entersTapped' }];
@@ -423,9 +430,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
   if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
   if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
-  if ((m = t0.match(/^((?:自分|相手)の.+?)は、?(攻撃(?:また|も)はブロック|攻撃もブロックも|攻撃)されない$/))) {
+  if ((m = t0.match(/^((?:自分|相手)の.+?)は、?(攻撃(?:また|も)はブロック|攻撃もブロックも|攻撃|ブロック)されない$/))) {
     const tg = target(m[1]);
-    if (tg) return [{ s: 'grant', target: tg, kws: m[2] === '攻撃' ? ['攻撃されない'] : ['攻撃されない', 'ブロックされない'], when: 'always' }];
+    const kws = m[2] === '攻撃' ? ['攻撃されない'] : m[2] === 'ブロック' ? ['ブロックされない'] : ['攻撃されない', 'ブロックされない'];
+    if (tg) return [{ s: 'grant', target: tg, kws, when: 'always' }];
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];

@@ -1898,6 +1898,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
+  if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon')) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force) {
     // エグザイル: 名前に《X》とある他のエグザイル・クリーチャーは出せない
     const mine = s.players[p].battle.filter((b) => b !== a.iid);
