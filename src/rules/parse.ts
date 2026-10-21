@@ -232,6 +232,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^そうしない場合、/, 'そうしなかった場合、')
     .replace(/^自分の([^、]+?)がバトルゾーンにあれば、/, 'バトルゾーンに自分の$1があれば、')
+    .replace(/はすべてブロックされない$/, 'すべてはブロックされない')
+    .replace(/パワーを-∞ ?する/, 'パワーを-999999する')
     .replace(/^そのプレイヤーは、?(自分自身|自身)の/, '相手は自身の')
     .replace(/^そのプレイヤーは、?/, '相手は')
     .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
@@ -732,6 +734,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (tt && sel) return [{ op: 'useMarked', key: '能力', perLooked: sel }];
   }
   if (/^ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  // このターン、次に召喚する〇〇のコストを最大N少なくする / マナゾーンから召喚できる / 相手プレイヤーを攻撃できる / バトルに勝った時アンタップ
+  {
+    const ns = s.match(/^このターン、次に召喚する(自分の)?(.+?)の(?:召喚)?コストを(?:最大)?(\d+)少なくする$/);
+    const sel = ns && parseSel(ns[2], { zones: ['hand'] });
+    if (ns && sel) return [{ op: 'nextSummonDiscount', sel: { ...sel, kind: 'creature', zones: ['hand', 'mana', 'grave'] }, n: +ns[3] }];
+    const ms = s.match(/^このターン、クリーチャーを(\d+)体、自分のマナゾーンから召喚する$/);
+    if (ms) return [{ op: 'manaSummon', n: +ms[1] }];
+    const ap = s.match(/^このターン、(この|その)クリーチャーは相手プレイヤーを攻撃できる$/);
+    if (ap) return [{ op: 'grant', target: { ref: ap[1] === 'この' ? 'self' : 'it' }, kws: ['プレイヤー攻撃可'], until: 'turn' }];
+    const wu = s.match(/^このターン、(この|その)クリーチャーがバトルに勝った時、アンタップする$/);
+    if (wu) return [{ op: 'grant', target: { ref: wu[1] === 'この' ? 'self' : 'it' }, kws: ['バトル勝利後アンタップ'], until: 'turn' }];
+  }
   if (/^\*+$/.test(s)) return [];
   if (/^この能力は、?各ターン(1|一)度しか使えない$/.test(s)) return [];
   // シールド・山札を見る

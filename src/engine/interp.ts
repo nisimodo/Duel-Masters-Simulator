@@ -998,6 +998,16 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'nextSummonDiscount': {
+        s.players[ex.player].nextSummon = { turn: s.turn, sel: op.sel, n: op.n };
+        log(s, ex.player, `このターン、次に召喚するクリーチャーのコストを${op.n}少なくする`);
+        break;
+      }
+      case 'manaSummon': {
+        s.players[ex.player].manaSummon = { turn: s.turn, left: op.n };
+        log(s, ex.player, `このターン、クリーチャーを${op.n}体マナゾーンから召喚できる`);
+        break;
+      }
       case 'skipTurn': {
         s.skipTurnRest = true;
         log(s, ex.player, 'ターンの残りをとばす');

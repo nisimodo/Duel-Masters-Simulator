@@ -90,6 +90,10 @@ export interface PlayerState {
   /** このプレイヤーだけが見ているカード (山札の上を見る等) */
   peek: number[];
   charged: boolean;
+  /** このターン、次に召喚するクリーチャーのコスト軽減 */
+  nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number };
+  /** このターン、マナゾーンから召喚できる残りの数 */
+  manaSummon?: { turn: number; left: number };
   /** このターン最後に使ったカードの種類 (サイクロン用) */
   lastPlay?: { turn: number; kind: 'creature' | 'spell' | 'other' };
   /** 唱えられない呪文のコストの上限 (なければすべて) */

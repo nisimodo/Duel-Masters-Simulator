@@ -246,6 +246,9 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   }
   let cost = base + add;
   if (reduce) cost = Math.max(Math.min(cost, Math.max(floor, 0)), cost - reduce);
+  // 「このターン、次に召喚する〇〇のコストをN少なくする」
+  const ns = s.players[p].nextSummon;
+  if (ns && ns.turn === s.turn && f.isCreature && matchesSel(s, L, iid, { ...ns.sel, zones: [c.zone as never] })) cost = Math.max(1, cost - ns.n);
   // シンパシー (自分の〇〇1体につき1少なく)
   for (const sp of f.statics ?? []) {
     if (sp.s !== 'sympathy') continue;

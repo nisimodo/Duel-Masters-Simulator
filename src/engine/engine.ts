@@ -1174,7 +1174,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid)) return false;
   if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
-  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer')) return false;
+  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'))) return false;
   return true;
 }
 
@@ -1185,7 +1185,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const opps = opponentsOf(s, c.owner);
   const k = kwOf(s, L, iid);
   const mine = ownStatics(s, L, iid);
-  const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer');
+  const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'));
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer);
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
@@ -1325,6 +1325,11 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
       moveCard(s, L, w, 'grave');
     }
   }
+  for (const w of [killD && !killA ? att : null, killA && !killD ? def : null])
+    if (w != null && s.cards[w].zone === 'battle' && (s.cards[w].grants ?? []).some((g) => g.kws.includes('バトル勝利後アンタップ'))) {
+      s.cards[w].tapped = false;
+      log(s, s.cards[w].owner, `${q(nameOf(s, L, w))} をアンタップ`);
+    }
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
 }
@@ -1726,6 +1731,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.zone === 'partner' ||
     (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
+    (face.isCreature && c.zone === 'mana' && s.players[p].manaSummon?.turn === s.turn && s.players[p].manaSummon.left > 0) ||
     (a.alt === 'mugen' && c.zone === 'grave') ||
     ((a.alt === 'fushigi' || a.alt === 'abyss') && c.zone === 'grave');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
@@ -1853,6 +1859,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const wasTapped = bases.some((b) => s.cards[b].tapped);
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);
     c.buzz = a.buzz;
+    // 「次に召喚する〇〇」の軽減・「マナゾーンから召喚」の回数を使う
+    const me2 = s.players[p];
+    if (!a.free && me2.nextSummon?.turn === s.turn) me2.nextSummon = undefined;
+    if (c.zone === 'mana' && me2.manaSummon?.turn === s.turn && a.alt !== 'mana') me2.manaSummon.left--;
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
