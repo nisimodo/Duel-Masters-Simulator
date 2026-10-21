@@ -21,6 +21,8 @@ export type StaticCond =
   | { c: 'shieldsLE'; n: number }
   /** 自分の手札が N 枚以下 */
   | { c: 'handLE'; n: number }
+  /** このクリーチャーが出たターン */
+  | { c: 'selfNew' }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -207,6 +209,7 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)以下(?:の時|なら|であれば)、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] }, rest: m[2] };
@@ -485,6 +488,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
       if (m[4]) out.push({ s: 'grant', target: tg, kws: [...m[4].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when, cond });
       return out;
     }
+  }
+  // ---- 条件つきの「ブロックされない」「攻撃できない」など ----
+  if (cond && (m = body.match(/^このクリーチャーは、?(ブロックされない|攻撃されない|攻撃できない|相手プレイヤーを攻撃できない)$/))) {
+    const kw = m[1] === '相手プレイヤーを攻撃できない' ? 'プレイヤー攻撃不可' : m[1];
+    return [{ s: 'grant', target: { t: 'self' }, kws: [kw], when, cond }];
   }
   // ---- キーワード付与 ----
   if ((m = body.match(/^このクリーチャーは、?パワーが(\d+)以上の時、((?:「[^」]+」(?:と|、)?)+)を得る$/)))

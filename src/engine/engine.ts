@@ -81,6 +81,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'ワールド・ブレイカー' || kw === '∞ブレイカー') k.breaker = 99;
     else if (kw === '攻撃できない') k.cantAttack = true;
     else if (kw === '攻撃されない') k.noAttacked = true;
+    else if (kw === 'プレイヤー攻撃不可') k.cantAttackPlayer = true;
     else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
     else {
       const pa = kw.match(/^パワーアタッカー\+(\d+)$/);

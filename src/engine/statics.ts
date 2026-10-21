@@ -156,6 +156,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
       return isLinked(s, a.src);
     case 'shieldsLE':
       return s.players[a.owner].shield.length <= cond.n;
+    case 'selfNew':
+      return !!s.cards[a.src]?.sick;
     case 'handLE':
       return s.players[a.owner].hand.length <= cond.n;
     case 'spellsThisTurn': {
