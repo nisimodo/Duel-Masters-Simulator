@@ -131,6 +131,7 @@ const db = buildDB(
     { id: 'md', n: 'md', img: '', f: [{ n: 'md', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['魔導具'], x: [] }] },
     { id: 'mug', n: 'mug', img: '', f: [{ n: 'mug', t: 'クリーチャー', c: 'D', co: 9, p: '12000', r: ['テスト'], x: ['無月の門：自分の魔導具をバトルゾーンに出した時、自分の魔導具をバトルゾーンと墓地から２つずつ選び、このクリーチャーを自分の手札または墓地からそれら４枚の上にコストを支払わずに召喚してもよい。'] }] },
     { id: 'eachSp', n: 'eachSp', img: '', f: [{ n: 'eachSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['各プレイヤーは自身のマナゾーンからカードを1枚ずつ選び、それぞれの手札に戻す。'] }] },
+    { id: 'tmpSp', n: 'tmpSp', img: '', f: [{ n: 'tmpSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['このターン、自分のクリーチャーが攻撃する時、カードを1枚引く。'] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -470,6 +471,18 @@ describe('named mechanics', () => {
     expect(choosers).toEqual([0, 1]);
     expect(s.players[0].hand.length).toBe(h0 - 1 + 1);
     expect(s.players[1].hand.length).toBe(h1 + 1);
+  });
+
+  it('このターン、自分のクリーチャーが攻撃する時: temporary trigger fires on attack', () => {
+    let s = setup([
+      { p: 0, cid: 'tmpSp', zone: 'hand' },
+      { p: 0, cid: 'sa', zone: 'battle' },
+    ]);
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'tmpSp')!, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+    expect(s.players[0].hand.length).toBe(hand + 1);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

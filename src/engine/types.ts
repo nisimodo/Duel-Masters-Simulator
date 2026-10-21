@@ -221,6 +221,8 @@ export interface GameState {
   curSpellBy?: number;
   /** ターンの終わりに実行する効果 */
   endTurnExecs?: Exec[];
+  /** このターンだけの誘発型能力 */
+  tempTriggers?: { player: number; src: number; turn: number; event: string; effect: string; optional: boolean }[];
   /** 「次の自分のターンのはじめに〜」(そのプレイヤーのターンのはじめに実行) */
   startTurnExecs?: Exec[];
   /** このプレイヤーの今のターンの後に、もう一度そのプレイヤーのターン */

@@ -613,6 +613,15 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
 function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | null, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null = exclude) {
   fireHand(s, L, actor, ownEv, oppEv, subject);
+  // 「このターン、〜した時」の一時的な能力
+  if (s.tempTriggers?.length) {
+    s.tempTriggers = s.tempTriggers.filter((t) => t.turn === s.turn);
+    for (const t of s.tempTriggers) {
+      const ev = t.player === actor ? ownEv : oppEv;
+      if (ev !== t.event || !s.cards[t.src] || s.pending.length >= MAX_PENDING) continue;
+      s.pending.push({ kind: 'ability', player: t.player, src: t.src, cid: s.cards[t.src].cid, face: s.cards[t.src].face, event: ev, text: t.effect, effect: t.effect, optional: t.optional, auto: false, subject: subject ?? undefined });
+    }
+  }
   const n = s.players.length;
   for (let k = 0; k < n; k++) {
     const p = (s.active + k) % n;

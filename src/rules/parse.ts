@@ -853,6 +853,15 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const au = s.match(/^このターン、(この|その)クリーチャーの(?:最初|次)の攻撃の終わりに、(?:この|その)クリーチャーをアンタップする$/);
     if (au) return [{ op: 'grant', target: { ref: au[1] === 'この' ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
   }
+  // 「このターン、自分のクリーチャーが攻撃する時、〜」: このターンだけの誘発型能力
+  {
+    const tt = s.match(/^このターン、(自分のクリーチャーが攻撃する|相手のクリーチャーが破壊された|自分がクリーチャーを召喚した|自分のクリーチャーを召喚した|自分が呪文を唱えた|自分のシールドがブレイクされた)(?:時|たび)、(.+)$/);
+    if (tt) {
+      const EV = { 自分のクリーチャーが攻撃する: 'ownAttack', 相手のクリーチャーが破壊された: 'oppDestroyed', 自分がクリーチャーを召喚した: 'otherOwnEnter', 自分のクリーチャーを召喚した: 'otherOwnEnter', 自分が呪文を唱えた: 'spellOwn', 自分のシールドがブレイクされた: 'ownShieldBroken' } as const;
+      // 「〜てもよい」は効果の中で聞く
+      if (parseEffect(tt[2]).complete) return [{ op: 'tempTrigger', event: EV[tt[1] as keyof typeof EV], effect: tt[2], optional: false }];
+    }
+  }
   // 次の自分のターンのはじめに
   {
     const ts = s.match(/^次の自分のターンのはじめに、(.+)$/);
@@ -1541,7 +1550,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body?.length) return [{ op: 'forEachPlayer', body }];
   }
   // 「自分の〇〇1体につき、〜」: その数だけくり返す
-  if ((m = s.match(/^(?:バトルゾーンにある)?((?:自分|相手)の.+?)1(?:体|枚|つ)につき、?(.+)$/))) {
+  if ((m = s.match(/^(?:バトルゾーンにある|バトルゾーンで)?((?:自分|相手)の.+?|タップされている.+?|[^、]*?(?:クリーチャー|カード|呪文))1(?:体|枚|つ)につき、?(.+)$/))) {
     const sel = parseSel(m[1]);
     const body = sentence(m[2], ctx);
     if (sel && body?.length) return [{ op: 'repeatPer', sel, body }];

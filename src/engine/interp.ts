@@ -1189,6 +1189,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `山札を${ids.length}枚墓地に置いた`);
         break;
       }
+      case 'tempTrigger': {
+        (s.tempTriggers ??= []).push({ player: ex.player, src: ex.src, turn: s.turn, event: op.event, effect: op.effect, optional: op.optional });
+        break;
+      }
       case 'atNextTurnStart': {
         (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
         break;

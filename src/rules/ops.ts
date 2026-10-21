@@ -212,6 +212,8 @@ export type Op =
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */
   | { op: 'atTurnEnd'; body: Op[] }
+  /** このターン、〜した時に effect を使う (一時的な誘発型能力) */
+  | { op: 'tempTrigger'; event: 'ownAttack' | 'oppDestroyed' | 'otherOwnEnter' | 'spellOwn' | 'ownShieldBroken'; effect: string; optional: boolean }
   /** 次の自分のターンのはじめに body を実行する */
   | { op: 'atNextTurnStart'; body: Op[] }
   /** ガチンコ・ジャッジ (勝てば did = true) */
