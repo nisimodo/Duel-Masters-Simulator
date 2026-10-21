@@ -23,6 +23,10 @@ export type StaticCond =
   | { c: 'handLE'; n: number }
   /** このクリーチャーが出たターン */
   | { c: 'selfNew' }
+  /** sel に合うものが N 個未満 */
+  | { c: 'countLess'; sel: Sel; n: number }
+  /** 相手のシールドが N 枚未満 */
+  | { c: 'oppShieldsLess'; n: number }
   | { c: 'linked' };
 
 export type StaticSpec =
@@ -209,6 +213,16 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^自分の(墓地|マナゾーン)に(.+?)が(\d+)(?:体|枚|つ)以上なければ、(.+)$/))) {
+    const z = m[1] === '墓地' ? 'grave' : 'mana';
+    const sel = parseSel(m[2], { zones: [z] });
+    if (sel) return { cond: { c: 'countLess', sel: { ...sel, owner: 'self', zones: [z], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, n: +m[3] }, rest: m[4] };
+  }
+  if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)が(?:(\d+)(?:体|枚|つ)以上)?なければ、(.+)$/))) {
+    const sel = parseSel('自分の' + m[1]);
+    if (sel) return { cond: { c: 'countLess', sel, n: m[2] ? +m[2] : 1 }, rest: m[3] };
+  }
+  if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
@@ -490,7 +504,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     }
   }
   // ---- 条件つきの「ブロックされない」「攻撃できない」など ----
-  if (cond && (m = body.match(/^このクリーチャーは、?(ブロックされない|攻撃されない|攻撃できない|相手プレイヤーを攻撃できない)$/))) {
+  if (cond && (m = body.replace(/することが(でき)/, '$1').match(/^このクリーチャーは、?(ブロックされない|攻撃されない|攻撃できない|相手プレイヤーを攻撃できない)$/))) {
     const kw = m[1] === '相手プレイヤーを攻撃できない' ? 'プレイヤー攻撃不可' : m[1];
     return [{ s: 'grant', target: { t: 'self' }, kws: [kw], when, cond }];
   }
