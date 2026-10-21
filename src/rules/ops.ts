@@ -47,7 +47,7 @@ export interface Sel {
 
 export type Count = { n: number; upTo: boolean; sumPowerMax?: number } | { all: true };
 
-export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'shield' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped';
+export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped';
 
 /** 効果の対象 */
 export type Target =

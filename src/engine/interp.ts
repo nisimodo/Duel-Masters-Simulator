@@ -199,7 +199,9 @@ const DEST_ZONE: Record<Dest, ZoneName> = {
   hand: 'hand',
   mana: 'mana',
   manaTapped: 'mana',
+  manaDown: 'mana',
   shield: 'shield',
+  shieldUp: 'shield',
   deckBottom: 'deck',
   deckTop: 'deck',
   battle: 'battle',
@@ -215,8 +217,9 @@ function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal
   moveCard(s, L, iid, zone, {
     pos: to === 'deckBottom' ? 'bottom' : 'top',
     tapped: to === 'manaTapped' || to === 'battleTapped' || (zone === 'mana' && multi),
-    faceUp: zone === 'shield' ? false : undefined,
+    faceUp: zone === 'shield' ? to === 'shieldUp' : undefined,
   });
+  if (to === 'manaDown') s.cards[iid].manaDown = true;
   const hidden = zone === 'hand' || zone === 'deck' || zone === 'shield';
   log(s, ex.player, `${hidden && !reveal ? 'カード' : q(nm)} を${ZONE_JA[zone]}へ`);
 }

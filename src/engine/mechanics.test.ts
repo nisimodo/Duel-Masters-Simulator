@@ -96,6 +96,8 @@ const db = buildDB(
     cr('ek', 3, 3000, ['エターナル・Κ(このクリーチャーが離れる時、かわりに自分のマナゾーンにある裏向きのカードを3枚、表向きにしてもよい)']),
     cr('crystal', 6, 6000, ['水晶ソウル3(このクリーチャーを召喚する時、自分のマナゾーンにある裏向きのカードのマナの数字は3になる)']),
     cr('downer', 1, 1000, ['このクリーチャーが出た時、自分のマナゾーンのカードを1枚、裏向きにしてもよい。']),
+    cr('repl', 3, 3000, ['このクリーチャーが破壊される時、墓地に置くかわりに自分の他のクリーチャーを1体破壊してもよい。']),
+    cr('sgo', 3, 3000, ['シールド・ゴー(このクリーチャーが破壊された時、新しいシールドとして自分のシールドゾーンに表向きのまま加える。このクリーチャーが表向きで、シールドゾーンを離れる時、かわりに自分の墓地に置く)']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -557,5 +559,32 @@ describe('named mechanics', () => {
       s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: [s.players[0].mana[1]] }) : { t: 'resolve', use: true });
     }
     expect(s.players[0].mana.filter((m) => s.cards[m].manaDown).length).toBe(1);
+  });
+
+  it('破壊される時、かわりに自分の他のクリーチャーを破壊する', () => {
+    let s = setup([
+      { p: 0, cid: 'repl', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const r = find(s, 0, 'battle', 'repl')!;
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    s = act(s, 0, { t: 'move', iid: r, to: 'grave' });
+    for (let k = 0; k < 4 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: [v] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[r].zone).toBe('battle');
+    expect(s.cards[v].zone).toBe('grave');
+  });
+
+  it('シールド・ゴー: becomes a face-up shield when destroyed, and goes to the graveyard when it leaves', () => {
+    let s = setup([{ p: 0, cid: 'sgo', zone: 'battle' }]);
+    const g = find(s, 0, 'battle', 'sgo')!;
+    s = act(s, 0, { t: 'move', iid: g, to: 'grave' });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(s.cards[g].zone).toBe('shield');
+    expect(s.cards[g].faceUp).toBe(true);
+    s = act(s, 0, { t: 'move', iid: g, to: 'hand' });
+    expect(s.cards[g].zone).toBe('grave');
   });
 });

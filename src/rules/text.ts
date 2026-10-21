@@ -4,6 +4,7 @@
 export function normText(s: string): string {
   return s
     .normalize('NFKC')
+    .replace(/[\uFE0E\uFE0F\u200B]/g, '')
     .replace(/([A-Za-z])\([゠-ヿー]+\)/g, '$1')
     .replace(/^\{[A-Z]+\}\s*/, '')
     // 古い表記の統一: 「出たとき」→「出た時」、「戻してよい」→「戻してもよい」

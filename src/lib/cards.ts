@@ -121,7 +121,10 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
     text: f.x,
     kw: parseKeywords(sp.main, f.t),
     triggers: parseTriggers(abilityLines),
-    statics: parseStatics(abilityLines),
+    statics: [
+      ...parseStatics(abilityLines),
+      ...(f.x.some((l) => /表向きで、?シールドゾーンを離れる時、かわりに(自分の)?墓地に置く/.test(normText(l))) ? [{ s: 'faceUpShieldToGrave' as const }] : []),
+    ],
     isCreature: f.t.includes('クリーチャー'),
     isSpell: f.t.includes('呪文'),
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),

@@ -114,6 +114,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   for (const raw of rawLines) {
     const line = stripReminder(normText(raw)).trim();
     if (!line || SKIP_TRIG.test(line)) continue;
+    if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(墓地に置く|バトルゾーンを離れる)?かわりに、?自分の/.test(line.replace(/\s+/g, ''))) continue;
     const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
     let clause = m[1] + m[2];

@@ -186,6 +186,17 @@ export function moveCard(
       c.face = 0;
       return moveCard(s, L, iid, 'hyper', { ...opts, noReplace: true });
     }
+    // 「破壊される時、かわりに自分の〜」: 払えるなら払ってとどまる
+    for (const rl of own) {
+      if (rl.s !== 'replaceLeave' || (rl.on === 'destroy' && to !== 'grave')) continue;
+      const prog = programOf(rl.effect);
+      // 「〜してもよい」は、払える時は払う (払わずに離れる選択はしない)
+      const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
+      if (!prog.complete || !canPay(s, L, c.owner, iid, ops)) continue;
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は離れるかわりに「${rl.effect}」`);
+      startExec(s, L, c.owner, iid, ops, card!.faces[c.face].name);
+      return 'battle';
+    }
     // エターナル・Κ: 裏向きのマナをN枚表向きにして、とどまる
     const ek = own.find((x) => x.s === 'eternalK');
     if (ek && ek.s === 'eternalK') {
@@ -372,6 +383,22 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
   return powered ? k.breaker + Math.floor(power(s, L, iid, true) / 6000) : k.breaker;
 }
 
+/** 置換効果の支払い (最初の選択) ができるか */
+function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('../rules/ops').Op[]): boolean {
+  const first = ops.find((o) => o.op !== 'optional') ?? ops[0];
+  const op = first?.op === 'optional' ? first.body[0] : first;
+  if (!op) return false;
+  if (op.op === 'choose' && op.target.ref === 'sel') {
+    const sel = op.target.sel;
+    const n = op.target.count && 'n' in op.target.count ? (op.target.count.n ?? 1) : 1;
+    let have = 0;
+    for (const z of sel.zones) for (const i of (s.players[p][z as 'battle'] as number[] | undefined) ?? []) if (i !== self && matchesSel(s, L, i, sel)) have++;
+    return have >= n;
+  }
+  if (op.op === 'discard') return s.players[p].hand.length >= ('n' in op.count ? (op.count.n ?? 1) : 1);
+  return true;
+}
+
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
 export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
   return s.players[p].battle.filter((b) => {
@@ -385,7 +412,7 @@ export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
 /** 「相手のクリーチャーは可能ならこのクリーチャーを攻撃する」で、このクリーチャーが攻撃しなければならない相手 */
 export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
   const tg = attackTargets(s, L, attacker);
-  return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure'));
+  return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure') || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
 }
 
 /** クロスギアをクロスするコスト (「〜にクロスする時、コストを少なく」を含む) */

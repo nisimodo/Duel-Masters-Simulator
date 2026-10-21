@@ -68,6 +68,8 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(バトルゾーンから|自分の(墓地|マナゾーン)から)、?(持ち主の|自分の)?手札に(戻す|加える)$/)) return [{ op: 'move', target, to: 'hand' }];
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
+  if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^新しいシールドとして(自分の|持ち主の)?シールドゾーンに表向きのまま(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
   if (m(/^(持ち主の|自分の)?墓地に(置く|送る)$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^(持ち主の|自分の)?山札の(一番)?下に(置く|戻す)$/)) return [{ op: 'move', target, to: 'deckBottom' }];
   if (m(/^(持ち主の|自分の)?山札の(一番)?上に(置く|戻す)$/)) return [{ op: 'move', target, to: 'deckTop' }];
@@ -199,6 +201,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/のパワーは([+-]\d+)される$/, 'のパワーを$1する')
     .replace(/(\d+枚目?)を、/g, '$1を')
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
+    .replace(/^(.+?(?:クリーチャー|カード))(\d+)(体|枚)を(?!選)(.+)$/, '$1を$2$3、$4')
     .replace(/^自分の手札にある(?=.+を\d+(枚|体)、)/, '自分の手札から');
   if (!s) return [];
 
@@ -219,6 +222,35 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ];
     }
   }
+  // 置換効果・注記は常在型能力として処理する
+  if (/^このクリーチャーが表向きで、?シールドゾーンを離れる時、かわりに(自分の)?墓地に置く$/.test(s)) return [];
+  if (/^[(（].*$/.test(s) && /(破壊される|ブレイクする|召喚酔いしない)$/.test(s)) return [];
+  // 山札の上から裏向きのままマナへ
+  {
+    const tm = s.match(/^(?:自分の)?山札の上から(\d+)枚を裏向きのまま(?:自分の)?マナゾーンに置く$/);
+    if (tm) return [{ op: 'top', n: +tm[1], to: 'manaDown', who: 'self' }];
+  }
+  // 見ないで選んで捨てさせる
+  {
+    const rd = s.match(/^相手の手札からカードを(\d+)枚見ないで選び、(?:相手は)?(?:それを)?(?:持ち主の)?(?:墓地に置く|捨てさせる|捨てる)$/);
+    if (rd) return [{ op: 'discard', who: 'opp', count: { n: +rd[1], upTo: false }, how: 'random' }];
+  }
+  // 「相手のクリーチャーは可能ならこのクリーチャーを攻撃する」(一時的)
+  {
+    const lu = s.match(/^(このターン|次の(?:自分|相手)のターンのはじめまで|次の相手のターンの終わりまで)?、?相手のクリーチャーは、?可能(?:であれば|なら(?:ば)?)、?このクリーチャーを攻撃する$/);
+    if (lu) return [{ op: 'grant', target: { ref: 'self' }, kws: ['挑発'], until: lu[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+  }
+  // 自分と相手のクリーチャーを1体ずつ選び、バトルさせる
+  {
+    const pb = s.match(/^自分と相手のクリーチャーを1体(?:まで)?(選び、(?:その2体を)?バトルさせる|選ぶ)$/);
+    if (pb) {
+      const own: Op = { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '自分のクリーチャーを1体選ぶ' };
+      const opp: Op = { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '相手のクリーチャーを1体選ぶ' };
+      ctx.chosen = true;
+      return pb[1].startsWith('選び') ? [own, { op: 'save' }, opp, { op: 'battle', a: { ref: 'saved' }, b: { ref: 'it' } }] : [own, { op: 'save' }, opp];
+    }
+  }
+  if (/^(その|それら)2体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'saved' }, b: { ref: 'it' } }];
   // コストの下限 (直前の軽減の注記)
   if (/^ただし、?コストは\d+(以下に(は)?ならない|より少なくならない)$/.test(s)) return [];
   // D・D・D など 「このカードを [ll02] 支払って自分の手札から実行してもよい」
