@@ -104,6 +104,10 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** 離れる時、条件を満たせばかわりにとどまる */
+  | { s: 'stayIf'; cond: 'always' | 'tapped' | 'oppSpell'; powerGt?: number; ownSel?: Sel; oppSel?: Sel }
+  /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
+  | { s: 'breakToGrave' }
   /** バトルゾーンを離れない */
   | { s: 'neverLeave' }
   /** このカードがバトルゾーン以外のゾーンにあれば負ける */
@@ -193,6 +197,27 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  // 「このクリーチャーがバトルゾーンを離れる時、〜なら、離れるかわりにとどまる」
+  {
+    const st = t0.match(/^(相手の呪文(?:の効果で|によって))?(バトルゾーンに(自分|相手)の(.+?)があり、)?このクリーチャーがバトルゾーン(?:を|から)離れる時、(.*?)(?:このクリーチャーは)?(?:バトルゾーンを離れるかわりにとどまる|離れるかわりにとどまる|バトルゾーンから離れずにとどまる)$/);
+    if (st) {
+      const pre = st[5];
+      let pm: RegExpMatchArray | null;
+      if (st[1]) return [{ s: 'stayIf', cond: 'oppSpell' }];
+      if (st[2]) {
+        const sel = parseSel(`${st[3]}の${st[4]}`);
+        if (sel) return [{ s: 'stayIf', cond: 'always', ...(st[3] === '自分' ? { ownSel: sel } : { oppSel: sel }) }];
+      }
+      if (pre === '') return [{ s: 'stayIf', cond: 'always' }];
+      if (/^タップされていれば、$/.test(pre)) return [{ s: 'stayIf', cond: 'tapped' }];
+      if ((pm = pre.match(/^そのパワーが(\d+)より大きければ、$/))) return [{ s: 'stayIf', cond: 'always', powerGt: +pm[1] }];
+      if ((pm = pre.match(/^バトルゾーンに(自分|相手)の(.+?)があれば、$/))) {
+        const sel = parseSel(`${pm[1]}の${pm[2]}`);
+        if (sel) return [{ s: 'stayIf', cond: 'always', ...(pm[1] === '自分' ? { ownSel: sel } : { oppSel: sel }) }];
+      }
+    }
+  }
+  if (/^このクリーチャーがシールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに墓地に置く$/.test(t0)) return [{ s: 'breakToGrave' }];
   if (/^この(鼓動|最終禁断フィールド|禁断フィールド|フィールド|カード|クリーチャー)は(、)?(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'neverLeave' }];
   if (/^このカードがバトルゾーン以外のゾーンにあれば、(クリーチャーをすべて破壊し、)?自分はゲームに負ける$/.test(t0)) return [{ s: 'loseIfLeave' }];
   if ((m = t0.match(/^(自分のクリーチャー|このクリーチャー)は(?:すべて)?、?すべてのバトルに勝つ$/)))

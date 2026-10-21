@@ -149,6 +149,8 @@ export interface Exec {
   did: boolean;
   /** 表示用の名前 */
   name: string;
+  /** この効果が呪文なら唱えたプレイヤー */
+  spellBy?: number;
   /** 選択待ちの対象 */
   pendingIds?: number[];
   /** ガチンコ・ジャッジに勝った数 */
@@ -195,6 +197,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** 実行中の効果が呪文なら、唱えたプレイヤー */
+  curSpellBy?: number;
   /** ターンの終わりに実行する効果 */
   endTurnExecs?: Exec[];
   /** このプレイヤーの今のターンの後に、もう一度そのプレイヤーのターン */

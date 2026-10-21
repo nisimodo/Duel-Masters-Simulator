@@ -120,6 +120,8 @@ const db = buildDB(
         { n: '禁断クリーチャー', t: '禁断クリーチャー', c: 'F', co: 99, p: '99999', r: [], x: ['このカードがバトルゾーン以外のゾーンにあれば、自分はゲームに負ける。'] },
       ],
     },
+    cr('stayT', 3, 3000, ['このクリーチャーがバトルゾーンを離れる時、タップされていれば、離れるかわりにとどまる。']),
+    cr('b2g', 3, 3000, ['スピードアタッカー', 'このクリーチャーがシールドをブレイクする時、相手はそのシールドを自身の手札に加えるかわりに墓地に置く。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -767,5 +769,25 @@ describe('named mechanics', () => {
       for (let j = 0; j < 4 && s.pending.length; j++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
     }
     expect(s.cards[k].face).toBe(1);
+  });
+
+  it('とどまる / ブレイクしたシールドを墓地へ', () => {
+    let s = setup([
+      { p: 0, cid: 'stayT', zone: 'battle', tapped: true },
+      { p: 0, cid: 'b2g', zone: 'battle' },
+    ]);
+    const st = find(s, 0, 'battle', 'stayT')!;
+    s = act(s, 0, { t: 'move', iid: st, to: 'grave' });
+    expect(s.cards[st].zone).toBe('battle');
+    const grave = s.players[1].grave.length;
+    const hand = s.players[1].hand.length;
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'b2g')!, player: 1 });
+    for (let k = 0; k < 8 && (s.attack || s.pending.length); k++) {
+      const top = s.pending[0];
+      if (!top) break;
+      s = act(s, top.player, top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[1].shield.slice(0, top.count) } : top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'choice' ? { t: 'choose', yes: false, picks: [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : { t: 'resolve', use: true });
+    }
+    expect(s.players[1].grave.length).toBe(grave + 1);
+    expect(s.players[1].hand.length).toBe(hand);
   });
 });

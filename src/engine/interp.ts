@@ -270,8 +270,8 @@ const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) =
 // ---------- 実行 ----------
 
 /** 効果プログラムの実行を開始する */
-export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string) {
-  runExec(s, L, { player, src, ops: [...ops], it: [], looked: [], did: false, name });
+export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number) {
+  runExec(s, L, { player, src, ops: [...ops], it: [], looked: [], did: false, name, spellBy });
 }
 
 /** 選択への回答を受けて再開する */
@@ -361,6 +361,16 @@ function ask(s: GameState, ex: Exec, p: Omit<Extract<GameState['pending'][number
 }
 
 export function runExec(s: GameState, L: Lookup, ex: Exec) {
+  const prevSpell = s.curSpellBy;
+  s.curSpellBy = ex.spellBy;
+  try {
+    runExecInner(s, L, ex);
+  } finally {
+    s.curSpellBy = prevSpell;
+  }
+}
+
+function runExecInner(s: GameState, L: Lookup, ex: Exec) {
   let guard = 0;
   while (ex.ops.length && guard++ < 500) {
     if (s.phase === 'over') return;

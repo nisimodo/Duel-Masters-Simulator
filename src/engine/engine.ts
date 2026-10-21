@@ -170,6 +170,20 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // 「離れる時、〜なら、かわりにとどまる」
+    for (const sp of own) {
+      if (sp.s !== 'stayIf') continue;
+      let ok = true;
+      if (sp.cond === 'tapped') ok = c.tapped;
+      if (sp.cond === 'oppSpell') ok = s.curSpellBy != null && s.curSpellBy !== c.owner;
+      if (sp.powerGt != null) ok = ok && power(s, L, iid) > sp.powerGt;
+      if (sp.ownSel) ok = ok && s.players[c.owner].battle.some((b) => b !== iid && matchesSel(s, L, b, sp.ownSel!));
+      if (sp.oppSel) ok = ok && s.players.some((pl, o) => o !== c.owner && pl.battle.some((b) => matchesSel(s, L, b, sp.oppSel!)));
+      if (ok) {
+        log(s, c.owner, `${q(card!.faces[c.face].name)} はバトルゾーンにとどまる`);
+        return 'battle';
+      }
+    }
     // バトルゾーンを離れない (禁断の鼓動など)
     if (own.some((x) => x.s === 'neverLeave')) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} はバトルゾーンを離れない`);
@@ -973,7 +987,7 @@ function advance(s: GameState, L: Lookup): boolean {
       if (prog.complete) {
         s.pending.shift();
         const nm = L(top.cid)?.faces[top.face]?.name ?? '';
-        startExec(s, L, top.player, top.src, prog.ops, q(nm));
+        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined);
         return true;
       }
       if (top.auto) {
@@ -1304,6 +1318,11 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     if (saver != null) {
       log(s, target, `シールド・セイバー: ${q(nameOf(s, L, saver))} がシールドのかわりに破壊される`);
       moveCard(s, L, saver, 'grave');
+      continue;
+    }
+    // 「相手はそのシールドを手札に加えるかわりに墓地に置く」
+    if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToGrave')) {
+      moveCard(s, L, sh, 'grave');
       continue;
     }
     moveCard(s, L, sh, 'hand');

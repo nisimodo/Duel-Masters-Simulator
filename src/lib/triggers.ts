@@ -118,6 +118,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   for (const raw of rawLines) {
     const line = stripReminder(normText(raw)).trim();
     if (!line || SKIP_TRIG.test(line)) continue;
+    // 「とどまる」「手札に加えるかわりに墓地に置く」は常在型能力として処理
+    if (/(離れるかわりにとどまる|離れずにとどまる)$|^このクリーチャーがシールドをブレイクする時、相手は.*手札に加えるかわりに墓地に置く/.test(line.replace(/\s+/g, '').replace(/。$/, '')) && /^(相手の呪文(の効果で|によって))?(バトルゾーンに.+?があり、)?このクリーチャーが/.test(line)) continue;
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|山札の(一番)?下に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
