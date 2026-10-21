@@ -1960,6 +1960,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     if (bases.length) {
       for (const b of bases) {
         const bc = s.cards[b];
+        // シンカパワー: 進化元の「このクリーチャーが進化する時」は、進化したクリーチャーの能力として使う
+        for (const spec of faceOf(s, L, b)?.triggers ?? [])
+          if (spec.events.includes('evolvedOn'))
+            s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: bc.cid, face: bc.face, event: 'evolvedOn', text: spec.text, effect: spec.effect, optional: spec.optional, auto: false });
         const subs = [b, ...bc.under];
         detach(s, b);
         for (const x of subs) {

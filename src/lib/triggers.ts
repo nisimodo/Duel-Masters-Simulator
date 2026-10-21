@@ -41,7 +41,8 @@ export type TrigEvent =
   | 'tapped' // このクリーチャーがタップした時
   | 'ownWinBattle' // 自分のクリーチャーがバトルに勝った時
   | 'unsealOne' // このカードから封印が外された時
-  | 'unsealedAll'; // このカードの封印がすべてなくなった時
+  | 'unsealedAll' // このカードの封印がすべてなくなった時
+  | 'evolvedOn'; // シンカパワー: このクリーチャーが進化する時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -81,6 +82,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   ownWinBattle: '自分のクリーチャーがバトルに勝った時',
   unsealOne: '封印が外された時',
   unsealedAll: '封印がすべてなくなった時',
+  evolvedOn: '進化する時',
   spell: '呪文の効果',
 };
 
@@ -187,6 +189,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^これを(クリーチャーに)?付けた時/.test(clause)) ev.add('attached');
     if (/タップ(した|された)時/.test(clause) && self && !/攻撃/.test(clause)) ev.add('tapped');
     if (/封印がすべて(なくなった|外れた)時/.test(clause)) ev.add('unsealedAll');
+    if (/この(クリーチャー|タマシード)が進化する時/.test(clause)) ev.add('evolvedOn');
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
