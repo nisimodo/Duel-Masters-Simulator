@@ -214,6 +214,8 @@ export type Op =
   | { op: 'atTurnEnd'; body: Op[] }
   /** このターン、〜した時に effect を使う (一時的な誘発型能力) */
   | { op: 'tempTrigger'; event: 'ownAttack' | 'oppDestroyed' | 'otherOwnEnter' | 'spellOwn' | 'ownShieldBroken'; effect: string; optional: boolean }
+  /** 次の自分のターンのはじめまで、ハイパーモードを解放する */
+  | { op: 'hyperMode'; target: Target }
   /** 次の自分のターンのはじめに body を実行する */
   | { op: 'atNextTurnStart'; body: Op[] }
   /** ガチンコ・ジャッジ (勝てば did = true) */

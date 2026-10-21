@@ -1193,6 +1193,17 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         (s.tempTriggers ??= []).push({ player: ex.player, src: ex.src, turn: s.turn, event: op.event, effect: op.effect, optional: op.optional });
         break;
       }
+      case 'hyperMode': {
+        for (const i of resolveRef(s, ex, op.target) ?? []) {
+          const c = s.cards[i];
+          const card = L(c.cid);
+          if (c.zone !== 'battle' || !card?.hyper || c.face !== 0) continue;
+          c.face = 1;
+          c.hyperUntil = ex.player;
+          log(s, ex.player, `${q(card.faces[0].name)} のハイパーモードを解放`);
+        }
+        break;
+      }
       case 'atNextTurnStart': {
         (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
         break;

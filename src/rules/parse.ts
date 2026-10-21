@@ -865,6 +865,31 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       if (parseEffect(tt[2]).complete) return [{ op: 'tempTrigger', event: EV[tt[1] as keyof typeof EV], effect: tt[2], optional: false }];
     }
   }
+  // 「〇〇を合計N体まで、自分の手札、マナゾーン、または墓地から出す」
+  {
+    const mz = s.match(/^(.+?)を(?:合計)?(\d+)(体|枚)(まで)?、自分の((?:(?:手札|マナゾーン|墓地|山札)(?:、|または|、または)?){2,})から(.+)$/);
+    if (mz) {
+      const zones = [...mz[5].matchAll(/手札|マナゾーン|墓地|山札/g)].map((x) => ZONE[x[0]]);
+      const sel = parseSel(mz[1], { zones });
+      const ops = sel && verbOps(mz[6], { ref: 'it' });
+      if (sel && ops) {
+        sel.zones = zones;
+        sel.owner = 'self';
+        return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: +mz[2], upTo: !!mz[4] }, chooser: 'self' }, purpose: 'benefit', prompt: s0 }, ...ops];
+      }
+    }
+  }
+  // ハイパーモードを解放する
+  {
+    const hm = s.match(/^次の自分のターンのはじめまで、(このクリーチャー|自分の(.+?)(\d+)体)のハイパーモードを解放する$/);
+    if (hm && !hm[2]) return [{ op: 'hyperMode', target: { ref: 'self' } }];
+    const sel = hm?.[2] ? parseSel('自分の' + hm[2]) : null;
+    if (hm && sel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel, count: { n: +hm[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: 'ハイパーモードを解放するクリーチャーを選ぶ' },
+        { op: 'hyperMode', target: { ref: 'it' } },
+      ];
+  }
   // 次の自分のターンのはじめに
   {
     const ts = s.match(/^次の自分のターンのはじめに、(.+)$/);
