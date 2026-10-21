@@ -69,6 +69,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^(裏向きにして|裏向きのまま)、?(自分の)?シールド(ゾーン)?に(加える|置く)$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(持ち主の|自分の)?超次元ゾーンに(置く|戻す)$/)) return [{ op: 'move', target, to: 'hyper' }];
   if (m(/^(好きな順序で)?(自身の|持ち主の|自分の)?山札の上か下(のどちらか)?に(置く|戻す)$/)) return [{ op: 'topOrBottom', target, chooser: 'self' }];
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
@@ -224,6 +225,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
     .replace(/^自分が負けた(ら|場合)、/, 'そうしなかった場合、')
     .replace(/^そうしない場合、/, 'そうしなかった場合、')
+    .replace(/^(龍?マナ武装|レインボーナス)\d*[:：]/, '')
+    .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
+    .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
     .replace(/^相手の手札を見て(?!、)/, '相手の手札を見て、')
     .replace(/^パワーの合計が(\d+)以下になるように(.+?)を(\d+)体まで選び、/, '$2を、パワーの合計が$1以下になるように好きな数選び、')
     .replace(/^(.+?)をパワーの合計が(\d+)以下になるよう(?:に)?好きな数選び、/, '$1を、パワーの合計が$2以下になるように好きな数選び、')
@@ -574,6 +578,30 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (kd) return [{ op: 'drawItPlus', plus: 0, mult: +kd[2] / +kd[1] }];
     const bs = s.match(/^そのうちの(\d+)(?:枚|つ)をブレイクする$/);
     if (bs) return [{ op: 'breakShield', n: +bs[1] }];
+  }
+  // 自分のマナゾーン/手札/墓地から選んで〜
+  {
+    const zc = s.match(/^自分の(マナゾーン|手札|墓地)から(?:(.+?)を)?(\d+)枚(まで)?選び、(.+)$/) ?? s.match(/^自分の(マナゾーン|手札|墓地)から(?:(.+?)を)?(好きな)(?:枚)?数(?:の(?:カード|クリーチャー))?を?選び、(.+)$/);
+    if (zc) {
+      const zone = zc[1] === 'マナゾーン' ? 'mana' : zc[1] === '手札' ? 'hand' : 'grave';
+      const sel: Sel | null = zc[2] ? parseSel(zc[2], { zones: [zone] }) : { owner: 'self', zones: [zone], kind: 'card' };
+      const rest = zc[zc.length - 1];
+      const ops = verbOps(rest, { ref: 'it' });
+      if (sel && ops) {
+        sel.owner = 'self';
+        sel.zones = [zone];
+        if (sel.kind === 'creature' && zc[2] && /カード$/.test(zc[2])) sel.kind = 'card';
+        const count: Count = zc[3] === '好きな' ? { n: 99, upTo: true } : { n: +zc[3], upTo: !!zc[4] };
+        return [{ op: 'choose', target: { ref: 'sel', sel, count, chooser: 'self' }, purpose: purposeOf(sel, rest), prompt: s0 }, ...ops];
+      }
+    }
+    // 「相手は自身の〇〇すべてを〜」「各プレイヤーは〜すべてを、それぞれの墓地に置く」
+    const ae = s.match(/^(相手|各プレイヤー)は、?(?:バトルゾーンにある)?(?:自身の)?(.+?)すべてを、?(?:それぞれの|持ち主の)?(墓地|手札|マナゾーン)に(置く|戻す|加える)$/);
+    if (ae) {
+      const sel = parseSel(ae[1] === '相手' ? `相手の${ae[2]}` : ae[2]);
+      if (sel) return [{ op: 'move', target: { ref: 'sel', sel, count: { all: true }, chooser: 'self' }, to: ae[3] === '墓地' ? 'grave' : ae[3] === '手札' ? 'hand' : 'mana' }];
+    }
+    if (/^この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く$/.test(s)) return [];
   }
   // 手札を捨てて、その枚数よりN枚多く引く
   {

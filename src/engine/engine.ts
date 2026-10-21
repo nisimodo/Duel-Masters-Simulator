@@ -1839,7 +1839,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!a.force) return me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
     if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock')) return '相手の能力で呪文を唱えられません';
-    const charger = face.kw.charger;
+    const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);
     // 呪文の効果 → 唱えた時の能力 の順に解決
