@@ -59,6 +59,10 @@ const ENGINE_KW = new Set([
   '中央G・リンク',
   'クロスギア',
   '解除',
+  'ギャラクシールド',
+  'フシギバース',
+  'アビスラッシュ',
+  'アタック・チャンス',
   'サバイバー',
   'ウェーブストライカー',
   'アクセル',
@@ -109,6 +113,12 @@ export function expandKwLines(lines: string[], defs: Map<string, KwDef>): string
     const m = t.match(DEF_RE);
     if (m) {
       if (!isEngineKw(m[1])) out.push(m[4]);
+      continue;
+    }
+    // 「スペース・チャージ:火(〜)」のように、キーワードの後ろに条件がついたもの
+    const param = t.match(/^([^\s:：(（]{2,20}?)[:：\-―]([^(（]{1,20})[(（](.{6,})[)）]\s*$/);
+    if (param) {
+      if (!isEngineKw(param[1])) out.push(param[3]);
       continue;
     }
     const bare = t.match(/^([^\s:：(（[\d]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*$/);

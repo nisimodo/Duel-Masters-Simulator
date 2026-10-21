@@ -207,6 +207,11 @@ export function moveCard(
       }
     }
   }
+  // 表向きのシールド (ギャラクシールド等) が離れる時、かわりに墓地へ
+  if (from === 'shield' && c.faceUp && to !== 'grave' && to !== 'battle' && !opts.noReplace && (card?.faces[0]?.statics ?? []).some((x) => x.s === 'faceUpShieldToGrave')) {
+    log(s, c.owner, `${q(card!.faces[0].name)} はシールドゾーンを離れるかわりに墓地へ`);
+    return moveCard(s, L, iid, 'grave', { ...opts, noReplace: true });
+  }
   // スター進化: 離れる時、一番上のカードだけが離れる
   if (from === 'battle' && to !== 'battle' && c.under.length && /スター進化/.test(card?.faces[c.face]?.type ?? '')) {
     const [first, ...restUnder] = c.under;
@@ -314,6 +319,11 @@ export function moveCard(
       if (destroyed) fireWatchers(s, L, c.owner, iid, 'otherOwnDestroyed', 'oppDestroyed');
     }
     if (dest === 'grave' && from !== 'grave') fireSelf(s, L, iid, prevFace, ['toGrave']);
+    if (dest === 'mana' && from !== 'mana') {
+      fireSelf(s, L, iid, 0, ['toManaSelf']);
+      fireWatchers(s, L, c.owner, null, 'ownManaPut', null, iid);
+    }
+    if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
     if (dest === 'battle' && from !== 'battle') {
       gLink(s, L, iid);
       fireSelf(s, L, iid, c.face, ['enter']);
@@ -607,6 +617,8 @@ function startTurn(s: GameState, L: Lookup) {
   log(s, null, `── ターン${s.turn}: ${pl.name} ──`);
   // ターンのはじめの能力 → (advance で) ドロー
   fireWatchers(s, L, p, null, 'turnStartOwn', 'turnStartOpp');
+  // 表向きのシールド (ギャラクシールド等) の「自分のターンのはじめに」
+  for (const sh of [...pl.shield]) if (s.cards[sh].faceUp) fireSelf(s, L, sh, 0, ['turnStartOwn']);
 }
 
 /** ターンのはじめの能力が解決した後のドロー */
@@ -636,6 +648,10 @@ function finishEndTurn(s: GameState, L: Lookup) {
       c.endOfTurn = undefined;
       log(s, p, `B・A・D: ${q(nameOf(s, L, iid))} を破壊`);
       moveCard(s, L, iid, 'grave');
+    } else if (c.endOfTurn === 'abyss') {
+      c.endOfTurn = undefined;
+      log(s, p, `アビスラッシュ: ${q(nameOf(s, L, iid))} を山札の下に置く`);
+      moveCard(s, L, iid, 'deck', { pos: 'bottom' });
     } else if (c.endOfTurn === 'joe') {
       c.endOfTurn = undefined;
       log(s, p, `J・O・E: ${q(nameOf(s, L, iid))} を山札の下に置き、カードを1枚引く`);
@@ -925,6 +941,17 @@ function queueAttackTriggers(s: GameState, L: Lookup) {
   for (const u of s.cards[a.attacker].under) fireSelf(s, L, u, 0, ['crossAttack']);
   fireWatchers(s, L, a.owner, null, 'ownAttack', 'oppAttack', a.attacker);
   if (a.targetCard != null) fireSelf(s, L, a.targetCard, s.cards[a.targetCard].face, ['attacked']);
+  // アタック・チャンス: 手札の呪文をコストを支払わずに唱えてもよい
+  for (const h of s.players[a.owner].hand) {
+    const hc = s.cards[h];
+    const card = L(hc.cid);
+    card?.faces.forEach((f, fi) => {
+      const ac = (f.statics ?? []).find((x) => x.s === 'attackChance');
+      if (!ac || ac.s !== 'attackChance' || !f.isSpell || !matchesSel(s, L, a.attacker, { ...ac.sel, zones: ['battle'] })) return;
+      const eff = 'この呪文をコストを支払わずに唱えてもよい';
+      s.pending.push({ kind: 'ability', player: a.owner, src: h, cid: hc.cid, face: fi, event: 'ownAttack', text: `アタック・チャンス: ${f.name}`, effect: eff, optional: true, auto: false });
+    });
+  }
 }
 
 function blockStep(s: GameState, L: Lookup) {
@@ -1253,6 +1280,23 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
       return `タップしていない自分のクリーチャーを${d.n}体選んでください`;
     return d.cost;
   }
+  if (a.alt === 'galaxy') {
+    const d = statics.find((x) => x.s === 'galaxy');
+    if (!d || d.s !== 'galaxy' || c.zone !== 'hand') return 'ギャラクシールドは使えません';
+    return d.cost;
+  }
+  if (a.alt === 'fushigi') {
+    const d = statics.find((x) => x.s === 'fushigi');
+    if (!d || d.s !== 'fushigi' || c.zone !== 'grave') return 'フシギバースは使えません';
+    const b = a.taps?.[0];
+    const bf = b != null ? faceOf(s, L, b) : undefined;
+    if (b == null || a.taps!.length !== 1 || !bf?.isCreature || s.cards[b].owner !== p || s.cards[b].zone !== 'battle') return 'マナゾーンに置く自分のクリーチャーを1体選んでください';
+    return Math.max(1, d.n - bf.cost);
+  }
+  if (a.alt === 'abyss') {
+    if (!statics.some((x) => x.s === 'abyss') || c.zone !== 'grave') return 'アビスラッシュは使えません';
+    return costOf(s, L, p, a.iid, fi);
+  }
   if (a.alt === 'kirifu') {
     const d = statics.find((x) => x.s === 'kirifu');
     if (!d || d.s !== 'kirifu') return 'キリフダッシュは使えません';
@@ -1308,7 +1352,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.zone === 'partner' ||
     (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
-    (a.alt === 'mugen' && c.zone === 'grave');
+    (a.alt === 'mugen' && c.zone === 'grave') ||
+    ((a.alt === 'fushigi' || a.alt === 'abyss') && c.zone === 'grave');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
   if (c.zone === 'partner' && !c.faceUp) return '裏向きのパートナーは召喚できません';
   if (c.zone === 'partner' && !face.isCreature) return 'パートナーの呪文側は唱えられません';
@@ -1339,10 +1384,30 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       for (const b of a.taps ?? []) s.cards[b].tapped = true;
       log(s, p, `ムゲンクライム: ${(a.taps ?? []).length}体タップ`);
     }
+    if (a.alt === 'fushigi') {
+      const b = a.taps![0];
+      log(s, p, `フシギバース: ${q(nameOf(s, L, b))} をマナゾーンに置く`);
+      moveCard(s, L, b, 'mana', { tapped: true });
+    }
+    if (a.alt === 'galaxy') {
+      log(s, p, `ギャラクシールド: ${q(face.name)} を表向きのシールドとして置いた`);
+      moveCard(s, L, a.iid, 'shield', { faceUp: true });
+      return null;
+    }
     if (a.he?.length) log(s, p, `ハイパーエナジー: ${a.he.length}体タップ`);
   }
   const name = face.name;
   const how = a.free ? '(コストを支払わずに)' : '';
+  if (face.isCreature && !a.force) {
+    // エグザイル: 名前に《X》とある他のエグザイル・クリーチャーは出せない
+    const mine = s.players[p].battle.filter((b) => b !== a.iid);
+    const limits = [...mine.flatMap((b) => (faceOf(s, L, b)?.statics ?? []).map((x) => ({ x, b }))), ...(face.statics ?? []).map((x) => ({ x, b: -1 }))];
+    for (const { x, b } of limits) {
+      if (x.s !== 'exileLimit') continue;
+      const clash = b >= 0 ? face.name.includes(x.name) && /エグザイル/.test(face.type) : mine.some((m) => (faceOf(s, L, m)?.name ?? '').includes(x.name) && /エグザイル/.test(faceOf(s, L, m)?.type ?? ''));
+      if (clash) return `名前に《${x.name}》とあるエグザイル・クリーチャーは同時に出せません`;
+    }
+  }
   if (face.isCreature) {
     let bases: number[] = [];
     if (face.isEvolution) {
@@ -1354,6 +1419,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
+    if (a.alt === 'abyss') {
+      c.endOfTurn = 'abyss';
+      (c.grants ??= []).push({ kws: ['スピードアタッカー'], until: -1 });
+    }
     if (bases.length) {
       for (const b of bases) {
         const bc = s.cards[b];
@@ -1412,6 +1481,30 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
+  } else if (/オーラ/.test(face.type)) {
+    // オーラ: 自分のGRクリーチャーに付ける (選んでいなければGR召喚して付ける)
+    let holder = (a.evo ?? []).find((b) => s.cards[b]?.zone === 'battle' && s.cards[b].owner === p && faceOf(s, L, b)?.isCreature);
+    if (holder == null) {
+      const gr = s.players[p].gr;
+      const top = gr[gr.length - 1];
+      if (top != null) {
+        log(s, p, `GR召喚 → ${q(nameOf(s, L, top))}`);
+        moveCard(s, L, top, 'battle');
+        holder = top;
+      }
+    }
+    if (holder == null) {
+      log(s, p, `${q(name)} を付けるクリーチャーがいないので墓地へ`);
+      moveCard(s, L, a.iid, 'grave');
+      return null;
+    }
+    detach(s, a.iid);
+    c.zone = 'under';
+    c.parent = holder;
+    c.face = card.faces.indexOf(face);
+    s.cards[holder].under.push(a.iid);
+    log(s, p, `${q(name)} を ${q(nameOf(s, L, holder))} に付けた${how}`);
+    fireSelf(s, L, a.iid, c.face, ['attached']);
   } else {
     log(s, p, `${q(name)} (${face.type}) をバトルゾーンに出した${how}`);
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
@@ -1526,6 +1619,11 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
           log(s, p, `S・トリガー発動！ ${q(face.name)}`);
           const err = playCard(s, p, { t: 'play', iid: top.iid, face: card.faces.indexOf(face), pay: [], free: true, force: true }, L);
           if (err) return err;
+          const ob = face.marked?.oB;
+          if (ob && s.players[p].shield.length === 0) {
+            log(s, p, `スーパー・S・トリガー: シールドが0なので追加の能力`);
+            s.pending.push({ kind: 'ability', player: p, src: top.iid, cid: s.cards[top.iid].cid, face: card.faces.indexOf(face), event: 'spell', text: `oB ${ob}`, effect: ob, optional: false, auto: false });
+          }
         }
       }
       return null;

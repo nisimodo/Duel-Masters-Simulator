@@ -60,8 +60,13 @@ export function PayDialog({
   const disc = statics.find((x) => x.s === 'discountSummon');
   const inMana = s.cards[iid].zone === 'mana' && statics.some((x) => x.s === 'manaBakutan');
   const mugen = statics.find((x) => x.s === 'mugen');
-  const inGrave = s.cards[iid].zone === 'grave' && !!mugen;
-  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | undefined>(inMana ? 'mana' : inGrave ? 'mugen' : undefined);
+  const fushigi = statics.find((x) => x.s === 'fushigi');
+  const galaxy = statics.find((x) => x.s === 'galaxy');
+  const fromGrave = s.cards[iid].zone === 'grave';
+  const graveAlts = fromGrave ? ([mugen && 'mugen', fushigi && 'fushigi', statics.some((x) => x.s === 'abyss') && 'abyss'].filter(Boolean) as ('mugen' | 'fushigi' | 'abyss')[]) : [];
+  const inGrave = fromGrave && !!mugen;
+  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | undefined>(inMana ? 'mana' : graveAlts[0]);
+  const isAura = /オーラ/.test(f.type);
   const [taps, setTaps] = useState<number[]>([]);
   const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], alt, taps, ...opts }, face);
@@ -82,12 +87,13 @@ export function PayDialog({
     const bf = faceOf(s, L, b);
     if (!bf) return false;
     if (showAll) return true;
+    if (isAura) return bf.isCreature && /GR/.test(bf.type);
     const bc = L(s.cards[b].cid)!;
     return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
   const ok = cost != null && pay.length === cost && (cost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
-  const needEvo = f.isEvolution && f.isCreature;
+  const needEvo = (f.isEvolution && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);
   return (
@@ -111,10 +117,68 @@ export function PayDialog({
         </label>
       )}
       {inMana && <div className="small">マナ爆誕: マナゾーンから召喚します</div>}
+      {graveAlts.length > 1 && (
+        <div className="row small">
+          墓地からの召喚方法:
+          {graveAlts.map((g) => (
+            <label key={g}>
+              <input
+                type="radio"
+                checked={alt === g}
+                onChange={() => {
+                  setAlt(g);
+                  setTaps([]);
+                  refreshPay({ sasa, he, gzero, alt: g, taps: [] });
+                }}
+              />
+              {{ mugen: 'ムゲンクライム', fushigi: 'フシギバース', abyss: 'アビスラッシュ' }[g]}
+            </label>
+          ))}
+        </div>
+      )}
+      {alt === 'abyss' && <div className="small">アビスラッシュ: このターンプレイヤーを攻撃でき、ターンの終わりに山札の下に置かれます</div>}
+      {galaxy && galaxy.s === 'galaxy' && s.cards[iid].zone === 'hand' && (
+        <label className="small">
+          <input
+            type="checkbox"
+            checked={alt === 'galaxy'}
+            onChange={(e) => {
+              const v = e.target.checked ? 'galaxy' : undefined;
+              setAlt(v);
+              refreshPay({ sasa, he, gzero, alt: v, taps });
+            }}
+          />{' '}
+          ギャラクシールド (コスト{galaxy.cost}で表向きのシールドとして置く)
+        </label>
+      )}
+      {alt === 'fushigi' && fushigi && fushigi.s === 'fushigi' && (
+        <div className="col" style={{ gap: 2 }}>
+          <b className="small">フシギバース: マナゾーンに置く自分のクリーチャーを1体 (コスト{fushigi.n} − そのクリーチャーのコスト)</b>
+          <div className="row">
+            {s.players[me].battle
+              .filter((b) => faceOf(s, L, b)?.isCreature)
+              .map((b) => (
+                <CardImg
+                  key={b}
+                  card={L(s.cards[b].cid)!}
+                  face={s.cards[b].face}
+                  width={50}
+                  selected={taps.includes(b)}
+                  onHover={onHover}
+                  onClick={() => {
+                    const next = taps.includes(b) ? [] : [b];
+                    setTaps(next);
+                    refreshPay({ sasa, he, gzero, alt, taps: next });
+                  }}
+                />
+              ))}
+          </div>
+        </div>
+      )}
       {mugen && mugen.s === 'mugen' && (
         <div className="col" style={{ gap: 2 }}>
           {inGrave ? (
-            <b className="small">ムゲンクライム: 墓地から召喚します</b>
+            alt === 'mugen' && <b className="small">ムゲンクライム: 墓地から召喚します</b>
           ) : (
             <label className="small">
               <input
@@ -221,7 +285,7 @@ export function PayDialog({
       {needEvo && (
         <>
           <div className="row">
-            <b>進化元を選択</b>
+            <b>{isAura ? '付けるGRクリーチャー (選ばなければGR召喚して付ける)' : '進化元を選択'}</b>
             <label className="small">
               <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> 条件外も表示
             </label>
@@ -244,7 +308,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' ? taps : undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' ? taps : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

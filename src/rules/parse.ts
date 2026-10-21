@@ -76,7 +76,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^アンタップする$/)) return [{ op: 'untap', target }];
   if (m(/^(自分の)?(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   if (m(/^タップして(自分の)?バトルゾーンに出す$/)) return [{ op: 'play', target, mode: 'put' }, { op: 'tap', target: { ref: 'it' } }];
-  if (m(/^コストを支払わずに召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
+  if (m(/^(コストを支払わずに|コストを支払ったものとして)召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
   if (m(/^コストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
   if (m(/^コストを支払わずに(使う|実行する|プレイする)$/)) return [{ op: 'play', target, mode: 'use' }];
   if (m(/^捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
@@ -146,6 +146,7 @@ function parseCond(c: string): Cond | null {
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
   if (/^このクリーチャーがリンクしていない$/.test(c)) return { c: 'linked', neg: true };
+  if (/^このクリーチャーが表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     return sel ? { c: 'itMatches', sel } : null;
@@ -195,6 +196,15 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/のパワーは([+-]\d+)される$/, 'のパワーを$1する')
     .replace(/(\d+枚目?)を、/g, '$1を');
   if (!s) return [];
+
+  // 記号つきの能力を使う 「このクリーチャーの q 能力を使ってもよい」「このクリーチャーと自分の他のクリーチャー1体の oP 能力を使う」
+  {
+    const um = s.match(/^このクリーチャー(?:と自分の他のクリーチャー(\d+)体)?の(q|oP|oB|xB|◇)能力を(?:1回)?使(う|ってもよい)$/);
+    if (um) {
+      const op: Op = { op: 'useMarked', key: um[2], others: um[1] ? +um[1] : undefined };
+      return um[3] === 'う' ? [op] : [{ op: 'optional', body: [op], prompt: s0 }];
+    }
+  }
 
   // 呪文を唱えられない
   {

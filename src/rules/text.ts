@@ -70,8 +70,16 @@ export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわり�
  * カードのテキスト行を、常に有効な行・条件つき/共有の能力 (ウェーブストライカー・アクセル・超魂X・サバイバーのoS能力)・
  * タップ能力 (攻撃するかわりにタップして使う能力) に分ける
  */
-export function splitAbilities(lines: string[]): { main: string[]; groups: { kind: AbilityGroupKind; lines: string[] }[]; tap: string | null } {
+export const MARKED_LINE = /^(q|oP|oB|xB)\s+(.+)$|^(◇)\s*(.+)$/;
+
+export function splitAbilities(lines: string[]): {
+  main: string[];
+  groups: { kind: AbilityGroupKind; lines: string[] }[];
+  tap: string | null;
+  marked: Record<string, string[]>;
+} {
   const main: string[] = [];
+  const marked: Record<string, string[]> = {};
   const groups = new Map<AbilityGroupKind, string[]>();
   const push = (k: AbilityGroupKind | null, l: string) => {
     if (!k) main.push(l);
@@ -99,6 +107,13 @@ export function splitAbilities(lines: string[]): { main: string[]; groups: { kin
       inTap = true;
       continue;
     }
+    // 「このクリーチャーの q 能力を使う」などで使われる、記号つきの能力
+    const mk = t.match(MARKED_LINE);
+    if (mk) {
+      const key = mk[1] ?? mk[3];
+      (marked[key] ??= []).push((mk[2] ?? mk[4]).replace(/。$/, ''));
+      continue;
+    }
     const head = GROUP_HEAD.find(([re]) => re.test(t));
     if (head) {
       main.push(raw);
@@ -115,5 +130,5 @@ export function splitAbilities(lines: string[]): { main: string[]; groups: { kin
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, marked };
 }

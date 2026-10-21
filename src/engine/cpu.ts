@@ -320,7 +320,10 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       (f) =>
         f.isCreature &&
         (f.statics ?? []).some(
-          (x) => (x.s === 'summonFrom' && x.zone === s.cards[i].zone) || (x.s === 'manaBakutan' && s.cards[i].zone === 'mana') || (x.s === 'mugen' && s.cards[i].zone === 'grave'),
+          (x) =>
+            (x.s === 'summonFrom' && x.zone === s.cards[i].zone) ||
+            (x.s === 'manaBakutan' && s.cards[i].zone === 'mana') ||
+            ((x.s === 'mugen' || x.s === 'fushigi' || x.s === 'abyss') && s.cards[i].zone === 'grave'),
         ),
     ),
   );
@@ -334,11 +337,19 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       // G・ゼロが使えるならコストを支払わずに
       const gz = playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], gzero: true }, fi) === 0;
       // マナ爆誕 (マナゾーンから) / J・O・E・B・A・D (普通に出せない時だけ軽くして出す)
-      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | undefined;
+      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | undefined;
       let taps: number[] | undefined;
       const st = f.statics ?? [];
       const mg = st.find((x) => x.s === 'mugen');
+      const fg = st.find((x) => x.s === 'fushigi');
       if (s.cards[h].zone === 'mana' && st.some((x) => x.s === 'manaBakutan')) alt = 'mana';
+      else if (s.cards[h].zone === 'grave' && fg && fg.s === 'fushigi' && !mg) {
+        // フシギバース: コストの大きい (攻撃に使わない) クリーチャーをマナへ
+        const b = me.battle.filter((x) => faceOf(s, L, x)?.isCreature && x !== h).sort((x, y) => (faceOf(s, L, y)?.cost ?? 0) - (faceOf(s, L, x)?.cost ?? 0) || threatOf(s, L, x) - threatOf(s, L, y))[0];
+        if (b == null || threatOf(s, L, b) > (f.cost ?? 0) * 2) return;
+        alt = 'fushigi';
+        taps = [b];
+      } else if (s.cards[h].zone === 'grave' && st.some((x) => x.s === 'abyss') && !mg) alt = 'abyss';
       else if (mg && mg.s === 'mugen' && (s.cards[h].zone === 'grave' || (!gz && costOf(s, L, p, h, fi) > mana))) {
         // ムゲンクライム: 攻撃できないクリーチャーから優先してタップ
         const free = me.battle
@@ -350,6 +361,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       } else if (!gz && costOf(s, L, p, h, fi) > mana) {
         const d = st.find((x) => x.s === 'discountSummon');
         if (d && d.s === 'discountSummon') alt = d.kind;
+        else if (st.some((x) => x.s === 'galaxy') && s.cards[h].zone === 'hand') alt = 'galaxy';
       }
       const altCost = alt ? playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], alt, taps }, fi) : null;
       if (alt && typeof altCost !== 'number') return;
@@ -385,8 +397,13 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         if (f.kw.blocker && defensive) value += 20;
         if (f.kw.speedAttacker) value += 5;
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
-        if (alt === 'joe' || alt === 'bad') value = value * 0.6; // ターンの終わりに離れる
+        if (alt === 'joe' || alt === 'bad' || alt === 'abyss') value = value * 0.6; // ターンの終わりに離れる
+        if (alt === 'galaxy') value = value * 0.4; // シールドとして置くだけ
         cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps }, value });
+      } else if (/オーラ/.test(f.type)) {
+        // オーラ: 一番強い自分のGRクリーチャーに (いなければGR召喚して) 付ける
+        const holder = me.battle.filter((b) => /GR/.test(faceOf(s, L, b)?.type ?? '')).sort((a, b) => power(s, L, b) - power(s, L, a))[0];
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo: holder != null ? [holder] : [] }, value: f.cost * 7 });
       } else if (/クロスギア/.test(f.type)) {
         // クロスギア: クリーチャーがいる時だけジェネレート
         if (me.battle.some((b) => faceOf(s, L, b)?.isCreature)) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });

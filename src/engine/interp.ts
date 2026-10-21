@@ -153,6 +153,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return (c.who === 'self' ? me : opp).shield.length < c.n;
     case 'selfTapped':
       return !!s.cards[ex.src]?.tapped;
+    case 'selfFaceUpShield': {
+      const sc = s.cards[ex.src];
+      return sc?.zone === 'shield' && sc.faceUp;
+    }
     case 'equippedTapped': {
       const par = s.cards[ex.src]?.parent;
       return par != null && s.cards[par].zone === 'battle' && s.cards[par].tapped;
@@ -505,6 +509,24 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
       case 'save':
         ex.saved = [...ex.it];
         break;
+      case 'useMarked': {
+        const root = s.cards[ex.src]?.linkedTo ?? ex.src;
+        const push = (iid: number) => {
+          const c = s.cards[iid];
+          const f = L(c.cid)?.faces[c.face];
+          const eff = f?.marked?.[op.key];
+          if (!eff) return;
+          s.pending.push({ kind: 'ability', player: ex.player, src: iid, cid: c.cid, face: c.face, event: 'spell', text: `${op.key} ${eff}`, effect: eff, optional: false, auto: false });
+          log(s, ex.player, `${q(nameOf(s, L, iid))} の ${op.key} 能力を使う`);
+        };
+        push(root);
+        if (op.others) {
+          const others = s.players[ex.player].battle.filter((b) => b !== root && L(s.cards[b].cid)?.faces[s.cards[b].face]?.marked?.[op.key]);
+          others.sort((a, b) => power(s, L, b) - power(s, L, a));
+          for (const b of others.slice(0, op.others)) push(b);
+        }
+        break;
+      }
       case 'lockSpells': {
         for (let o = 0; o < s.players.length; o++) {
           if (o === ex.player || s.players[o].lost) continue;

@@ -46,7 +46,7 @@ export interface CardInst {
   /** EXライフで置いたシールド */
   exShield?: number;
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
-  endOfTurn?: 'joe' | 'bad';
+  endOfTurn?: 'joe' | 'bad' | 'abyss';
   /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
   hyperUntil?: number;
   /** G・リンクで下に重なっているゴッド (リンク先の一番上のカード) */
@@ -208,7 +208,7 @@ export type Action =
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
       /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
-      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen';
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss';
       /** ムゲンクライムでタップする自分のクリーチャー */
       taps?: number[];
     }

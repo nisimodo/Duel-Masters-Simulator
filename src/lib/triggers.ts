@@ -1,6 +1,6 @@
 // カードテキストから誘発型能力 (「～時、」「～はじめに、」「～終わりに、」) を抽出する
 import { hintsFromText, SIMPLE_KINDS } from '../engine/effects';
-import { mergeModal, normText, stripReminder } from '../rules/text';
+import { MARKED_LINE, mergeModal, normText, stripReminder } from '../rules/text';
 import { parseSel } from '../rules/selector';
 import type { Sel } from '../rules/ops';
 
@@ -33,7 +33,11 @@ export type TrigEvent =
   | 'turnStartOpp'
   | 'turnEndOwn'
   | 'turnEndOpp'
-  | 'tapAbility'; // 攻撃するかわりにタップして使う能力
+  | 'tapAbility' // 攻撃するかわりにタップして使う能力
+  | 'ownManaPut' // 自分のマナゾーンに〇〇が置かれた時
+  | 'toManaSelf' // このカードをマナゾーンに置いた時
+  | 'toShieldFaceUp' // このクリーチャーが表向きでシールドゾーンに置かれた時
+  | 'attached'; // これをクリーチャーに付けた時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -65,6 +69,10 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   turnEndOwn: '自分のターンの終わり',
   turnEndOpp: '相手のターンの終わり',
   tapAbility: 'タップして使う能力',
+  ownManaPut: 'マナゾーンにカードが置かれた時',
+  toManaSelf: 'マナゾーンに置いた時',
+  toShieldFaceUp: '表向きでシールドゾーンに置かれた時',
+  attached: 'クリーチャーに付けた時',
   spell: '呪文の効果',
 };
 
@@ -107,8 +115,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     let clause = m[1] + m[2];
     let effect = m[3];
     // 「このクリーチャーが出た時、またはこのクリーチャーが攻撃する時、〜」
-    for (let k = 0; k < 4 && /^または/.test(effect); k++) {
-      const more = effect.match(/^(または.{1,80}?(?:時|はじめに|終わりに))、(.+)$/s);
+    for (let k = 0; k < 4 && /^(または|あるいは)/.test(effect); k++) {
+      const more = effect.match(/^((?:または|あるいは).{1,80}?(?:時|はじめに|終わりに))、(.+)$/s);
       if (!more) break;
       clause += more[1];
       effect = more[2];
@@ -156,6 +164,11 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/墓地に置かれた時/.test(clause) && self) ev.add('toGrave');
     if (/ブレイク(した|する)時/.test(clause) && self) ev.add('breakShield');
     if (/ブレイクされた時/.test(clause) && /自分のシールド/.test(clause)) ev.add('ownShieldBroken');
+    const manaPut = clause.match(/自分のマナゾーンに(.+?)が置かれた時/);
+    if (manaPut) ev.add('ownManaPut');
+    if (/この(カード|クリーチャー)を(自分の)?(手札から)?マナゾーンに置いた時/.test(clause)) ev.add('toManaSelf');
+    if (/表向きで(自分の)?シールドゾーンに置かれた時/.test(clause) && self) ev.add('toShieldFaceUp');
+    if (/^これを(クリーチャーに)?付けた時/.test(clause)) ev.add('attached');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
       else if (/自分が/.test(clause)) ev.add('spellOwn');
@@ -172,6 +185,10 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
         clause.match(/相手が(.+?)を(?:バトルゾーンに)?(?:出(?:した)?|召喚した)時/);
       if (sm && !/^クリーチャー$/.test(sm[1])) subject = parseSel(sm[1]) ?? undefined;
     }
+    if (manaPut && !/^カード$/.test(manaPut[1])) {
+      const ms = parseSel(manaPut[1]);
+      if (ms) subject = { ...ms, zones: ['mana'] };
+    }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause);
     out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn });
   }
@@ -182,5 +199,5 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l));
 }

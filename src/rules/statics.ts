@@ -63,7 +63,19 @@ export type StaticSpec =
   /** クロスする時のコスト軽減 */
   | { s: 'crossDiscount'; sel: Sel; n: number }
   /** G・リンク: 指定の名前のゴッド (names) か、左/右/中央 G・リンクを持つゴッドとリンクする */
-  | { s: 'glink'; names?: string[]; side?: 'L' | 'R' | 'C' };
+  | { s: 'glink'; names?: string[]; side?: 'L' | 'R' | 'C' }
+  /** ギャラクシールド: コストNを支払って表向きのシールドとして置く */
+  | { s: 'galaxy'; cost: number }
+  /** フシギバース: 自分のクリーチャー1体をマナに置き、N - そのコスト を支払って墓地から召喚 */
+  | { s: 'fushigi'; n: number }
+  /** アビスラッシュ: 墓地から召喚し、このターンプレイヤーを攻撃でき、ターンの終わりに山札の下へ */
+  | { s: 'abyss' }
+  /** 自分の他の、名前に《X》とあるエグザイル・クリーチャーを出せない */
+  | { s: 'exileLimit'; name: string }
+  /** アタック・チャンス: 条件に合う自分のクリーチャーが攻撃する時、手札からコストを支払わずに唱えてもよい */
+  | { s: 'attackChance'; sel: Sel }
+  /** 表向きでシールドゾーンを離れる時、かわりに墓地に置く */
+  | { s: 'faceUpShieldToGrave' };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -118,6 +130,24 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^ハイパー化[:：]自分の他のクリーチャーを(\d+)体タップする/))) return [{ s: 'hyperize', n: +m[1] }];
   if (/^Zラッシュ/.test(t0)) return [{ s: 'zrush' }];
   if (/^シンカライズ/.test(t0)) return [{ s: 'sinkalize' }];
+  if ((m = full.replace(/\s+/g, '').match(/^ギャラクシールド\[[a-z]*(\d+)\]/))) return [{ s: 'galaxy', cost: +m[1] }];
+  if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
+  if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
+  if ((m = t0.match(/^自分の他の、?名前に《(.+?)》とある(?:エグザイル・)?クリーチャーをバトルゾーンに出すことはできない$/))) return [{ s: 'exileLimit', name: m[1] }];
+  if ((m = t0.match(/^アタック・チャンス[-ー―:：]?(.+)$/))) {
+    const sel = parseSel(m[1].replace(/^ハイパーモード状態の/, ''));
+    return sel ? [{ s: 'attackChance', sel }] : null;
+  }
+  if (/^このクリーチャーが表向きで、?シールドゾーンを離れる時、かわりに(自分の)?墓地に置く$/.test(t0)) return [{ s: 'faceUpShieldToGrave' }];
+  // 鬼タイム: 自分と相手のシールドの合計がN以下なら、パワー+N / キーワード
+  if ((m = t0.match(/^鬼タイム[:：]?自分と相手のシールドの数が合計(\d+)つ以下なら、このクリーチャーのパワーを\+(\d+)(?:し、((?:「[^」]+」(?:と|、)?)+)を与える)?$/))) {
+    const cond: StaticCond = { c: 'totalShieldsLE', n: +m[1] };
+    const out: StaticSpec[] = [{ s: 'power', target: { t: 'self' }, delta: +m[2], when: 'always', cond }];
+    if (m[3]) out.push({ s: 'grant', target: { t: 'self' }, kws: [...m[3].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond });
+    return out;
+  }
+  if ((m = t0.match(/^鬼タイム[:：]?自分と相手のシールドの数が合計(\d+)つ以下なら、このクリーチャーに((?:「[^」]+」(?:と|、)?)+)を与える$/)))
+    return [{ s: 'grant', target: { t: 'self' }, kws: [...m[2].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond: { c: 'totalShieldsLE', n: +m[1] } }];
   if (/^解除$/.test(t0) || /^(このクリーチャーが)?バトルゾーンを離れる時、(バトルゾーンを離れる)?かわりに、?(コストの小さいほう|フォートレス側)に裏返す$/.test(t0) || /^バトルゾーンを離れるかわりに、?(コストの小さいほう|フォートレス側)に裏返す$/.test(t0))
     return [{ s: 'release' }];
   if ((m = t0.match(/^このカードを(.+?)にクロスする時、そのコストを(?:最大)?(\d+)少なくしてもよい/))) {

@@ -199,6 +199,9 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       if (cardAt(iid).hyper && fi > 0) return;
       const mg = (f.statics ?? []).find((x) => x.s === 'mugen');
       if (c.zone === 'grave' && mg && mg.s === 'mugen') items.push({ label: `ムゲンクライム (${mg.n}体タップ + コスト${mg.cost})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
+      const fg = (f.statics ?? []).find((x) => x.s === 'fushigi');
+      if (c.zone === 'grave' && fg && fg.s === 'fushigi') items.push({ label: `フシギバース (基本コスト${fg.n})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
+      if (c.zone === 'grave' && (f.statics ?? []).some((x) => x.s === 'abyss')) items.push({ label: `アビスラッシュ (墓地から召喚)`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       if (f.isCreature && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone))
         items.push({ label: `召喚 (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       const mb = (f.statics ?? []).find((x) => x.s === 'manaBakutan');

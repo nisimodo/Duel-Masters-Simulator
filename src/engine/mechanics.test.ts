@@ -54,6 +54,13 @@ const db = buildDB(
         { n: 'dh龍', t: 'ドラグハート・クリーチャー', c: 'F', co: 7, p: '9000', r: ['テスト'], x: [] },
       ],
     },
+    cr('galaxy', 8, 8000, ['ギャラクシールド [ll03](このカードを使うコストの代わりに、 [ll03]を支払ってもよい。そうしたら、このカードを表向きにし、新しいシールドとしてシールドゾーンに置く)', '自分のターンのはじめに、このクリーチャーが表向きで自分のシールドゾーンにあれば、コストを支払ったものとして召喚する。']),
+    cr('fushigi', 9, 9000, ['フシギバース [nn09](自分のクリーチャーを1体タップしてマナゾーンに置き、[nn09]からそのクリーチャーのコストを引いた数のコストを支払って、このクリーチャーを自分の墓地から召喚してもよい)']),
+    cr('big', 6, 6000, []),
+    { id: 'ex1', n: 'ex1', img: '', f: [{ n: '暴剣王A', t: 'エグザイル・クリーチャー', c: 'F', co: 1, p: '1000', r: [], x: ['自分の他の、名前に《暴剣》とあるエグザイル・クリーチャーをバトルゾーンに出すことはできない。'] }] },
+    { id: 'ex2', n: 'ex2', img: '', f: [{ n: '暴剣王B', t: 'エグザイル・クリーチャー', c: 'F', co: 1, p: '1000', r: [], x: ['自分の他の、名前に《暴剣》とあるエグザイル・クリーチャーをバトルゾーンに出すことはできない。'] }] },
+    { id: 'chance', n: 'chance', img: '', f: [{ n: 'chance', t: '呪文', c: 'F', co: 9, p: null, r: [], x: ['アタック・チャンス-テスト(自分のテストが攻撃する時、この呪文をコストを支払わずに唱えてもよい)', 'カードを2枚引く。'] }] },
+    cr('space', 1, 1000, ['スペース・チャージ:火(自分のマナゾーンに火のカードが置かれた時、このクリーチャーの q 能力を使ってもよい)', 'q カードを1枚引く。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -286,5 +293,70 @@ describe('named mechanics', () => {
     for (let k = 0; k < 5 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
     expect(s.cards[d].zone).toBe('battle');
     expect(s.cards[d].face).toBe(1);
+  });
+
+  it('ギャラクシールド: becomes a face-up shield and is summoned at turn start', () => {
+    let s = setup([{ p: 0, cid: 'galaxy', zone: 'hand' }]);
+    const g = find(s, 0, 'hand', 'galaxy')!;
+    s = act(s, 0, { t: 'play', iid: g, face: 0, pay: freeMana(s, 0, 3), alt: 'galaxy' });
+    expect(s.cards[g].zone).toBe('shield');
+    expect(s.cards[g].faceUp).toBe(true);
+    s = act(s, 0, { t: 'endTurn' });
+    for (let k = 0; k < 8 && s.cards[g].zone !== 'battle'; k++) {
+      const top = s.pending[0];
+      if (top) s = act(s, top.player, { t: 'resolve', use: true });
+      else s = act(s, s.active, { t: 'endTurn' });
+    }
+    expect(s.cards[g].zone).toBe('battle');
+  });
+
+  it('フシギバース: puts a creature into mana and summons from the graveyard', () => {
+    let s = setup([
+      { p: 0, cid: 'fushigi', zone: 'hand' },
+      { p: 0, cid: 'big', zone: 'battle' },
+    ]);
+    const f = find(s, 0, 'hand', 'fushigi')!;
+    const b = find(s, 0, 'battle', 'big')!;
+    s = act(s, 0, { t: 'move', iid: f, to: 'grave' });
+    s = act(s, 0, { t: 'play', iid: f, face: 0, pay: freeMana(s, 0, 3), alt: 'fushigi', taps: [b] });
+    expect(s.cards[f].zone).toBe('battle');
+    expect(s.cards[b].zone).toBe('mana');
+  });
+
+  it('エグザイル: cannot have two exiles sharing the name', () => {
+    const s = setup([
+      { p: 0, cid: 'ex1', zone: 'battle' },
+      { p: 0, cid: 'ex2', zone: 'hand' },
+    ]);
+    expect(applyAction(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'ex2')!, face: 0, pay: freeMana(s, 0, 1) }, L).error).toMatch(/エグザイル/);
+  });
+
+  it('アタック・チャンス: offers to cast the spell for free when attacking', () => {
+    let s = setup([
+      { p: 0, cid: 'sa', zone: 'battle' },
+      { p: 0, cid: 'chance', zone: 'hand' },
+    ]);
+    const ch = find(s, 0, 'hand', 'chance')!;
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+    for (let k = 0; k < 6 && s.cards[ch].zone === 'hand' && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.player !== 0) break;
+      s = act(s, 0, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: null });
+    }
+    expect(s.cards[ch].zone).toBe('grave');
+  });
+
+  it('スペース・チャージ: uses the q ability when a matching card goes to mana', () => {
+    let s = setup([
+      { p: 0, cid: 'space', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'charge', iid: find(s, 0, 'hand', 'vanilla')! });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.players[0].hand.length).toBe(hand);
   });
 });

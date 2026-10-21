@@ -73,6 +73,8 @@ export type Cond =
   | { c: 'equippedTapped' }
   /** このクリーチャーがリンクしている (neg: していない) */
   | { c: 'linked'; neg?: boolean }
+  /** このクリーチャーが表向きで自分のシールドゾーンにある */
+  | { c: 'selfFaceUpShield' }
 
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' }
@@ -99,6 +101,8 @@ export type Op =
   | { op: 'repeat'; n: number; body: Op[] }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
+  /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
+  | { op: 'useMarked'; key: string; others?: number }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn' }
   /** ガチンコ・ジャッジ (勝てば did = true) */
