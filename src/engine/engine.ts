@@ -1800,7 +1800,7 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   if (a.gzero) {
     const g = statics.find((x) => x.s === 'gzero');
     if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
-    const n = s.players[p].battle.filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
+    const n = (g.cond.c === 'countAtLeast' && g.cond.sel.owner !== 'self' ? s.players.flatMap((pl) => pl.battle) : s.players[p].battle).filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
     if (g.cond.c === 'countAtLeast' && n < g.cond.n) return 'G・ゼロの条件を満たしていません';
     const sc = s.players[p].spellsCast;
     if (g.cond.c === 'spellsThisTurn' && !(sc?.turn === s.turn && sc.n >= g.cond.n)) return 'G・ゼロの条件を満たしていません';

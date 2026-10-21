@@ -279,6 +279,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/\s+/g, '')
     .replace(/。$/, '')
     .replace(/はすべて、(「)/, 'は$1')
+    .replace(/^(これをクロスしたクリーチャー|このクリーチャー)は、(「)/, '$1は$2')
+    .replace(/^G・ゼロ[-－ー]/, 'G・ゼロ:')
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '');
@@ -341,6 +343,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^(これを(?:付けた|装備した|クロスした)クリーチャー)は、?ブロックされない$/))) return [{ s: 'grant', target: { t: 'cross' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0) || /^相手は、?自身のマナゾーンにカードを置く時、?タップして置く$/.test(t0) || /^相手はカードをマナゾーンに置く時、?タップして置く$/.test(t0)) return [{ s: 'oppManaTapped' }];
   if (/^相手のクリーチャーは、?バトルゾーンに出す時タップして置く$/.test(t0) || /^相手のクリーチャーはタップしてバトルゾーンに出る$/.test(t0)) return [{ s: 'oppEntersTapped' }];
+  if (/^相手(?:の)?クリーチャーは、?タップされた状態でバトルゾーンに(?:出る|置かれる)$/.test(t0)) return [{ s: 'oppEntersTapped' }];
+  if (/^相手のカードは、?タップされた状態でマナゾーンに置かれる$/.test(t0)) return [{ s: 'oppManaTapped' }];
+  if (/^このクリーチャーは、?タップされた状態でバトルゾーンに(?:出る|置かれる)$/.test(t0)) return [{ s: 'entersTapped' }];
   if (/^このクリーチャーは、?可能(?:なら|であれば)、?毎ターン、?相手プレイヤーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーは、?攻撃可能であれば、?必ず攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
@@ -478,9 +483,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^ササゲール(\d+)/))) return [{ s: 'sasageru', n: +m[1] }];
   if (/^ハイパーエナジー/.test(t0)) return [{ s: 'hyperEnergy' }];
   if ((m = t0.match(/^G・ゼロ[:：]このターン、自分が呪文を(\d+)枚以上唱えていれば/))) return [{ s: 'gzero', cond: { c: 'spellsThisTurn', n: +m[1] } }];
-  if ((m = t0.match(/^G・ゼロ[:：](?:バトルゾーンに)?自分の(.+?)が(?:(\d+)(?:体|枚|つ)以上)?あれば/))) {
-    const sel = parseSel('自分の' + m[1]);
-    return sel ? [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[2] ? +m[2] : 1 } }] : null;
+  if ((m = t0.match(/^G・ゼロ[:：](?:バトルゾーンに)?(自分の)?(.+?)が(?:(\d+)(?:体|枚|つ)(?:以上|でも))?あれば/))) {
+    const sel0 = parseSel((m[1] ?? '') + m[2]);
+    const sel = sel0 && { ...sel0, owner: m[1] ? sel0.owner : ('any' as const) };
+    if (sel) return [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[3] ? +m[3] : 1 } }];
+    return null;
   }
   if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0) || /^この(カード|クロスギア|クリーチャー|呪文)は、?マナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'tapMana' }];
   if (/^このクリーチャーは、?タップしてバトルゾーンに出る$/.test(t0) || /^バトルゾーンに出す時、このクリーチャーはタップして置く$/.test(t0)) return [{ s: 'entersTapped' }];
