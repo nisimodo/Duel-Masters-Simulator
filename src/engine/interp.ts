@@ -660,7 +660,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'optional': {
-        ask(s, ex, { player: ex.player, mode: 'yesno', prompt: `${ex.name}: ${op.prompt}`, options: [], min: 0, max: 1, purpose: 'benefit' });
+        ask(s, ex, { player: op.byOpp ? mainOpp(s, ex.player) : ex.player, mode: 'yesno', prompt: `${ex.name}: ${op.prompt}`, options: [], min: 0, max: 1, purpose: 'benefit' });
         return;
       }
       case 'if': {

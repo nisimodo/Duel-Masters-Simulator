@@ -158,7 +158,7 @@ export type Op =
   /** パワーをN倍にする (このターン) */
   | { op: 'multPower'; target: Target; times: number }
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }
-  | { op: 'optional'; body: Op[]; prompt: string }
+  | { op: 'optional'; body: Op[]; prompt: string; byOpp?: boolean }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
   | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean }
   | { op: 'repeat'; n: number; body: Op[] }
