@@ -198,7 +198,7 @@ export function moveCard(
       return 'battle';
     }
     // 一時的に離れない
-    if ((c.grants ?? []).some((g) => g.kws.includes('離れない'))) {
+    if ((c.grants ?? []).some((g) => g.kws.includes('離れない')) || staticKws(s, L, iid).includes('離れない')) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は離れない`);
       return 'battle';
     }
@@ -1471,7 +1471,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
       }
     }
     const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger);
-    const strike = !!card?.faces.some((f) => f.kw.gStrike);
+    const strike = !!card?.faces.some((f) => f.kw.gStrike) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }
   log(s, by, `${pl.name} のシールドを${shields.length}枚ブレイク`);
@@ -1967,6 +1967,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon')) return 'このクリーチャーは召喚できません';
+  const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');
+  if (face.isCreature && !a.force && onlyIf && onlyIf.s === 'summonOnlyIf') {
+    const me1 = s.players[p];
+    const ok = onlyIf.cond.c === 'handLE' ? me1.hand.length - 1 <= onlyIf.cond.n : onlyIf.cond.c === 'spellsThisTurn' ? me1.spellsCast?.turn === s.turn : true;
+    if (!ok) return 'このクリーチャーを召喚する条件を満たしていません';
+  }
   if (face.isCreature && !a.force) {
     // エグザイル: 名前に《X》とある他のエグザイル・クリーチャーは出せない
     const mine = s.players[p].battle.filter((b) => b !== a.iid);
@@ -2080,7 +2086,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!a.force)
         return me.spellLockCostEq != null ? `コスト${me.spellLockCostEq}の呪文は唱えられません` : me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
-    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock')) return '相手の能力で呪文を唱えられません';
+    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock' && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);

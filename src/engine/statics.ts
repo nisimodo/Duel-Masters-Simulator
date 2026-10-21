@@ -151,6 +151,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
   switch (cond.c) {
     case 'powerAtLeast':
       return basePower(s, L, iid) + staticPowerOnly(s, L, iid) >= cond.n;
+    case 'powerAtMost':
+      return basePower(s, L, iid) + staticPowerOnly(s, L, iid) <= cond.n;
     case 'totalShieldsLE':
       return s.players[a.owner].shield.length + s.players[mainOpp(s, a.owner)].shield.length <= cond.n;
     case 'countAtLeast':
@@ -187,8 +189,17 @@ export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx 
     const sp = a.spec;
     if (sp.s !== 'power') continue;
     if (!whenOk(s, a, sp.when, ctx) || !targetMatch(s, L, a, sp.target, iid)) continue;
-    if (sp.cond && sp.cond.c !== 'powerAtLeast' && !condOk(s, L, a, sp.cond, iid)) continue;
+    if (sp.cond && sp.cond.c !== 'powerAtLeast' && sp.cond.c !== 'powerAtMost' && !condOk(s, L, a, sp.cond, iid)) continue;
     if (sp.vs && (ctx.foe == null || !matchesSel(s, L, ctx.foe, { ...sp.vs, zones: ['battle'] }))) continue;
+    if (sp.perCiv) {
+      const civs = new Set(s.players[a.owner].mana.flatMap((m) => L(s.cards[m].cid)?.civs ?? []));
+      d += civs.size * sp.delta;
+      continue;
+    }
+    if (sp.perUnder) {
+      d += (s.cards[a.src]?.under.length ?? 0) * sp.delta;
+      continue;
+    }
     d += sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
   }
   return d;

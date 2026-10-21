@@ -23,6 +23,8 @@ export type StaticCond =
   | { c: 'handLE'; n: number }
   /** このクリーチャーが出たターン */
   | { c: 'selfNew' }
+  /** パワーがN以下 */
+  | { c: 'powerAtMost'; n: number }
   /** sel に合うものが N 個未満 */
   | { c: 'countLess'; sel: Sel; n: number }
   /** 相手のシールドが N 枚未満 */
@@ -34,7 +36,9 @@ export type StaticCond =
   | { c: 'linked' };
 
 export type StaticSpec =
-  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond; vs?: Sel }
+  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond; vs?: Sel; perCiv?: boolean; perUnder?: boolean }
+  /** この条件を満たす時だけ召喚できる */
+  | { s: 'summonOnlyIf'; cond: StaticCond }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
   | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number }
   | { s: 'untargetable'; bySpellOnly: boolean }
@@ -107,7 +111,9 @@ export type StaticSpec =
   /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
   | { s: 'lure' }
   /** 相手は呪文を唱えることができない */
-  | { s: 'oppSpellLock' }
+  | { s: 'oppSpellLock'; sel?: Sel }
+  /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
+  | { s: 'noGStrike' }
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
   | { s: 'linkRelease' }
   /** エターナル・Κ: 離れる時、かわりに裏向きのマナをN枚表向きにする */
@@ -283,6 +289,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/はすべて、(「)/, 'は$1')
     .replace(/^(これをクロスしたクリーチャー|このクリーチャー)は、(「)/, '$1は$2')
     .replace(/^G・ゼロ[-－ー]/, 'G・ゼロ:')
+    .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '');
@@ -336,6 +343,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?バトルゾーンを離れず、すべてのバトルに勝つ$/)))
+    return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
+  if ((m = t0.match(/^自分のマナゾーンにある文明(\d+)つにつき、このクリーチャーのパワーを\+(\d+)する$/)))
+    return [{ s: 'power', target: { t: 'self' }, delta: +m[2], when: 'always', perCiv: true }];
+  if ((m = t0.match(/^このクリーチャーの下にあるカード(\d+)枚につき、このクリーチャーのパワーを\+(\d+)する$/)) ?? t0.match(/^このクリーチャーのパワーは、このクリーチャーの下にあるカード(\d+)枚につき\+(\d+)される$/))
+    return [{ s: 'power', target: { t: 'self' }, delta: +m![2], when: 'always', perUnder: true }];
+  if ((m = t0.match(/^このクリーチャーは、?自分の手札が(\d+)枚以下(?:の時)?(?:なら|しか)?召喚できる$/))) return [{ s: 'summonOnlyIf', cond: { c: 'handLE', n: +m[1] } }];
+  if (/^呪文を唱えたターン(?:のみ|にしか)、?このクリーチャーを召喚(?:することが)?できる$/.test(t0)) return [{ s: 'summonOnlyIf', cond: { c: 'spellsThisTurn', n: 1 } }];
   if ((m = t0.match(/^輪廻∞[:：]このカードの呪文側を、?バトルゾーンに置いたまま唱えてもよい。?(?:そうした時、(.+))?$/))) return [{ s: 'rinne', bonus: m[1] }];
   if (/^相手のクリーチャーは、?(?:バトルゾーンに)?出たターン、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNewNoAttack' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)ステルス/))) return [{ s: 'stealth', civ: CIV_OF[m[1]] }];
@@ -357,6 +372,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?攻撃可能であれば、?必ず攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
   if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
+  if ((m = t0.match(/^相手は、?(.+?)の?呪文を唱えられない$/))) {
+    const ph = m[1].replace(/ではない$/, '以外の');
+    const sel = parseSel(ph + '呪文') ?? parseSel(ph + 'の呪文');
+    if (sel) return [{ s: 'oppSpellLock', sel }];
+  }
+  if (/^このクリーチャーの攻撃中、相手は「G・ストライク」を使えない$/.test(t0)) return [{ s: 'noGStrike' }];
   if (/^このクリーチャーは、?毎ターン攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^相手のクリーチャーが攻撃するなら、可能ならこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^(どんな|どの)種族の進化クリーチャーを?、?このクリーチャーの上に置いてもよい$/.test(t0) || /^このクリーチャーの上に、?(どんな|どの)種族の進化クリーチャーを置いてもよい$/.test(t0)) return [{ s: 'anyEvoBase' }];
