@@ -84,6 +84,8 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }
+  /** 両方を満たす */
+  | { c: 'and'; a: Cond; b: Cond }
   /** これを装備/クロスしたクリーチャーがタップしている */
   | { c: 'equippedTapped' }
   /** このクリーチャーがリンクしている (neg: していない) */
@@ -150,8 +152,10 @@ export type Op =
   | { op: 'payLater'; cost: number }
   /** 山札の上か下に置く (chooser が選ぶ) */
   | { op: 'topOrBottom'; target: Target; chooser: 'self' | 'opp' }
-  /** sel に合うカードの数だけ引く */
-  | { op: 'drawPer'; sel: Sel }
+  /** sel に合うカードの数だけ引く (each 体につき mult 枚) */
+  | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
+  /** パワーをNにする (このターン) */
+  | { op: 'setPower'; target: Target; value: number }
   /** 相手とジャンケンで勝敗を決める (勝てば did) */
   | { op: 'janken' }
   /** 負けるまで (times: N回) ガチンコ・ジャッジし、勝った数を数える */

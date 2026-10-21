@@ -1218,6 +1218,11 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
   const fd = faceOf(s, L, def)!;
   let killA = pa <= pd;
   let killD = pd <= pa;
+  // 「すべてのバトルに勝つ」
+  const winsAll = (i: number) => (s.cards[i].grants ?? []).some((g) => g.kws.includes('すべてのバトルに勝つ'));
+  if (winsAll(att)) (killA = false), (killD = true);
+  if (winsAll(def)) (killD = false), (killA = true);
+  if (winsAll(att) && winsAll(def)) killA = killD = false;
   if (killA && kwOf(s, L, att).slayer) killD = true;
   if (killD && kwOf(s, L, def).slayer) killA = true;
   void fa;

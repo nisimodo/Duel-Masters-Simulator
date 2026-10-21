@@ -175,6 +175,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return (c.who === 'self' ? me : opp).shield.length < c.n;
     case 'selfTapped':
       return !!s.cards[ex.src]?.tapped;
+    case 'and':
+      return evalCond(s, L, ex, c.a) && evalCond(s, L, ex, c.b);
     case 'selfFaceUpShield': {
       const sc = s.cards[ex.src];
       return sc?.zone === 'shield' && sc.faceUp;
@@ -903,8 +905,17 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
         return;
       }
+      case 'setPower': {
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        for (const i of ids) {
+          if (s.cards[i].zone !== 'battle') continue;
+          s.cards[i].powerMod += op.value - power(s, L, i);
+          log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを${op.value}にした`);
+        }
+        break;
+      }
       case 'drawPer': {
-        const n = candidates(s, L, ex, op.sel).length;
+        const n = Math.floor(candidates(s, L, ex, op.sel).length / (op.each ?? 1)) * (op.mult ?? 1);
         const d = drawCards(s, ex.player, n);
         log(s, ex.player, `カードを${d}枚引いた`);
         break;

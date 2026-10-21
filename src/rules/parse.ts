@@ -132,6 +132,26 @@ function parseCond(c: string): Cond | null {
       if (sel) return { c: 'count', sel, cmp: '>=', n: 1 };
     }
   }
+  // マナドライブ 「自分のマナゾーンのカードが5枚以上で闇文明があれば」
+  if ((m = c.match(new RegExp(`^自分のマナゾーンのカードが${N}枚以上で(.+?)があ$`)))) {
+    const word = m[2].replace(/文明$/, '');
+    const sel = parseSel(word === '光' || word === '水' || word === '闇' || word === '火' || word === '自然' ? `${word}のカード` : word, { zones: ['mana'] });
+    if (sel) {
+      sel.owner = 'self';
+      sel.zones = ['mana'];
+      if (sel.kind === 'creature' && !/クリーチャー$/.test(word)) sel.kind = 'card';
+      return { c: 'and', a: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '>=', n: +m[1] }, b: { c: 'count', sel, cmp: '>=', n: 1 } };
+    }
+  }
+  if ((m = c.match(/^自分の(墓地|マナゾーン|手札)に(.+?)があ$/))) {
+    const sel = parseSel(m[2], { owner: 'self', zones: [ZONE[m[1]]] });
+    if (sel) {
+      sel.owner = 'self';
+      sel.zones = [ZONE[m[1]]];
+      if (sel.kind === 'creature' && /カード$/.test(m[2])) sel.kind = 'card';
+      return { c: 'count', sel, cmp: '>=', n: 1 };
+    }
+  }
   if ((m = c.match(new RegExp(`^自分の(墓地|マナゾーン|手札)に(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
     const sel = parseSel(m[2], { owner: 'self', zones: [ZONE[m[1]]] });
     if (!sel) return null;
@@ -211,6 +231,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^このターンが終わるまで、/, 'このターン、')
     .replace(/^そのターンの終わりまで、/, 'このターン、')
     .replace(/^このターンの攻撃中、/, 'このターン、')
+    .replace(/(\d+)(体|枚|つ)でもあれば、/, '$1$2以上あれば、')
     .replace(/^自分の山札のカードを、?上から(\d+)枚表向きにする$/, '自分の山札の上から$1枚を表向きにする')
     .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
     .replace(/(その|選んだ|選ばれた)種族の/g, '〈種族〉の')
@@ -344,6 +365,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const ap = s.match(/^(?:このターン、)?(.+?)は相手プレイヤーを攻撃できない$/);
     const t = ap && refTarget(ap[1]);
     if (ap && t) return [{ op: 'restrict', target: t, what: 'attackOpp' }];
+  }
+  // パワーをNにする / すべてのバトルに勝つ / N体につきN枚引く
+  {
+    const sp = s.match(/^このターン、(.+?)のパワーを(\d+)にする$/);
+    const t = sp && refTarget(sp[1]);
+    if (sp && t) return [{ op: 'setPower', target: t, value: +sp[2] }];
+    const wb = s.match(/^このターン、(.+?)はすべてのバトルに勝つ$/);
+    const t2 = wb && refTarget(wb[1]);
+    if (wb && t2) return [{ op: 'grant', target: t2, kws: ['すべてのバトルに勝つ'], until: 'turn' }];
+    const dp = s.match(/^バトルゾーンにある(自分|相手)の(.+?)(\d+)体につき(\d+)枚、カードを引く$/);
+    const sel = dp && parseSel(`${dp[1]}の${dp[2]}`);
+    if (dp && sel) return [{ op: 'drawPer', sel, each: +dp[3], mult: +dp[4] }];
   }
   // 一時的に離れない
   {
@@ -980,6 +1013,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 function refTarget(phrase: string): Target | null {
   const p = phrase.replace(/\s+/g, '');
   if (/^この(クリーチャー|カード|タマシード|ドラグハート|クロスギア|フォートレス)$/.test(p)) return { ref: 'self' };
+  // 「自分のクリーチャー」「相手のドラゴン」(数を書かない) はすべて
+  if (/^(自分|相手)の[^\d]*(クリーチャー|ドラゴン|コマンド|ハンター|エイリアン|ジョーカーズ)$/.test(p) && !/\d/.test(p)) {
+    const sel = parseSel(p);
+    if (sel) return { ref: 'sel', sel, count: { all: true }, chooser: 'self' };
+  }
   // 「その種族のクリーチャー」(選んだ値で絞った名詞) はすべて
   if (/〈/.test(p)) {
     const sel = parseSel(p.replace(/(すべて|全体)$/, ''));
