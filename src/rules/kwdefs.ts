@@ -93,7 +93,7 @@ const ENGINE_KW = new Set([
   'クロスギア',
 ]);
 
-const DEF_RE = /^([^\s:：(（[\d]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*[(（](.{6,})[)）]\s*$/;
+const DEF_RE = /^([^\s:：(（[\d、。「」]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*[(（](.{6,})[)）]\s*$/;
 
 export interface KwDef {
   template: string;
@@ -101,7 +101,8 @@ export interface KwDef {
 }
 
 /** エンジンが直接処理するキーワード (「革命チェンジ―火のドラゴン」のような条件つきも含む) */
-const isEngineKw = (kw: string) => ENGINE_KW.has(kw) || ENGINE_KW.has(kw.split(/[―\-－ー:：]/)[0]);
+const isEngineKw = (kw: string) => /ブロッカー$/.test(kw) || isEngineKw0(kw);
+const isEngineKw0 = (kw: string) => ENGINE_KW.has(kw) || ENGINE_KW.has(kw.split(/[―\-－ー:：]/)[0]);
 
 /** 全カードのテキスト行から「キーワード → 定義」を作る */
 export function collectKwDefs(allLines: Iterable<string>): Map<string, KwDef> {
@@ -144,7 +145,7 @@ export function expandKwLines(lines: string[], defs: Map<string, KwDef>): string
       if (!isEngineKw(param[1])) out.push(param[3]);
       continue;
     }
-    const bare = t.match(/^([^\s:：(（[\d]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*$/);
+    const bare = t.match(/^([^\s:：(（[\d、。「」]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*$/);
     if (!bare || isEngineKw(bare[1])) continue;
     const d = defs.get(bare[1] + (bare[2] ? '#N' : ''));
     if (d) out.push(bare[2] ? d.template.split('{N}').join(bare[2]) : d.template);

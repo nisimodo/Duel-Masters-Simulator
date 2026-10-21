@@ -1252,7 +1252,9 @@ function blockStep(s: GameState, L: Lookup) {
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
-        if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
+        // 「火・自然ブロッカー」など: 条件に合う相手だけブロックできる
+        const limB = !isSealed(s, b) && (f?.statics ?? []).some((x) => x.s === 'limitedBlocker' && matchesSel(s, L, a.attacker, x.sel));
+        if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB || limB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
         return !ownStatics(s, L, a.attacker).some(

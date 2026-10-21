@@ -36,7 +36,8 @@ export function stripReminder(s: string): string {
     prev = cur;
     cur = cur.replace(/[（(][^（()）]*[)）]/g, '');
   }
-  return cur;
+  // 閉じていない括弧 (データの欠け) は行末までを注釈とみなす
+  return cur.replace(/[（(][^（()）]*$/, '');
 }
 
 /** 文に分割 (。区切り) */
@@ -102,6 +103,7 @@ export function splitAbilities(lines: string[]): {
     if (!k) main.push(l);
     else groups.set(k, [...(groups.get(k) ?? []), l]);
   };
+  lines = lines.flatMap((l) => l.split(/\s+(?=\{[A-Z]+\})/));
   let cur: AbilityGroupKind | null = null;
   let tap: string[] | null = null;
   let inTap = false;

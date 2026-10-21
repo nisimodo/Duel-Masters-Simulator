@@ -1,5 +1,5 @@
 // 常在型能力 (パワー修正・キーワード付与・コスト増減・選ばれない 等) の解析
-import type { Sel } from './ops';
+import type { Civ, Sel } from './ops';
 import { parseSel } from './selector';
 import { normText, stripReminder } from './text';
 
@@ -104,6 +104,8 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** 「火・自然ブロッカー」「ドラゴン・ブロッカー」: 条件に合う相手クリーチャーだけブロックできる */
+  | { s: 'limitedBlocker'; sel: Sel }
   /** 離れる時、条件を満たせばかわりにとどまる */
   | { s: 'stayIf'; cond: 'always' | 'tapped' | 'oppSpell'; powerGt?: number; ownSel?: Sel; oppSel?: Sel }
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
@@ -197,6 +199,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if ((m = t0.match(/^(.+?)・?ブロッカー$/)) && !/パワード|スーパー|ナイト|ジャスト/.test(m[1])) {
+    const words = m[1].split('・');
+    const civs = words.map((w) => ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' })[w as '光']).filter(Boolean) as Civ[];
+    if (civs.length === words.length) return [{ s: 'limitedBlocker', sel: { owner: 'any', zones: ['battle'], kind: 'creature', civs } }];
+    const sel = parseSel(m[1]);
+    if (sel) return [{ s: 'limitedBlocker', sel }];
+  }
   // 「このクリーチャーがバトルゾーンを離れる時、〜なら、離れるかわりにとどまる」
   {
     const st = t0.match(/^(相手の呪文(?:の効果で|によって))?(バトルゾーンに(自分|相手)の(.+?)があり、)?このクリーチャーがバトルゾーン(?:を|から)離れる時、(.*?)(?:このクリーチャーは)?(?:バトルゾーンを離れるかわりにとどまる|離れるかわりにとどまる|バトルゾーンから離れずにとどまる)$/);
