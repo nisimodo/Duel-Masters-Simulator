@@ -395,6 +395,34 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const hit = nl && map.find(([re]) => re.test(nl[3]));
     if (nl && hit) return [{ op: 'grant', target: { ref: nl[2] === 'この' ? 'self' : 'it' }, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
+  // 相手が選ぶ・各プレイヤーなど
+  {
+    if (/^(このターン|そのターン)、(この|その)クリーチャーは(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(s))
+      return [{ op: 'grant', target: { ref: /この/.test(s.slice(6, 10)) ? 'self' : 'it' }, kws: ['アンタップ攻撃'], until: 'turn' }];
+    const dc = s.match(/^相手は(?:自身|自分)の手札から(\d+)枚選び、捨てる$/);
+    if (dc) return [{ op: 'discard', who: 'opp', count: { n: +dc[1], upTo: false }, how: 'ownerChooses' }];
+    const dm = s.match(/^相手は(?:自身|自分)のパワーが一番(小さい|大きい)クリーチャーを(?:(\d+)体)?選(?:んで|び)、?破壊する$/);
+    if (dm) return [{ op: 'destroyExtreme', owner: 'opp', max: dm[1] === '大きい', n: dm[2] ? +dm[2] : 1 }];
+    const rt = s.match(/^相手は(?:自身|自分)の山札の上から(\d+)枚を表向きにする$/);
+    if (rt) {
+      ctx.looked = true;
+      return [{ op: 'top', n: +rt[1], to: 'reveal', who: 'opp' }];
+    }
+    if (/^自分の手札を(\d+枚(まで)?|好きな枚数)、?相手に見せる$/.test(s)) return [{ op: 'note', text: '手札を見せた' }];
+    const hs = s.match(/^自分の手札を(\d+)枚(?:選び)?、?(?:表向き(?:または裏向き)?で|裏向きにして、?)(?:シールド化する|新しいシールドとして(?:自分の)?シールドゾーンに置く|自分のシールドに加える)$/);
+    if (hs)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +hs[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'シールドにする手札を選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: 'shield' },
+      ];
+    if (/^各プレイヤーは(?:自身|自分)の手札をすべて、?それぞれの墓地に置く$/.test(s))
+      return [
+        { op: 'discard', who: 'self', count: { all: true }, how: 'choose' },
+        { op: 'discard', who: 'opp', count: { all: true }, how: 'random' },
+      ];
+    if (/^各プレイヤーは(?:自身|自分)のマナゾーンにあるカードをすべて、?それぞれの手札に戻す$/.test(s))
+      return [{ op: 'move', target: { ref: 'sel', sel: { owner: 'any', zones: ['mana'], kind: 'card' }, count: { all: true }, chooser: 'self' }, to: 'hand' }];
+  }
   // シールドを選んで墓地・手札へ
   {
     const sh = s.match(/^(?:その中から)?(\d+|好きな)枚(?:数)?を?裏向きのまま選び、(?:自分の)?(墓地に置く|手札に加える)$/) ?? s.match(/^自分のシールドから(好きな)枚数を裏向きのまま選び、(?:自分の)?(手札に加える|墓地に置く)$/);

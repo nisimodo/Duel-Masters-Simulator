@@ -1114,7 +1114,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };
   if (mine.some((x) => x.s === 'cantAttackCreatures')) return { players, cards };
-  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped');
+  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped') || (c.grants ?? []).some((g) => g.kws.includes('アンタップ攻撃'));
   for (const o of opps)
     for (const t of s.players[o].battle) {
       const tf = faceOf(s, L, t);

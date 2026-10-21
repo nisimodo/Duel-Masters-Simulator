@@ -154,6 +154,8 @@ export type Op =
   | { op: 'topOrBottom'; target: Target; chooser: 'self' | 'opp' }
   /** sel に合うカードの数だけ引く (each 体につき mult 枚) */
   | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
+  /** パワーが一番小さい (max: 大きい) クリーチャーを破壊する */
+  | { op: 'destroyExtreme'; owner: 'self' | 'opp'; max: boolean; n: number }
   /** 山札の上からN枚を、選んだ自分のシールドの下に重ねる */
   | { op: 'shieldStack'; n: number }
   /** パワーをNにする (このターン) */
