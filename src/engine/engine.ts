@@ -369,6 +369,7 @@ export function moveCard(
   if (pos === 'top') arr.push(iid);
   else arr.unshift(iid);
   if (dest === 'mana' && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppManaTapped')) c.tapped = true;
+  if (dest === 'battle' && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppEntersTapped') && faceOf(s, L, iid)?.isCreature) c.tapped = true;
   if (dest === 'battle') {
     c.sick = true;
     if ((card?.faces[c.face]?.statics ?? []).some((x) => x.s === 'entersTapped')) c.tapped = true;

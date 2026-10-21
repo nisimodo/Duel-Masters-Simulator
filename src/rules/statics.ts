@@ -150,6 +150,8 @@ export type StaticSpec =
   | { s: 'civSlayer'; civs: Civ[] }
   /** 相手のカードはマナゾーンにタップして置かれる */
   | { s: 'oppManaTapped' }
+  /** 相手のクリーチャーはタップしてバトルゾーンに出る */
+  | { s: 'oppEntersTapped' }
   /** バトルに勝っても、バトルの後に破壊される */
   | { s: 'dieAfterBattle' }
   /** どの種族の進化クリーチャーも上に置ける */
@@ -217,6 +219,7 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^バトルゾーンにある自分の他のクリーチャーが(\d+)体以下なら、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^自分の(墓地|マナゾーン|手札)に(.+?)が(\d+)(?:体|枚|つ)(?:以上|でも)あれば、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : m[1] === '手札' ? 'hand' : 'mana';
     const sel = parseSel(m[2], { zones: [z] });
@@ -281,7 +284,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
   if ((m = t0.match(/^自分のターン中、クリーチャーを(\d+)体、自分のマナゾーンから召喚してもよい$/))) return [{ s: 'manaSummonTurn', n: +m[1] }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
-  if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/))) {
+  if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/) ?? t0.match(/^自分のマナゾーンにある(.+?)(\d+)(?:体|枚)につき、このクリーチャーの召喚コストを(\d+)少なくする/))) {
     const sel = parseSel(m[1], { zones: ['mana'] });
     if (sel && m[2] === '1' && m[3] === '1') return [{ s: 'sympathy', sel: { ...sel, owner: 'self', zones: ['mana'] }, floor: floorOf(full), zone: 'mana' }];
   }
@@ -311,7 +314,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^飛行$/.test(t0)) return [{ s: 'note' }];
   if (/^∞パワーアタッカー$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['パワーアタッカー+999999'], when: 'attack' }];
   if ((m = t0.match(/^(これを(?:付けた|装備した|クロスした)クリーチャー)は、?ブロックされない$/))) return [{ s: 'grant', target: { t: 'cross' }, kws: ['ブロックされない'], when: 'always' }];
-  if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'oppManaTapped' }];
+  if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0) || /^相手は、?自身のマナゾーンにカードを置く時、?タップして置く$/.test(t0) || /^相手はカードをマナゾーンに置く時、?タップして置く$/.test(t0)) return [{ s: 'oppManaTapped' }];
+  if (/^相手のクリーチャーは、?バトルゾーンに出す時タップして置く$/.test(t0) || /^相手のクリーチャーはタップしてバトルゾーンに出る$/.test(t0)) return [{ s: 'oppEntersTapped' }];
+  if (/^このクリーチャーは、?可能(?:なら|であれば)、?毎ターン、?相手プレイヤーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
   if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if (/^このクリーチャーは、?毎ターン攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
@@ -530,7 +535,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
 
   // ---- コスト ----
-  if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/)) ||
+  if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う|実行する)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/)) ||
     (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/))) {
     const sel = parseSel(m[2], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
     if (sel) {
