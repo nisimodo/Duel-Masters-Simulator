@@ -763,9 +763,11 @@ button,
   right: 2px;
 }
 .card .mini.info {
+  /* 枚数 (右下) と重ならないよう左下に */
   top: auto;
   bottom: 2px;
-  right: 2px;
+  left: 2px;
+  right: auto;
 }
 
 /* スマホ横向きなど縦が短い画面: 右パネルを細くしてカードを小さく */
