@@ -9,6 +9,7 @@ import {
   breakShields,
   cardCivs,
   drawCards,
+  fireFlipped,
   fireMugetsu,
   log,
   lose,
@@ -1162,6 +1163,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           c.face = next;
           if (op.to === 'creature') c.tapped = false;
           log(s, ex.player, `${q(before)} を裏返して ${q(card.faces[c.face].name)} に`);
+          if (op.to === 'creature' || op.to === 'big') fireFlipped(s, L, i);
         }
         break;
       }

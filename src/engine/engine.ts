@@ -628,6 +628,11 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
+/** 龍解・覚醒した時 */
+export function fireFlipped(s: GameState, L: Lookup, iid: number) {
+  fireSelf(s, L, iid, s.cards[iid].face, ['flipped']);
+}
+
 /** 「無月の門」能力を使った時 */
 export function fireMugetsu(s: GameState, L: Lookup, p: number) {
   fireWatchers(s, L, p, null, 'mugetsuUsed', null);
