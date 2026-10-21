@@ -3,6 +3,7 @@ import { parseKeywords, type Keywords } from './keywords';
 import { parseTriggers, type TriggerSpec } from './triggers';
 import { parseStatics, type StaticSpec } from '../rules/statics';
 import { collectKwDefs, expandKwLines, type KwDef } from '../rules/kwdefs';
+import { mergeModal, normText, splitAbilities, stripReminder, type AbilityGroupKind } from '../rules/text';
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
 export const CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];
@@ -52,7 +53,20 @@ export interface Face {
   isCreature: boolean;
   isSpell: boolean;
   isEvolution: boolean;
+  /** 条件つき・共有される能力 (ウェーブストライカー / アクセル / サバイバー / 超魂X) */
+  groups?: AbilityGroup[];
+  /** 「攻撃するかわりに、タップして次の能力を使ってもよい」の効果 */
+  tapAbility?: string;
 }
+
+export interface AbilityGroup {
+  kind: AbilityGroupKind;
+  triggers: TriggerSpec[];
+  statics: StaticSpec[];
+}
+
+/** 能力として与えられるキーワード (条件つきの行に書かれたもの) */
+const GRANT_KWS = ['ブロッカー', 'スピードアタッカー', 'マッハファイター', 'スレイヤー', 'ジャストダイバー', 'W・ブレイカー', 'T・ブレイカー', 'Q・ブレイカー', 'ワールド・ブレイカー'];
 
 export type DeckZone = 'main' | 'hyper' | 'gr';
 
@@ -68,6 +82,8 @@ export interface Card {
   readings: string[];
   /** 全テキスト(検索用) */
   search: string;
+  /** ハイパー化/Zラッシュを持つ (2面目はハイパーモード。手札からは1面目だけ使う) */
+  hyper?: boolean;
 }
 
 export const IMG_BASE = 'https://dm.takaratomy.co.jp/wp-content/card/cardimage/';
@@ -80,7 +96,15 @@ export function cardImage(card: Card, face = 0): string {
 
 function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
   // 名前のある能力は定義 (注釈) に展開して解釈する
-  const abilityLines = expandKwLines(f.x, defs);
+  const sp = splitAbilities(mergeModal(f.x));
+  const abilityLines = expandKwLines(sp.main, defs);
+  const groups: AbilityGroup[] = sp.groups.map((g) => {
+    const al = expandKwLines(g.lines, defs);
+    const statics = parseStatics(al);
+    const kws = g.lines.map((l) => stripReminder(normText(l)).replace(/\s+/g, '').replace(/。$/, '')).filter((x) => GRANT_KWS.includes(x));
+    if (kws.length) statics.push({ s: 'grant', target: { t: 'self' }, kws, when: 'always' });
+    return { kind: g.kind, triggers: parseTriggers(al), statics };
+  });
   const power = f.p ? Number((f.p.normalize('NFKC').match(/-?\d+/) || ['0'])[0]) : null;
   return {
     name: f.n,
@@ -91,12 +115,14 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
     powerText: f.p,
     races: f.r,
     text: f.x,
-    kw: parseKeywords(f.x, f.t),
+    kw: parseKeywords(sp.main, f.t),
     triggers: parseTriggers(abilityLines),
     statics: parseStatics(abilityLines),
     isCreature: f.t.includes('クリーチャー'),
     isSpell: f.t.includes('呪文'),
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),
+    groups: groups.length ? groups : undefined,
+    tapAbility: sp.tap ?? undefined,
   };
 }
 
@@ -118,6 +144,13 @@ function toCard(r: RawCard, defs: Map<string, KwDef>): Card {
     civs: CIVS.filter((c) => civSet.has(c)),
     zone,
     readings: r.y ?? [],
+    hyper:
+      !r.tw &&
+      zone === 'main' &&
+      faces.length === 2 &&
+      faces.every((f) => f.isCreature) &&
+      faces[0].name === faces[1].name &&
+      faces[0].statics.some((x) => x.s === 'hyperize' || x.s === 'zrush'),
     search: [r.n, ...faces.flatMap((f) => [f.type, ...f.races, ...f.text])].join('\n'),
   };
 }

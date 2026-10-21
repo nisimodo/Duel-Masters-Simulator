@@ -70,6 +70,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.multicolor && civs.length < 2) return false;
+  if (sel.monocolor && civs.length >= 2) return false;
   if (sel.mono && civs.length !== 1) return false;
   if (sel.races?.length && !sel.races.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.nameHas && !f.name.includes(sel.nameHas) && !card.name.includes(sel.nameHas)) return false;
@@ -98,7 +99,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -258,7 +259,8 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         const ids = deck.slice(-op.n).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
-          ex.it = [];
+          // 表向きにしたカードは「それ」で参照される
+          ex.it = op.to === 'reveal' ? [...ids] : [];
           if (op.to === 'reveal') log(s, who, `山札の上から${ids.length}枚を表向きにした: ${ids.map((i) => q(nameOf(s, L, i))).join('、')}`);
           else {
             s.players[ex.player].peek = [...ids];
@@ -479,6 +481,15 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
       case 'save':
         ex.saved = [...ex.it];
         break;
+      case 'lockSpells': {
+        for (let o = 0; o < s.players.length; o++) {
+          if (o === ex.player || s.players[o].lost) continue;
+          if (op.until === 'turn') s.players[o].spellLockTurn = s.turn;
+          else s.players[o].spellLockUntil = ex.player;
+        }
+        log(s, ex.player, `相手は${op.until === 'turn' ? 'このターン' : '次のターンのはじめまで'}呪文を唱えられない`);
+        break;
+      }
       case 'castSelfSpell': {
         // このカードの呪文側の効果を、呪文として解決する (カードは今の場所のまま)
         const c = s.cards[ex.src];

@@ -76,6 +76,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     });
     changed ||= take(/^(アンタップされている|アンタップしている|アンタップ状態の)/, () => (sel.tapped = false));
     changed ||= take(/^無色の?/, () => (sel.colorless = true));
+    changed ||= take(/^多色ではない/, () => (sel.monocolor = true));
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));
     changed ||= take(/^単色の?/, () => (sel.mono = true));
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));

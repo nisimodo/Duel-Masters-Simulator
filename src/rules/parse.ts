@@ -178,8 +178,41 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/を好きな(数|枚数)、?/g, 'を99枚まで')
     .replace(/(\d+)枚ずつ/g, '$1枚')
     .replace(/(\d+)体ずつ/g, '$1体')
-    .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、');
+    .replace(/^自分が勝った(ら|場合)、/, 'そうしたら、')
+    .replace(/^このターンの終わりまで、/, 'このターン、')
+    .replace(/バトルゾーンにある、?(自分|相手)の/g, '$1の')
+    .replace(/(自分|相手)の、/g, '$1の')
+    .replace(/^相手は、/, '相手は')
+    .replace(/(クリーチャー|カード)(\d+)(体|枚)を選び、/, '$1を$2$3選び、')
+    .replace(/裏向きのまま(自分の)?シールドに加える$/, '裏向きのまま$1シールドゾーンに加える')
+    .replace(/クリーチャーはすべて「/, 'クリーチャーすべてに「')
+    .replace(/のパワーは([+-]\d+)される$/, 'のパワーを$1する')
+    .replace(/(\d+枚目?)を、/g, '$1を');
   if (!s) return [];
+
+  // 呪文を唱えられない
+  {
+    const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は呪文を唱えられない$/);
+    if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+  }
+
+  // 「このターン、そのクリーチャーのパワーを+2000し、「ブロッカー」を与える」: パワーと残りの効果に分ける
+  {
+    const pc = s.match(/^(このターン|次の自分のターンのはじめまで)、(.+?)のパワー(?:を|は)([+-]\d+)(?:し|され)、(.+)$/);
+    if (pc) {
+      const head = sentence(`${pc[1]}、${pc[2]}のパワーを${pc[3]}する`, ctx);
+      const who = head?.some((o) => o.op === 'choose') ? 'そのクリーチャー' : pc[2];
+      const rest = pc[4];
+      const tail = sentence(`${pc[1]}、${who}${/^「.+を与える$/.test(rest) ? 'に' : 'は'}${rest}`, ctx);
+      if (head && tail) return [...head, ...tail];
+    }
+  }
+  // 次の自分のターンのはじめまでのパワー修正 (一時的な能力として持たせる)
+  {
+    const np = s.match(/^次の自分のターンのはじめまで、(.+?)のパワーを([+-]\d+)する$/);
+    const t = np && refTarget(np[1]);
+    if (np && t) return [{ op: 'grant', target: t, kws: [`パワー${np[2]}`], until: 'nextOwnTurn' }];
+  }
 
   // 効果ではない注記・別の仕組みで処理するもの
   if (/^(ただし、)?その「S・トリガー」は使えない$/.test(s)) return [];
@@ -370,6 +403,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (ops) return ops;
   }
   if ((m = s.match(new RegExp(`^相手は(?:バトルゾーンにある)?(?:自身|自分)の(.+?)を${N}${COUNT_UNIT}(?:選び、)?(.+)$`)))) {
+    // 「相手は自身の手札を1枚捨てる」は相手が選んで捨てる
+    if (m[1] === '手札' && /^捨てる$/.test(m[3])) return [{ op: 'discard', who: 'opp', count: { n: +m[2], upTo: false }, how: 'ownerChooses' }];
     const t = selTarget('相手の' + m[1], m[2], undefined, false, 'opp');
     const ops = t && verbOps(m[3], { ref: 'it' });
     if (t && ops) return [{ op: 'choose', target: t, purpose: 'sacrifice', prompt: s0 }, ...ops];
@@ -398,11 +433,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
 
   // ---- 相手の手札を見て選ぶ ----
-  if ((m = s.match(new RegExp(`^相手の手札を見て、?(?:その中から)?${N}枚選(び|ぶ)、?(.*)$`)))) {
+  if ((m = s.match(new RegExp(`^相手の手札を見て、?(?:その中から、?)?(?:(.+?)を)?${N}枚選(び|ぶ)、?(.*)$`)))) {
     ctx.looked = true;
-    const rest = m[3] ? verbOps(m[3].replace(/^捨てさせる$/, '捨てる'), { ref: 'it' }) : [];
-    if (rest)
-      return [{ op: 'lookHand', who: 'opp' }, { op: 'choose', target: { ref: 'looked', count: { n: +m[1], upTo: false } }, purpose: 'hostile', prompt: '相手の手札から選ぶ' }, ...rest];
+    const sel = m[1] ? parseSel(m[1], { zones: ['hand'] }) : undefined;
+    const rest = m[4] ? verbOps(m[4].replace(/^捨てさせる$/, '捨てる'), { ref: 'it' }) : [];
+    if (rest && (!m[1] || sel))
+      return [
+        { op: 'lookHand', who: 'opp' },
+        { op: 'choose', target: { ref: 'looked', sel: sel ?? undefined, count: { n: +m[2], upTo: false } }, purpose: 'hostile', prompt: '相手の手札から選ぶ' },
+        ...rest,
+      ];
   }
 
   // ---- 自分と相手を破壊 ----
@@ -439,6 +479,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(新しい)?(シールド|シールドゾーン)(に裏向きにして|に|として)?(加える|化する|置く)$`))))
     return [{ op: 'top', n: +m[2], to: 'shield', who: 'self' }];
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?をシールド化する$`)))) return [{ op: 'top', n: +m[2], to: 'shield', who: 'self' }];
+  if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(裏向きのまま|裏向きにして)、?(新しい)?(シールドとして)?(自分の)?(シールドゾーン|シールド)に(置く|加える)$`))))
+    return [{ op: 'top', n: +m[2], to: 'shield', who: 'self' }];
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(相手に見せてから|表向きにして)?手札に加える$`)))) return [{ op: 'top', n: +m[2], to: 'hand', who: 'self' }];
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚を見る$`)))) {
     ctx.looked = true;
@@ -576,7 +618,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // ---- 単独の動詞 「破壊する」「アンタップする」: 直前に選んだカード、何も選んでいなければこのクリーチャー ----
   {
     const ops = verbOps(s, ctx.chosen ? { ref: 'it' } : { ref: 'self' });
-    if (ops && !/^(手札|マナ|墓地|山札|シールド)/.test(s)) return ops;
+    if (ops && (ctx.chosen || !/^(手札|マナ|墓地|山札|シールド)/.test(s))) return ops;
   }
 
   // ---- 選択して操作 ----
@@ -641,8 +683,24 @@ function refTarget(phrase: string): Target | null {
 
 // ---------- 入口 ----------
 
+/** 単独の「〜を選ぶ。」の目的 (CPU の選び方) を、その次の操作から決め直す */
+function fixPurposes(ops: Op[]) {
+  for (let i = 0; i + 1 < ops.length; i++) {
+    const a = ops[i];
+    const b = ops[i + 1];
+    if (a.op !== 'choose' || a.target.ref !== 'sel' || a.target.sel.owner !== 'self' || a.purpose !== 'sacrifice') continue;
+    if ((b.op === 'power' && b.delta > 0) || b.op === 'grant' || b.op === 'untap') a.purpose = 'benefit';
+  }
+}
+
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
+  const prog = parseEffectRaw(text);
+  fixPurposes(prog.ops);
+  return prog;
+}
+
+function parseEffectRaw(text: string): Program {
   const t = stripReminder(normText(text)).replace(/\s+/g, ' ');
   const ctx: Ctx = { looked: false };
   const ops: Op[] = [];

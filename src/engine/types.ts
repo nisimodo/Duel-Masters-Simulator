@@ -47,6 +47,8 @@ export interface CardInst {
   exShield?: number;
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
   endOfTurn?: 'joe' | 'bad';
+  /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
+  hyperUntil?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
   grants?: { kws: string[]; until: number }[];
 }
@@ -70,6 +72,9 @@ export interface PlayerState {
   /** このプレイヤーだけが見ているカード (山札の上を見る等) */
   peek: number[];
   charged: boolean;
+  /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
+  spellLockTurn?: number;
+  spellLockUntil?: number;
 }
 
 export type Pending =
@@ -201,8 +206,12 @@ export type Action =
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
       /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
-      alt?: 'joe' | 'bad' | 'mana' | 'kirifu';
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen';
+      /** ムゲンクライムでタップする自分のクリーチャー */
+      taps?: number[];
     }
+  | { t: 'hyperize'; iid: number; taps: number[] }
+  | { t: 'tapAbility'; iid: number }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }
   | { t: 'attackOpt'; iid: number | null }
   | { t: 'block'; blocker?: number | null; ninja?: number; guard?: number }

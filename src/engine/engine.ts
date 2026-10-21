@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { ALL_CIVS, costOf, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { ALL_CIVS, costOf, effGroups, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 
@@ -80,6 +80,8 @@ export function power(s: GameState, L: Lookup, iid: number, attacking = false, c
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   let p = (f?.power ?? 0) + c.powerMod;
+  // 「次の自分のターンのはじめまでパワー+N」は一時的な能力として持っている
+  for (const g of c.grants ?? []) for (const k of g.kws) if (/^パワー[+-]\d+$/.test(k)) p += +k.slice(3);
   if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
   if (c.zone === 'battle') p += staticPower(s, L, iid, { ...ctx, attacking: attacking || ctx.attacking });
   return p;
@@ -237,6 +239,18 @@ export function moveCard(
     if ((opts.pos ?? (ud === 'gr' ? 'bottom' : 'top')) === 'top') ua.push(u);
     else ua.unshift(u);
   }
+  // Zラッシュ: シールドが離れたら、次の自分のターンのはじめまでハイパーモード
+  if (from === 'shield' && dest !== 'shield') {
+    for (const b of s.players[c.owner].battle) {
+      const bc = s.cards[b];
+      const bcard = L(bc.cid);
+      if (bc.face === 0 && bcard?.hyper && bcard.faces[0].statics.some((x) => x.s === 'zrush')) {
+        bc.face = 1;
+        bc.hyperUntil = c.owner;
+        log(s, c.owner, `Zラッシュ: ${q(bcard.faces[0].name)} がハイパーモードになった`);
+      }
+    }
+  }
   if (s.mode === 'duepa' && from === 'battle' && dest !== 'battle' && isPartnerCard(s, iid)) {
     s.pending.push({ kind: 'partner', player: c.owner, iid });
   }
@@ -288,7 +302,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
 function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
-  for (const spec of f.triggers ?? []) {
+  for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
     const ev = spec.events.find((e) => events.includes(e));
     if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
   }
@@ -306,7 +320,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
       if (iid === exclude) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
-      for (const spec of f.triggers ?? []) {
+      for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
         if (!spec.events.includes(ev)) continue;
         // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
         if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
@@ -471,7 +485,12 @@ function startTurn(s: GameState, L: Lookup) {
   }
   // 「次の○○のターンのはじめまで」の制限を解除
   s.usedOnce = [];
+  for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
   for (const c of s.cards) {
+    if (c.hyperUntil === p) {
+      if (c.zone === 'battle') c.face = 0;
+      c.hyperUntil = undefined;
+    }
     if (c.justDive === p) c.justDive = undefined;
     if (c.restrict && c.restrict.until === p) c.restrict = undefined;
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
@@ -1038,6 +1057,33 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       else queueAttackTriggers(s, L);
       return null;
     }
+    case 'hyperize': {
+      const c = s.cards[a.iid];
+      if (c.owner !== p || c.zone !== 'battle') return '自分のクリーチャーを選んでください';
+      if (s.turnStep !== 'main' || s.attack) return '今はハイパー化できません';
+      const card = L(c.cid);
+      const hz = card?.faces[0].statics.find((x) => x.s === 'hyperize');
+      if (!card?.hyper || !hz || hz.s !== 'hyperize' || c.face !== 0) return 'ハイパー化できません';
+      const taps = [...new Set(a.taps)];
+      if (taps.length !== hz.n || taps.some((b) => b === a.iid || s.cards[b].owner !== p || s.cards[b].zone !== 'battle' || s.cards[b].tapped || !faceOf(s, L, b)?.isCreature))
+        return `タップしていない自分の他のクリーチャーを${hz.n}体選んでください`;
+      for (const b of taps) s.cards[b].tapped = true;
+      c.face = 1;
+      log(s, p, `ハイパー化: ${q(card.faces[0].name)} (${taps.map((b) => q(nameOf(s, L, b))).join('、')} をタップ)`);
+      return null;
+    }
+    case 'tapAbility': {
+      const c = s.cards[a.iid];
+      const f = faceOf(s, L, a.iid);
+      if (c.owner !== p || c.zone !== 'battle' || !f?.tapAbility) return 'タップして使う能力がありません';
+      if (s.turnStep !== 'main' || s.attack) return '今は使えません';
+      if (c.tapped) return 'タップしているクリーチャーは使えません';
+      if (c.sick && !kwOf(s, L, a.iid).speedAttacker) return '召喚酔いしているので使えません';
+      c.tapped = true;
+      log(s, p, `${q(f.name)} をタップして能力を使った`);
+      pushAbility(s, L, a.iid, c.face, { events: ['tapAbility'], text: f.tapAbility, effect: f.tapAbility, optional: false, auto: false }, 'tapAbility');
+      return null;
+    }
     case 'endTurn': {
       if (s.attack) return '攻撃の処理中です';
       if (s.turnStep !== 'main') return '今はターンを終了できません';
@@ -1063,6 +1109,14 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   if (a.alt === 'mana') {
     const d = statics.find((x) => x.s === 'manaBakutan');
     if (!d || d.s !== 'manaBakutan' || c.zone !== 'mana') return 'マナ爆誕は使えません';
+    return d.cost;
+  }
+  if (a.alt === 'mugen') {
+    const d = statics.find((x) => x.s === 'mugen');
+    if (!d || d.s !== 'mugen' || (c.zone !== 'hand' && c.zone !== 'grave')) return 'ムゲンクライムは使えません';
+    const taps = [...new Set(a.taps ?? [])];
+    if (taps.length !== d.n || taps.some((b) => b === a.iid || s.cards[b].owner !== p || s.cards[b].zone !== 'battle' || s.cards[b].tapped || !faceOf(s, L, b)?.isCreature))
+      return `タップしていない自分のクリーチャーを${d.n}体選んでください`;
     return d.cost;
   }
   if (a.alt === 'kirifu') {
@@ -1119,7 +1173,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.zone === 'hand' ||
     c.zone === 'partner' ||
     (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
-    (a.alt === 'mana' && c.zone === 'mana');
+    (a.alt === 'mana' && c.zone === 'mana') ||
+    (a.alt === 'mugen' && c.zone === 'grave');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
   if (c.zone === 'partner' && !c.faceUp) return '裏向きのパートナーは召喚できません';
   if (c.zone === 'partner' && !face.isCreature) return 'パートナーの呪文側は唱えられません';
@@ -1146,6 +1201,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       moveCard(s, L, b, 'grave');
     }
     for (const b of a.he ?? []) s.cards[b].tapped = true;
+    if (a.alt === 'mugen') {
+      for (const b of a.taps ?? []) s.cards[b].tapped = true;
+      log(s, p, `ムゲンクライム: ${(a.taps ?? []).length}体タップ`);
+    }
     if (a.he?.length) log(s, p, `ハイパーエナジー: ${a.he.length}体タップ`);
   }
   const name = face.name;
@@ -1158,7 +1217,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);
-    log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : ''}`);
+    log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : a.alt === 'mugen' ? ' (ムゲンクライム)' : ''}`);
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     if (bases.length) {
@@ -1191,6 +1250,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       }
     }
   } else if (face.isSpell) {
+    const me = s.players[p];
+    if (me.spellLockUntil != null || me.spellLockTurn === s.turn) {
+      if (!a.force) return 'このターンは呪文を唱えられません';
+    }
     const charger = face.kw.charger;
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);

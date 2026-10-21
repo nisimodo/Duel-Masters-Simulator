@@ -57,16 +57,23 @@ export function PayDialog({
   const [sasa, setSasa] = useState<number[]>([]);
   const [he, setHe] = useState<number[]>([]);
   const [gzero, setGzero] = useState(false);
-  const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean }) => {
-    const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], ...opts }, face);
+  const disc = statics.find((x) => x.s === 'discountSummon');
+  const inMana = s.cards[iid].zone === 'mana' && statics.some((x) => x.s === 'manaBakutan');
+  const mugen = statics.find((x) => x.s === 'mugen');
+  const inGrave = s.cards[iid].zone === 'grave' && !!mugen;
+  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | undefined>(inMana ? 'mana' : inGrave ? 'mugen' : undefined);
+  const [taps, setTaps] = useState<number[]>([]);
+  const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
+    const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], alt, taps, ...opts }, face);
     return typeof c === 'number' ? c : null;
   };
   const cost = costNow({ sasa, he, gzero });
-  const costErr = playCost(s, L, me, { t: 'play', iid, face, pay: [], sasa, he, gzero }, face);
+  const costErr = playCost(s, L, me, { t: 'play', iid, face, pay: [], sasa, he, gzero, alt, taps }, face);
+  const tapCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
   const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost) ?? []);
   const sasaCands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'));
   const heCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
-  const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean }) => {
+  const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = costNow(opts);
     if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c) ?? []);
   };
@@ -76,7 +83,7 @@ export function PayDialog({
     if (!bf) return false;
     if (showAll) return true;
     const bc = L(s.cards[b].cid)!;
-    return bf.isCreature && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
+    return (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
   const ok = cost != null && pay.length === cost && (cost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
@@ -101,6 +108,63 @@ export function PayDialog({
             }}
           />{' '}
           G・ゼロ (コストを支払わずに召喚)
+        </label>
+      )}
+      {inMana && <div className="small">マナ爆誕: マナゾーンから召喚します</div>}
+      {mugen && mugen.s === 'mugen' && (
+        <div className="col" style={{ gap: 2 }}>
+          {inGrave ? (
+            <b className="small">ムゲンクライム: 墓地から召喚します</b>
+          ) : (
+            <label className="small">
+              <input
+                type="checkbox"
+                checked={alt === 'mugen'}
+                onChange={(e) => {
+                  const v = e.target.checked ? 'mugen' : undefined;
+                  setAlt(v);
+                  refreshPay({ sasa, he, gzero, alt: v, taps });
+                }}
+              />{' '}
+              ムゲンクライム (自分のクリーチャーを{mugen.n}体タップし、コスト{mugen.cost}で召喚)
+            </label>
+          )}
+          {alt === 'mugen' && (
+            <>
+              <span className="small">タップするクリーチャー ({taps.length}/{mugen.n})</span>
+              <div className="row">
+                {tapCands.map((b) => (
+                  <CardImg
+                    key={b}
+                    card={L(s.cards[b].cid)!}
+                    face={s.cards[b].face}
+                    width={50}
+                    selected={taps.includes(b)}
+                    onHover={onHover}
+                    onClick={() => {
+                      const next = taps.includes(b) ? taps.filter((x) => x !== b) : [...taps, b];
+                      setTaps(next);
+                      refreshPay({ sasa, he, gzero, alt, taps: next });
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {disc && disc.s === 'discountSummon' && !inMana && (
+        <label className="small">
+          <input
+            type="checkbox"
+            checked={alt === disc.kind}
+            onChange={(e) => {
+              const v = e.target.checked ? disc.kind : undefined;
+              setAlt(v);
+              refreshPay({ sasa, he, gzero, alt: v });
+            }}
+          />{' '}
+          {disc.kind === 'joe' ? 'J・O・E' : 'B・A・D'} (コストを{disc.n}少なくして召喚し、ターンの終わりに{disc.kind === 'joe' ? '山札の下に置く' : '破壊する'})
         </label>
       )}
       {sasaN && sasaCands.length > 0 && (
@@ -180,7 +244,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero })}>
+        <button className="primary" disabled={!ok || (needEvo && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' ? taps : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>
@@ -312,6 +376,17 @@ export function PendingDialog({
                 {img(b)}
                 <button className="small" onClick={() => onSubmit({ t: 'block', blocker: b })}>
                   ブロック ({power(s, L, b)})
+                </button>
+              </div>
+            ))}
+          </div>
+          {(pending.guards ?? []).length > 0 && <b>ガードマン (かわりに攻撃される)</b>}
+          <div className="row">
+            {(pending.guards ?? []).map((g) => (
+              <div key={g} className="col" style={{ alignItems: 'center' }}>
+                {img(g)}
+                <button className="small" onClick={() => onSubmit({ t: 'block', guard: g })}>
+                  ガード ({power(s, L, g)})
                 </button>
               </div>
             ))}

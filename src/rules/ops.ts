@@ -18,6 +18,8 @@ export interface Sel {
   civAll?: boolean;
   colorless?: boolean;
   multicolor?: boolean;
+  /** 多色ではない */
+  monocolor?: boolean;
   mono?: boolean;
   races?: string[];
   nameHas?: string;
@@ -93,6 +95,8 @@ export type Op =
   | { op: 'repeat'; n: number; body: Op[] }
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
+  /** 相手は呪文を唱えられない */
+  | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn' }
   /** ガチンコ・ジャッジ (勝てば did = true) */
   | { op: 'gachinko' }
   /** 相手の手札を見る (looked に入れる) */

@@ -1,6 +1,6 @@
 // カードテキストから誘発型能力 (「～時、」「～はじめに、」「～終わりに、」) を抽出する
 import { hintsFromText, SIMPLE_KINDS } from '../engine/effects';
-import { normText, stripReminder } from '../rules/text';
+import { mergeModal, normText, stripReminder } from '../rules/text';
 import { parseSel } from '../rules/selector';
 import type { Sel } from '../rules/ops';
 
@@ -32,7 +32,8 @@ export type TrigEvent =
   | 'turnStartOwn'
   | 'turnStartOpp'
   | 'turnEndOwn'
-  | 'turnEndOpp';
+  | 'turnEndOpp'
+  | 'tapAbility'; // 攻撃するかわりにタップして使う能力
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -63,6 +64,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   turnStartOpp: '相手のターンのはじめ',
   turnEndOwn: '自分のターンの終わり',
   turnEndOpp: '相手のターンの終わり',
+  tapAbility: 'タップして使う能力',
   spell: '呪文の効果',
 };
 
@@ -178,7 +180,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
 
 /** 呪文の効果として解決するテキスト (キーワード行を除く) */
 export function spellEffectLines(lines: string[]): string[] {
-  return lines
+  return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
     .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l));
 }

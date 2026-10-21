@@ -38,6 +38,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const [menu, setMenu] = useState<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: 'none' });
   const [pay, setPay] = useState<{ iid: number; face: number } | null>(null);
+  /** カードを何枚か選ぶダイアログ (ハイパー化でタップするクリーチャー等) */
+  const [pick, setPick] = useState<{ title: string; n: number; cands: number[]; picks: number[]; done: (picks: number[]) => void } | null>(null);
   const [viewer, setViewer] = useState<{ kind: ViewerKind; player: number; iid?: number } | null>(null);
   const [toast, setToast] = useState('');
   const [breakPicks, setBreakPicks] = useState<number[]>([]);
@@ -194,8 +196,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const c = s.cards[iid];
     if (c.owner !== me) return;
     cardAt(iid).faces.forEach((f, fi) => {
+      if (cardAt(iid).hyper && fi > 0) return;
+      const mg = (f.statics ?? []).find((x) => x.s === 'mugen');
+      if (c.zone === 'grave' && mg && mg.s === 'mugen') items.push({ label: `ムゲンクライム (${mg.n}体タップ + コスト${mg.cost})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       if (f.isCreature && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone))
         items.push({ label: `召喚 (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
+      const mb = (f.statics ?? []).find((x) => x.s === 'manaBakutan');
+      if (c.zone === 'mana' && mb && mb.s === 'manaBakutan') items.push({ label: `マナ爆誕 (コスト${mb.cost})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
     });
   };
 
@@ -210,6 +217,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       case 'hand':
         if (!own) break;
         card.faces.forEach((f, fi) => {
+          if (card.hyper && fi > 0) return;
           const verb = f.isCreature ? '召喚' : f.isSpell ? '唱える' : '使う';
           items.push({ label: `${card.twin ? f.name + ' を' : ''}${verb} (コスト${f.cost})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
         });
@@ -226,6 +234,16 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             disabled: !isMyTurn || !canAttackWith(s, L, iid),
             onClick: () => setMode({ kind: 'attack', attacker: iid }),
           });
+          if (f.tapAbility) items.push({ label: 'タップして能力を使う (攻撃のかわり)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'tapAbility', iid }) });
+          const hz = card.hyper && c.face === 0 ? card.faces[0].statics.find((x) => x.s === 'hyperize') : undefined;
+          if (hz && hz.s === 'hyperize') {
+            const cands = s.players[me].battle.filter((b) => b !== iid && !s.cards[b].tapped && faceOf(s, L, b)?.isCreature);
+            items.push({
+              label: `ハイパー化 (他のクリーチャーを${hz.n}体タップ)`,
+              disabled: !isMyTurn || cands.length < hz.n,
+              onClick: () => setPick({ title: `ハイパー化: タップするクリーチャーを${hz.n}体選ぶ`, n: hz.n, cands, picks: [], done: (taps) => act({ t: 'hyperize', iid, taps }) }),
+            });
+          }
         }
         items.push({ label: c.tapped ? 'アンタップ' : 'タップ', onClick: () => act({ t: 'tap', iid, v: !c.tapped }) });
         items.push({ label: 'パワー +1000', onClick: () => act({ t: 'power', iid, delta: 1000 }) });
@@ -263,6 +281,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         if (c.zone === 'grave') summonFromItems(iid, items);
         if (own) {
           card.faces.forEach((f, fi) => {
+            if (card.hyper && fi > 0) return;
             if (f.isCreature || f.isSpell || c.zone === 'hyper')
               items.push({ label: `${f.name} をコストを支払わずに使う`, onClick: () => act({ t: 'play', iid, face: fi, pay: [], free: true, force: true }) });
           });
@@ -792,6 +811,33 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
           onHover={(c) => setHover(c ? { card: c } : null)}
           onSubmit={(a) => act(a)}
         />
+      )}
+      {pick && (
+        <Modal title={pick.title} onClose={() => setPick(null)}>
+          <div className="row">
+            {pick.cands.map((b) => (
+              <CardImg
+                key={b}
+                card={cardAt(b)}
+                face={s.cards[b].face}
+                width={70}
+                selected={pick.picks.includes(b)}
+                onHover={(c) => setHover(c ? { card: c } : null)}
+                onClick={() => setPick({ ...pick, picks: pick.picks.includes(b) ? pick.picks.filter((x) => x !== b) : [...pick.picks, b] })}
+              />
+            ))}
+          </div>
+          <button
+            className="primary"
+            disabled={pick.picks.length !== pick.n}
+            onClick={() => {
+              pick.done(pick.picks);
+              setPick(null);
+            }}
+          >
+            決定 ({pick.picks.length}/{pick.n})
+          </button>
+        </Modal>
       )}
       {pay && (
         <PayDialog

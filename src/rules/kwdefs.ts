@@ -47,6 +47,12 @@ const ENGINE_KW = new Set([
   'マナ爆誕',
   'キリフダッシュ',
   'ムゲンクライム',
+  'ウェーブストライカー',
+  'アクセル',
+  '超魂X',
+  'ハイパー化',
+  'Zラッシュ',
+  'シンカライズ',
   'サバイバー',
   'ウェーブストライカー',
   'アクセル',
@@ -61,6 +67,9 @@ export interface KwDef {
   hasN: boolean;
 }
 
+/** エンジンが直接処理するキーワード (「革命チェンジ―火のドラゴン」のような条件つきも含む) */
+const isEngineKw = (kw: string) => ENGINE_KW.has(kw) || ENGINE_KW.has(kw.split(/[―\-－ー:：]/)[0]);
+
 /** 全カードのテキスト行から「キーワード → 定義」を作る */
 export function collectKwDefs(allLines: Iterable<string>): Map<string, KwDef> {
   const counts = new Map<string, Map<string, number>>();
@@ -69,7 +78,7 @@ export function collectKwDefs(allLines: Iterable<string>): Map<string, KwDef> {
     const m = t.match(DEF_RE);
     if (!m) continue;
     const [, kw, n, , def] = m;
-    if (ENGINE_KW.has(kw) || kw.length > 14) continue;
+    if (isEngineKw(kw) || kw.length > 14) continue;
     const template = n ? def.split(n).join('{N}') : def;
     const key = `${kw}\u0000${n ? 1 : 0}`;
     const c = counts.get(key) ?? new Map<string, number>();
@@ -93,11 +102,11 @@ export function expandKwLines(lines: string[], defs: Map<string, KwDef>): string
     const t = normText(raw);
     const m = t.match(DEF_RE);
     if (m) {
-      if (!ENGINE_KW.has(m[1])) out.push(m[4]);
+      if (!isEngineKw(m[1])) out.push(m[4]);
       continue;
     }
     const bare = t.match(/^([^\s:：(（[\d]+?)\s*(\d+)?\s*(\[[^\]]*\])?\s*$/);
-    if (!bare || ENGINE_KW.has(bare[1])) continue;
+    if (!bare || isEngineKw(bare[1])) continue;
     const d = defs.get(bare[1] + (bare[2] ? '#N' : ''));
     if (d) out.push(bare[2] ? d.template.split('{N}').join(bare[2]) : d.template);
   }

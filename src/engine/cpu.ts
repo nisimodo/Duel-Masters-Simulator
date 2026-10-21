@@ -19,12 +19,14 @@ import {
   playCost,
   cardCivs,
   faceOf,
+  kwOf,
   power,
   untappedMana,
   type Lookup,
 } from './engine';
 import { matchesCond } from './cond';
 import { costOf } from './statics';
+import { mainOpp, programOf } from './interp';
 import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
 
@@ -313,17 +315,44 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
   };
 
   const fromOtherZones = [...me.mana, ...me.grave].filter((i) =>
-    L(s.cards[i].cid)?.faces.some((f) => f.isCreature && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === s.cards[i].zone)),
+    L(s.cards[i].cid)?.faces.some(
+      (f) =>
+        f.isCreature &&
+        (f.statics ?? []).some(
+          (x) => (x.s === 'summonFrom' && x.zone === s.cards[i].zone) || (x.s === 'manaBakutan' && s.cards[i].zone === 'mana') || (x.s === 'mugen' && s.cards[i].zone === 'grave'),
+        ),
+    ),
   );
   for (const h of [...me.hand, ...me.partner.filter((i) => s.cards[i].faceUp), ...fromOtherZones]) {
     const card = L(s.cards[h].cid);
     if (!card) continue;
     card.faces.forEach((f, fi) => {
+      if (card.hyper && fi > 0) return;
       if (s.cards[h].zone === 'partner' && !f.isCreature) return;
       if (s.cards[h].zone !== 'hand' && s.cards[h].zone !== 'partner' && !f.isCreature) return;
       // G・ゼロが使えるならコストを支払わずに
       const gz = playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], gzero: true }, fi) === 0;
-      const cost = gz ? 0 : costOf(s, L, p, h, fi);
+      // マナ爆誕 (マナゾーンから) / J・O・E・B・A・D (普通に出せない時だけ軽くして出す)
+      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | undefined;
+      let taps: number[] | undefined;
+      const st = f.statics ?? [];
+      const mg = st.find((x) => x.s === 'mugen');
+      if (s.cards[h].zone === 'mana' && st.some((x) => x.s === 'manaBakutan')) alt = 'mana';
+      else if (mg && mg.s === 'mugen' && (s.cards[h].zone === 'grave' || (!gz && costOf(s, L, p, h, fi) > mana))) {
+        // ムゲンクライム: 攻撃できないクリーチャーから優先してタップ
+        const free = me.battle
+          .filter((b) => b !== h && !s.cards[b].tapped && faceOf(s, L, b)?.isCreature)
+          .sort((a, b) => Number(canAttackWith(s, L, a)) - Number(canAttackWith(s, L, b)) || threatOf(s, L, a) - threatOf(s, L, b));
+        if (free.length < mg.n) return;
+        alt = 'mugen';
+        taps = free.slice(0, mg.n);
+      } else if (!gz && costOf(s, L, p, h, fi) > mana) {
+        const d = st.find((x) => x.s === 'discountSummon');
+        if (d && d.s === 'discountSummon') alt = d.kind;
+      }
+      const altCost = alt ? playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], alt, taps }, fi) : null;
+      if (alt && typeof altCost !== 'number') return;
+      const cost = gz ? 0 : alt ? (altCost as number) : costOf(s, L, p, h, fi);
       if (cost > mana) return;
       const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost);
       if (!pay) return;
@@ -335,7 +364,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
             .filter((b) => {
               const bf = faceOf(s, L, b);
               const bc = L(s.cards[b].cid);
-              return bf?.isCreature && bc && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
+              return bf && (bf.isCreature || (bf.statics ?? []).some((x) => x.s === 'sinkalize')) && bc && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
             })
             .sort((a, b) => power(s, L, a) - power(s, L, b))[0];
           if (base == null) return;
@@ -355,7 +384,8 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         if (f.kw.blocker && defensive) value += 20;
         if (f.kw.speedAttacker) value += 5;
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined }, value });
+        if (alt === 'joe' || alt === 'bad') value = value * 0.6; // ターンの終わりに離れる
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps }, value });
       } else if (f.isSpell) {
         if (rv <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
         cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 6 + rv });
@@ -532,6 +562,11 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         const breaker = faceOf(s, L, at.attacker)?.kw.breaker ?? 1;
         const shields = s.players[p].shield.length;
         const sorted = [...top.blockers].sort((a, b) => power(s, L, a) - power(s, L, b));
+        // ガードマン: 守られるクリーチャーより価値が低い/生き残るなら身代わりに
+        if (at.targetCard != null)
+          for (const g of top.guards ?? []) {
+            if (power(s, L, g) > ap || threatOf(s, L, at.targetCard) > threatOf(s, L, g)) return { t: 'block', guard: g };
+          }
         // 生き残って倒せる → ブロック
         const survive = sorted.find((b) => power(s, L, b) > ap);
         if (survive != null) return { t: 'block', blocker: survive };
@@ -577,6 +612,26 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
   if (s.phase === 'main') {
     const cands = playCandidates(s, p, L);
     if (cands.length) return cands[0].a;
+  }
+
+  // 2.5 ハイパー化 (攻撃できないクリーチャーだけでタップできる時) / タップして使う能力
+  if (s.phase === 'main') {
+    const idle = me.battle.filter((b) => !s.cards[b].tapped && faceOf(s, L, b)?.isCreature && !canAttackWith(s, L, b));
+    for (const iid of me.battle) {
+      const card = L(s.cards[iid].cid);
+      const hz = card?.hyper && s.cards[iid].face === 0 ? card.faces[0].statics.find((x) => x.s === 'hyperize') : undefined;
+      if (!hz || hz.s !== 'hyperize') continue;
+      const taps = idle.filter((b) => b !== iid).slice(0, hz.n);
+      if (taps.length === hz.n) return { t: 'hyperize', iid, taps };
+    }
+    for (const iid of me.battle) {
+      const f = faceOf(s, L, iid);
+      if (!f?.tapAbility || s.cards[iid].tapped || (s.cards[iid].sick && !kwOf(s, L, iid).speedAttacker)) continue;
+      // 処理できる効果で、攻撃しても相手のシールドを割れない程度のクリーチャーなら使う
+      if (!programOf(f.tapAbility).complete) continue;
+      if (power(s, L, iid, true) >= 6000 && s.players[mainOpp(s, p)].shield.length <= 2) continue;
+      return { t: 'tapAbility', iid };
+    }
   }
 
   // 3. 攻撃

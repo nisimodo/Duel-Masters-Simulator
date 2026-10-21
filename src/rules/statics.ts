@@ -48,7 +48,15 @@ export type StaticSpec =
   /** マナ爆誕: マナゾーンからコストNで召喚 */
   | { s: 'manaBakutan'; cost: number }
   /** キリフダッシュ: シールドをブレイクした攻撃の終わりに、コストNで召喚 */
-  | { s: 'kirifu'; cost: number };
+  | { s: 'kirifu'; cost: number }
+  /** ハイパー化: 自分の他のクリーチャーをN体タップしてハイパーモードになる */
+  | { s: 'hyperize'; n: number }
+  /** Zラッシュ: シールドが離れたら、次の自分のターンのはじめまでハイパーモード */
+  | { s: 'zrush' }
+  /** シンカライズ: このタマシードを進化元にできる */
+  | { s: 'sinkalize' }
+  /** ムゲンクライムN: 自分のクリーチャーをN体タップし、コストを支払って手札か墓地から召喚 */
+  | { s: 'mugen'; n: number; cost: number };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -100,6 +108,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^(J・O・E|B・A・D)(\d+)/))) return [{ s: 'discountSummon', kind: m[1] === 'J・O・E' ? 'joe' : 'bad', n: +m[2] }];
   if ((m = t0.match(/^マナ爆誕(\d+)/))) return [{ s: 'manaBakutan', cost: +m[1] }];
   if ((m = t0.match(/^キリフダッシュ(?:\[[a-z]*(\d+)\]|(\d+))/))) return [{ s: 'kirifu', cost: +(m[1] ?? m[2]) }];
+  if ((m = t0.match(/^ハイパー化[:：]自分の他のクリーチャーを(\d+)体タップする/))) return [{ s: 'hyperize', n: +m[1] }];
+  if (/^Zラッシュ/.test(t0)) return [{ s: 'zrush' }];
+  if (/^シンカライズ/.test(t0)) return [{ s: 'sinkalize' }];
+  if ((m = full.replace(/\s+/g, '').match(/^ムゲンクライム(\d+).*?\[[a-z]*(\d+)\]/))) return [{ s: 'mugen', n: +m[1], cost: +m[2] }];
   if ((m = t0.match(/^このクリーチャーが破壊される時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
     const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
     return [{ s: 'destroyTo', zone: z }];

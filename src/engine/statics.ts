@@ -1,5 +1,5 @@
 // 常在型能力の適用 (パワー・キーワード・コスト・選ばれない・攻撃可否・マナの文明)
-import type { Civ } from '../lib/cards';
+import type { AbilityGroup, Civ, Face } from '../lib/cards';
 import type { Sel } from '../rules/ops';
 import type { StaticCond, StaticSpec, StaticTarget, StaticWhen } from '../rules/statics';
 import { matchesSel, mainOpp } from './interp';
@@ -12,6 +12,38 @@ export interface ActiveStatic {
   spec: StaticSpec;
 }
 
+const faceAt = (s: GameState, L: Lookup, iid: number): Face | undefined => L(s.cards[iid].cid)?.faces[s.cards[iid].face];
+const hasGroup = (f: Face | undefined, kind: AbilityGroup['kind']) => !!f?.groups?.some((g) => g.kind === kind);
+
+/**
+ * このクリーチャーが今使える条件つき・共有の能力
+ *   ウェーブストライカー: 他にウェーブストライカーが2体以上 / アクセル: クロスギアがクロスされている
+ *   サバイバー: 自分の他のサバイバーのoS能力も持つ / 超魂X: 下にあるカードの超魂X能力も持つ
+ */
+export function effGroups(s: GameState, L: Lookup, iid: number): AbilityGroup[] {
+  const c = s.cards[iid];
+  const f = faceAt(s, L, iid);
+  if (!f) return [];
+  if (c.zone !== 'battle') return (f.groups ?? []).filter((g) => g.kind === 'survivor' || g.kind === 'soul');
+  const out: AbilityGroup[] = [];
+  for (const g of f.groups ?? []) {
+    if (g.kind === 'wave') {
+      let n = 0;
+      for (const pl of s.players) for (const b of pl.battle) if (b !== iid && hasGroup(faceAt(s, L, b), 'wave')) n++;
+      if (n < 2) continue;
+    }
+    if (g.kind === 'accel' && !c.under.some((u) => /クロスギア/.test(L(s.cards[u].cid)?.faces[0]?.type ?? ''))) continue;
+    out.push(g);
+  }
+  if (f.races.some((r) => r.includes('サバイバー')))
+    for (const b of s.players[c.owner].battle) {
+      if (b === iid) continue;
+      for (const g of faceAt(s, L, b)?.groups ?? []) if (g.kind === 'survivor') out.push(g);
+    }
+  for (const u of c.under) for (const g of L(s.cards[u].cid)?.faces[0]?.groups ?? []) if (g.kind === 'soul') out.push(g);
+  return out;
+}
+
 /** バトルゾーンで有効な常在型能力 (クロスギア等は下に重なっていても「これをクロスした」系が有効) */
 export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
   const out: ActiveStatic[] = [];
@@ -21,6 +53,8 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
       const c = s.cards[iid];
       const f = L(c.cid)?.faces[c.face];
       for (const spec of f?.statics ?? []) out.push({ src: iid, owner: p, spec });
+      if (f?.groups || c.under.length || f?.races.some((r) => r.includes('サバイバー')))
+        for (const g of effGroups(s, L, iid)) for (const spec of g.statics) out.push({ src: iid, owner: p, spec });
       for (const u of c.under) {
         const uc = s.cards[u];
         const uf = L(uc.cid)?.faces[0];

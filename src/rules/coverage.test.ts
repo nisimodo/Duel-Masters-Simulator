@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { it } from 'vitest';
 import { parseEffect } from './parse';
-import { normText, stripReminder } from './text';
+import { mergeModal, normText, splitAbilities, stripReminder } from './text';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
 import { parseStaticLine } from './statics';
 import { collectKwDefs, expandKwLines } from './kwdefs';
@@ -25,8 +25,16 @@ export function coverage() {
   };
   for (const c of cards)
     for (const f of c.f) {
-      const lines = mergeModal(f.x);
+      const sp = splitAbilities(mergeModal(f.x));
+      const lines = [...sp.main, ...sp.groups.flatMap((g) => g.lines)];
       const abilityLines = expandKwLines(lines, defs);
+      // タップ能力 (攻撃するかわりにタップして使う) は起動型の効果として数える
+      if (sp.tap) {
+        stat.trigTotal++;
+        const p = parseEffect(sp.tap);
+        if (p.complete) stat.trigAuto++;
+        else p.unparsed.forEach(noteMiss);
+      }
       if (f.t.includes('呪文')) {
         const eff = spellEffectLines(lines);
         if (eff.length) {
@@ -63,18 +71,9 @@ export function coverage() {
 }
 
 /** エンジンがキーワードとして処理する行 */
-const KW_LINE = /^(W・ブレイカー|T・ブレイカー|Q・ブレイカー|ワールド・ブレイカー|ブロッカー|S・トリガー|スーパー・S・トリガー|スピードアタッカー|マッハファイター|G・ストライク|スレイヤー|パワーアタッカー\+?N?|EXライフ|ジャストダイバー|チャージャー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|(NEO|G-NEO|スター|究極|墓地|S-MAX)?進化[-ー―:－]|進化$|このクリーチャーは、?(相手プレイヤーを)?攻撃(することが)?できない|このクリーチャーはブロックされない)/;
+const KW_LINE = /^(W・ブレイカー|T・ブレイカー|Q・ブレイカー|ワールド・ブレイカー|ブロッカー|S・トリガー|スーパー・S・トリガー|スピードアタッカー|マッハファイター|G・ストライク|スレイヤー|パワーアタッカー\+?N?|EXライフ|ジャストダイバー|チャージャー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|(NEO|G-NEO|スター|究極|墓地|S-MAX)?進化[-ー―:－]|進化$|このクリーチャーは、?(相手プレイヤーを)?攻撃(することが)?できない|このクリーチャーはブロックされない|ウェーブストライカー|アクセル|超魂X|サバイバー|Zラッシュ|シンカライズ|ムゲンクライム\d+|このクリーチャーで攻撃する(かわりに|代わりに)、タップして次の能力を使ってもよい)/;
 
-/** ▼で始まる選択肢の行を前の行に連結 */
-export function mergeModal(lines: string[]): string[] {
-  const out: string[] = [];
-  for (const l of lines) {
-    const t = normText(l);
-    if (/^[▼▶►・]/.test(t) && out.length && /次のうちいずれか|選ぶ/.test(stripReminder(out[out.length - 1]))) out[out.length - 1] += '▼' + t.replace(/^[▼▶►・]/, '');
-    else out.push(l);
-  }
-  return out;
-}
+export { mergeModal };
 
 it.skipIf(!process.env.COVER)('coverage', () => {
   const { stat, miss, smiss } = coverage();
