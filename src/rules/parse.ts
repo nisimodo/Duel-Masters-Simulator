@@ -41,6 +41,7 @@ function count(numStr: string | undefined, upTo: string | undefined, all?: boole
 }
 
 const ZONE: Record<string, SelZone> = {
+  山札の上: 'deckTop',
   墓地: 'grave',
   マナゾーン: 'mana',
   手札: 'hand',
@@ -53,7 +54,11 @@ const ZONE: Record<string, SelZone> = {
 
 /** 動詞句 → 対象に対する操作 */
 function verbOps(verb: string, target: Target): Op[] | null {
-  const v = verb.replace(/^(選び、|選んで、?)/, '').replace(/^(それを|それらを|そのクリーチャーを|そのカードを)/, '');
+  const v = verb
+    .replace(/^(選び、|選んで、?)/, '')
+    .replace(/^(それを|それらを|そのクリーチャーを|そのカードを)/, '')
+    .replace(/^好きな順(序)?で、?/, '')
+    .replace(/^シャッフルし、/, '');
   const m = (re: RegExp) => re.test(v);
   if (m(/^破壊する$/)) return [{ op: 'destroy', target }];
   if (m(/^(持ち主の|自分の)?手札に(戻す|加える)$/)) return [{ op: 'move', target, to: 'hand' }];
@@ -135,7 +140,7 @@ function parseCond(c: string): Cond | null {
   if ((m = c.match(new RegExp(`^相手の手札が${N}枚以下$`)))) return { c: 'handCount', who: 'opp', cmp: '<=', n: +m[1] };
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
-  if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が(.+?)(である|だった)?$/))) {
+  if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     return sel ? { c: 'itMatches', sel } : null;
   }
@@ -321,6 +326,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'draw', n, who: 'opp' },
     ];
   }
+
+  // ---- このカードの呪文側を唱える ----
+  if (/^この(カード|クリーチャー)の呪文側を、?(バトルゾーンに置いたまま)?、?コストを支払わずに唱える$/.test(s)) return [{ op: 'castSelfSpell' }];
+
+  // ---- 〜が出るまで山札を表向きにする ----
+  if ((m = s.match(/^(?:自分の)?山札の上から、?(.+?)が出るまで(?:カードを)?表向きにする$/))) {
+    const sel = parseSel(m[1], { zones: ['deck'] });
+    if (sel) {
+      ctx.looked = true;
+      return [{ op: 'revealUntil', sel }];
+    }
+  }
+  if (/^(その後、)?(その)?(相手)?クリーチャーとバトルする$/.test(s) || /^(その後、)?(その選んだ|選んだ)クリーチャーとバトルする$/.test(s))
+    return [{ op: 'battle', a: { ref: 'self' }, b: { ref: 'it' } }];
 
   // ---- 攻撃・バトルの後 ----
   if ((m = s.match(/^(?:その)?(?:攻撃|バトル)の後、(.+)$/))) {
@@ -575,13 +594,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (t && t.ref === 'sel') return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, '破壊'), prompt: s0 }];
   }
   // 「SELをN体、自分のZONEからVERB」「自分のZONEからSELをN体VERB」
-  const ZW = '(墓地|マナゾーン|手札|超次元ゾーン|超GRゾーン|山札|シールドゾーン)((?:または|か|と)(?:墓地|マナゾーン|手札|超次元ゾーン|超GRゾーン|山札|シールドゾーン))?';
+  const ZW = '(墓地|マナゾーン|手札|超次元ゾーン|超GRゾーン|山札の上|山札|シールドゾーン)((?:または|か|と)(?:墓地|マナゾーン|手札|超次元ゾーン|超GRゾーン|山札の上|山札|シールドゾーン))?';
   if ((m = s.match(new RegExp(`^(.+?)を${N}${COUNT_UNIT}(まで)?、?(自分|相手)の${ZW}から(.+)$`))) ||
     (m = s.match(new RegExp(`^(自分|相手)の${ZW}から、?(.+?)を${N}${COUNT_UNIT}(まで)?(.+)$`)))) {
     const first = /^(自分|相手)$/.test(m[1]);
     const [who, zone, zone2, phrase, nstr, upto, verb] = first ? [m[1], m[2], m[3], m[4], m[5], m[6], m[7]] : [m[4], m[5], m[6], m[1], m[2], m[3], m[7]];
     const zones = [ZONE[zone], ...(zone2 ? [ZONE[zone2.replace(/^(または|か|と)/, '')]] : [])];
-    const sel = parseSel(phrase, { zones });
+    const sel = parseSel(phrase.replace(/、$/, ''), { zones });
     if (sel) {
       sel.zones = zones;
       sel.owner = who === '自分' ? 'self' : 'opp';

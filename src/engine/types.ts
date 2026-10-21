@@ -45,6 +45,8 @@ export interface CardInst {
   justDive?: number;
   /** EXライフで置いたシールド */
   exShield?: number;
+  /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
+  endOfTurn?: 'joe' | 'bad';
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
   grants?: { kws: string[]; until: number }[];
 }
@@ -72,7 +74,7 @@ export interface PlayerState {
 
 export type Pending =
   | { kind: 'attackOpt'; player: number; options: number[] }
-  | { kind: 'block'; player: number; blockers: number[]; ninjas: number[] }
+  | { kind: 'block'; player: number; blockers: number[]; ninjas: number[]; guards?: number[] }
   | { kind: 'breakSel'; player: number; target: number; count: number }
   | { kind: 'trigger'; player: number; iid: number; strike: boolean; trigger: boolean }
   | { kind: 'partner'; player: number; iid: number }
@@ -130,6 +132,8 @@ export interface AttackState {
   step: 'opt' | 'atkTrig' | 'block' | 'resolve' | 'breaking' | 'done';
   /** バトルする時/ブロックされなかった時の能力を発動済み */
   preFired?: boolean;
+  /** この攻撃でシールドをブレイクした (キリフダッシュ) */
+  broke?: boolean;
 }
 
 export interface LogEntry {
@@ -196,10 +200,12 @@ export type Action =
       he?: number[];
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
+      /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu';
     }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }
   | { t: 'attackOpt'; iid: number | null }
-  | { t: 'block'; blocker?: number | null; ninja?: number }
+  | { t: 'block'; blocker?: number | null; ninja?: number; guard?: number }
   | { t: 'breakSel'; shields: number[] }
   | { t: 'trigger'; use: boolean; face?: number; target?: number | null }
   | { t: 'partner'; yes: boolean }

@@ -10,6 +10,7 @@ import { EVENT_LABEL } from '../lib/triggers';
 import { attackTargets, canAttackWith, decider, faceOf, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
+import { costOf } from '../engine/statics';
 import { useGameSync } from './useGameSync';
 import { NARROW, useMedia } from '../lib/useMedia';
 
@@ -167,7 +168,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const startPlay = (iid: number, face: number) => {
     const c = cardAt(iid);
     const f = c.faces[face];
-    if (f.cost === 0 && !f.isEvolution) act({ t: 'play', iid, face, pay: [] });
+    const simple = !f.isEvolution && !(f.statics ?? []).some((x) => x.s === 'sasageru' || x.s === 'hyperEnergy' || x.s === 'gzero');
+    if (simple && costOf(s, L, me, iid, face) === 0) act({ t: 'play', iid, face, pay: [] });
     else setPay({ iid, face });
   };
 
@@ -185,6 +187,16 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     return opts
       .filter(([z]) => !except.includes(z))
       .map(([z, label, pos]) => ({ label, onClick: () => act({ t: 'move', iid, to: z, pos }) }));
+  };
+
+  /** 「マナゾーン/墓地から召喚してもよい」カードの召喚メニュー */
+  const summonFromItems = (iid: number, items: MenuItem[]) => {
+    const c = s.cards[iid];
+    if (c.owner !== me) return;
+    cardAt(iid).faces.forEach((f, fi) => {
+      if (f.isCreature && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone))
+        items.push({ label: `召喚 (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
+    });
   };
 
   const cardMenu = (iid: number): MenuItem[] => {
@@ -234,6 +246,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         break;
       }
       case 'mana':
+        summonFromItems(iid, items);
         items.push({ label: c.tapped ? 'アンタップ' : 'タップ', onClick: () => act({ t: 'tap', iid, v: !c.tapped }) });
         if (own) items.push({ label: 'コストを支払わずに使う', onClick: () => act({ t: 'play', iid, face: 0, pay: [], free: true, force: true }) });
         items.push(...moveItems(iid, ['mana']));
@@ -247,6 +260,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       case 'hyper':
       case 'deck':
       case 'gr':
+        if (c.zone === 'grave') summonFromItems(iid, items);
         if (own) {
           card.faces.forEach((f, fi) => {
             if (f.isCreature || f.isSpell || c.zone === 'hyper')

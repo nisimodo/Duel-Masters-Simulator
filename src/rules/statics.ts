@@ -30,7 +30,25 @@ export type StaticSpec =
   | { s: 'sasageru'; n: number }
   | { s: 'gzero'; cond: StaticCond }
   | { s: 'hyperEnergy' }
-  | { s: 'poweredBreaker' };
+  | { s: 'poweredBreaker' }
+  /** 離れる時、かわりに手札へ (エターナル・Ω) */
+  | { s: 'leaveToHand' }
+  /** 破壊される時、墓地に置くかわりに別の場所へ */
+  | { s: 'destroyTo'; zone: 'hand' | 'mana' | 'deckBottom' | 'shield' }
+  /** エスケープ: 破壊される時、かわりにシールドを1つ手札へ */
+  | { s: 'escape' }
+  /** セイバー: 自分の〇〇が破壊される時、かわりにこのクリーチャーを破壊 */
+  | { s: 'saver'; sel: Sel }
+  /** シールド・セイバー: シールドがブレイクされる時、かわりにこのクリーチャーを破壊 */
+  | { s: 'shieldSaver' }
+  /** ガードマン: 自分の他のクリーチャーが攻撃される時、かわりにこのクリーチャーを攻撃させる */
+  | { s: 'guardman' }
+  /** J・O・E / B・A・D: コストをN少なくして召喚し、ターンの終わりに処理 */
+  | { s: 'discountSummon'; kind: 'joe' | 'bad'; n: number }
+  /** マナ爆誕: マナゾーンからコストNで召喚 */
+  | { s: 'manaBakutan'; cost: number }
+  /** キリフダッシュ: シールドをブレイクした攻撃の終わりに、コストNで召喚 */
+  | { s: 'kirifu'; cost: number };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -71,6 +89,21 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
 
   // ---- キーワード系 ----
   if (/^パワード・ブレイカー/.test(t0)) return [{ s: 'poweredBreaker' }];
+  if (/^エターナル・Ω/.test(t0) || /^このクリーチャーが(バトルゾーンを)?離れる時、かわりに(持ち主の|自分の)?手札に戻す$/.test(t0)) return [{ s: 'leaveToHand' }];
+  if (/^エスケープ/.test(t0)) return [{ s: 'escape' }];
+  if (/^(スーパー)?ガードマン/.test(t0)) return [{ s: 'guardman' }];
+  if (/^シールド・セイバー/.test(t0)) return [{ s: 'shieldSaver' }];
+  if ((m = t0.match(/^(?:ウルトラ・)?セイバー[:：](.+)$/))) {
+    const sel = parseSel('自分の' + m[1]);
+    return sel ? [{ s: 'saver', sel }] : null;
+  }
+  if ((m = t0.match(/^(J・O・E|B・A・D)(\d+)/))) return [{ s: 'discountSummon', kind: m[1] === 'J・O・E' ? 'joe' : 'bad', n: +m[2] }];
+  if ((m = t0.match(/^マナ爆誕(\d+)/))) return [{ s: 'manaBakutan', cost: +m[1] }];
+  if ((m = t0.match(/^キリフダッシュ(?:\[[a-z]*(\d+)\]|(\d+))/))) return [{ s: 'kirifu', cost: +(m[1] ?? m[2]) }];
+  if ((m = t0.match(/^このクリーチャーが破壊される時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
+    const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
+    return [{ s: 'destroyTo', zone: z }];
+  }
   if ((m = t0.match(/^シンパシー[:：](.+)$/))) {
     const sel = parseSel(m[1]);
     return sel ? [{ s: 'sympathy', sel: { ...sel, owner: 'self' }, floor: floorOf(full) }] : null;

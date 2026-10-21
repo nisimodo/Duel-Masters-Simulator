@@ -6,6 +6,7 @@ import { parseEffect } from './parse';
 import { normText, stripReminder } from './text';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
 import { parseStaticLine } from './statics';
+import { collectKwDefs, expandKwLines } from './kwdefs';
 
 interface RawCard {
   n: string;
@@ -14,6 +15,7 @@ interface RawCard {
 
 export function coverage() {
   const cards: RawCard[] = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards;
+  const defs = collectKwDefs(cards.flatMap((c) => c.f.flatMap((f) => f.x)));
   const stat = { trigTotal: 0, trigAuto: 0, spellTotal: 0, spellAuto: 0, otherLines: 0, kwLines: 0, staticOk: 0 };
   const smiss: Record<string, number> = {};
   const miss: Record<string, number> = {};
@@ -24,6 +26,7 @@ export function coverage() {
   for (const c of cards)
     for (const f of c.f) {
       const lines = mergeModal(f.x);
+      const abilityLines = expandKwLines(lines, defs);
       if (f.t.includes('呪文')) {
         const eff = spellEffectLines(lines);
         if (eff.length) {
@@ -33,7 +36,7 @@ export function coverage() {
           else p.unparsed.forEach(noteMiss);
         }
       }
-      const trigs = parseTriggers(lines);
+      const trigs = parseTriggers(abilityLines);
       for (const t of trigs) {
         stat.trigTotal++;
         const p = parseEffect(t.effect);
@@ -48,7 +51,7 @@ export function coverage() {
           if (!t) continue;
           stat.otherLines++;
           if (KW_LINE.test(t)) stat.kwLines++;
-          else if (parseStaticLine(l)) stat.staticOk++;
+          else if (parseStaticLine(l) || expandKwLines([l], defs).slice(1).some((x) => parseStaticLine(x) || parseTriggers([x]).some((tr) => parseEffect(tr.effect).complete))) stat.staticOk++;
           else {
             const k = t.replace(/\d+/g, 'N').replace(/《[^》]*》/g, '《X》');
             smiss[k] = (smiss[k] ?? 0) + 1;

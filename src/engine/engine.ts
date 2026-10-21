@@ -134,7 +134,7 @@ export function moveCard(
   L: Lookup,
   iid: number,
   to: ZoneName,
-  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean } = {},
+  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean } = {},
 ): ZoneName {
   const c = s.cards[iid];
   const card = L(c.cid);
@@ -147,6 +147,40 @@ export function moveCard(
     moveCard(s, L, sh, 'grave', { silent: true });
     log(s, c.owner, `EXライフ: ${q(card?.faces[c.face]?.name ?? '')} は離れるかわりにシールドを1つ墓地に置いた`);
     return 'battle';
+  }
+  // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
+  if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
+    const own = card?.faces[c.face]?.statics ?? [];
+    if (own.some((x) => x.s === 'leaveToHand') && to !== 'hand') {
+      log(s, c.owner, `エターナル・Ω: ${q(card!.faces[c.face].name)} は手札に戻る`);
+      return moveCard(s, L, iid, 'hand', opts);
+    }
+    if (to === 'grave') {
+      const dt = own.find((x) => x.s === 'destroyTo');
+      if (dt && dt.s === 'destroyTo') {
+        const z: ZoneName = dt.zone === 'deckBottom' ? 'deck' : dt.zone;
+        log(s, c.owner, `${q(card!.faces[c.face].name)} は墓地に置くかわりに${{ hand: '手札', mana: 'マナゾーン', deck: '山札の下', shield: 'シールド' }[z as 'hand']}へ`);
+        return moveCard(s, L, iid, z, { ...opts, pos: dt.zone === 'deckBottom' ? 'bottom' : opts.pos, faceUp: z === 'shield' ? false : opts.faceUp });
+      }
+      const pl0 = s.players[c.owner];
+      if (own.some((x) => x.s === 'escape') && pl0.shield.length) {
+        const sh = pl0.shield[pl0.shield.length - 1];
+        moveCard(s, L, sh, 'hand', { silent: true });
+        log(s, c.owner, `エスケープ: ${q(card!.faces[c.face].name)} は破壊されるかわりにシールドを1つ手札に加えた`);
+        return 'battle';
+      }
+      // セイバー: 自分の他のクリーチャーがかわりに破壊される
+      for (const sv of pl0.battle) {
+        if (sv === iid) continue;
+        const svs = faceOf(s, L, sv)?.statics ?? [];
+        const spec = svs.find((x) => x.s === 'saver');
+        if (spec && spec.s === 'saver' && matchesSel(s, L, iid, spec.sel)) {
+          log(s, c.owner, `セイバー: ${q(nameOf(s, L, sv))} がかわりに破壊される`);
+          moveCard(s, L, sv, 'grave', { noReplace: true });
+          return 'battle';
+        }
+      }
+    }
   }
   // スター進化: 離れる時、一番上のカードだけが離れる
   if (from === 'battle' && to !== 'battle' && c.under.length && /スター進化/.test(card?.faces[c.face]?.type ?? '')) {
@@ -467,6 +501,20 @@ function beginEndTurn(s: GameState, L: Lookup) {
 /** ターンの終わりの能力が解決した後の後始末 */
 function finishEndTurn(s: GameState, L: Lookup) {
   const p = s.active;
+  // J・O・E: 山札の下に置いて1枚引く / B・A・D: 破壊する
+  for (const iid of [...s.players[p].battle]) {
+    const c = s.cards[iid];
+    if (c.endOfTurn === 'bad') {
+      c.endOfTurn = undefined;
+      log(s, p, `B・A・D: ${q(nameOf(s, L, iid))} を破壊`);
+      moveCard(s, L, iid, 'grave');
+    } else if (c.endOfTurn === 'joe') {
+      c.endOfTurn = undefined;
+      log(s, p, `J・O・E: ${q(nameOf(s, L, iid))} を山札の下に置き、カードを1枚引く`);
+      moveCard(s, L, iid, 'deck', { pos: 'bottom' });
+      drawCards(s, p, 1);
+    }
+  }
   for (const c of s.cards) {
     c.powerMod = 0;
     c.noAttack = false;
@@ -500,6 +548,25 @@ function advanceTurn(s: GameState, L: Lookup) {
   s.attack = null;
   s.pending = s.pending.filter((x) => x.kind === 'partner' || x.kind === 'ability' || x.kind === 'trigger');
   startTurn(s, L);
+}
+
+function offerKirifu(s: GameState, L: Lookup, p: number) {
+  const mana = untappedMana(s, p);
+  const cands = s.players[p].hand.filter((h) =>
+    L(s.cards[h].cid)?.faces.some((f) => (f.statics ?? []).some((x) => x.s === 'kirifu' && x.cost <= mana)),
+  );
+  if (!cands.length) return;
+  s.pending.unshift({
+    kind: 'choice',
+    player: p,
+    mode: 'cards',
+    prompt: 'キリフダッシュ: 召喚するクリーチャーを選ぶ (選ばなければ召喚しない)',
+    options: cands,
+    min: 0,
+    max: 1,
+    purpose: 'benefit',
+    exec: { player: p, src: cands[0], ops: [{ op: 'choose', target: { ref: 'it' }, purpose: 'benefit', prompt: '' }, { op: 'kirifuPlay' }], it: [], looked: [], did: false, name: 'キリフダッシュ' },
+  });
 }
 
 /**
@@ -543,6 +610,8 @@ function advance(s: GameState, L: Lookup): boolean {
     }
     if (a.step === 'breaking' || a.step === 'done') {
       s.attack = null;
+      // キリフダッシュ: シールドをブレイクした攻撃の終わりに召喚できる
+      if (a.broke) offerKirifu(s, L, a.owner);
       // 「攻撃の後、〜」を実行
       const later = s.delayed ?? [];
       s.delayed = [];
@@ -751,8 +820,13 @@ function blockStep(s: GameState, L: Lookup) {
     const card = L(s.cards[h].cid);
     return card?.faces.some((f) => f.isCreature && f.kw.ninjaStrike != null && f.kw.ninjaStrike <= manaCount);
   });
-  if (blockers.length || ninjas.length) {
-    s.pending.unshift({ kind: 'block', player: def, blockers, ninjas });
+  // ガードマン: 自分の他のクリーチャーが攻撃される時、かわりにこのクリーチャーを攻撃させる
+  const guards =
+    a.targetCard != null
+      ? s.players[def].battle.filter((b) => b !== a.targetCard && !s.cards[b].tapped && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'guardman'))
+      : [];
+  if (blockers.length || ninjas.length || guards.length) {
+    s.pending.unshift({ kind: 'block', player: def, blockers, ninjas, guards });
   } else resolveAttack(s, L);
 }
 
@@ -785,8 +859,16 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
 
 export function breakShields(s: GameState, L: Lookup, target: number, shields: number[], by: number | null, breaker: number | null = null) {
   const pl = s.players[target];
+  if (breaker != null && s.attack) s.attack.broke = true;
   for (const sh of shields) {
     if (s.cards[sh].zone !== 'shield') continue;
+    // シールド・セイバー: かわりにこのクリーチャーを破壊
+    const saver = pl.battle.find((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'shieldSaver'));
+    if (saver != null) {
+      log(s, target, `シールド・セイバー: ${q(nameOf(s, L, saver))} がシールドのかわりに破壊される`);
+      moveCard(s, L, saver, 'grave');
+      continue;
+    }
     moveCard(s, L, sh, 'hand');
     const card = L(s.cards[sh].cid);
     const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger);
@@ -973,6 +1055,21 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   const c = s.cards[a.iid];
   const face = L(c.cid)!.faces[fi];
   const statics = face.statics ?? [];
+  if (a.alt === 'joe' || a.alt === 'bad') {
+    const d = statics.find((x) => x.s === 'discountSummon');
+    if (!d || d.s !== 'discountSummon' || d.kind !== a.alt) return 'この召喚方法は使えません';
+    return Math.max(1, costOf(s, L, p, a.iid, fi) - d.n);
+  }
+  if (a.alt === 'mana') {
+    const d = statics.find((x) => x.s === 'manaBakutan');
+    if (!d || d.s !== 'manaBakutan' || c.zone !== 'mana') return 'マナ爆誕は使えません';
+    return d.cost;
+  }
+  if (a.alt === 'kirifu') {
+    const d = statics.find((x) => x.s === 'kirifu');
+    if (!d || d.s !== 'kirifu') return 'キリフダッシュは使えません';
+    return d.cost;
+  }
   if (a.gzero) {
     const g = statics.find((x) => x.s === 'gzero');
     if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
@@ -1018,7 +1115,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
-  const fromOk = c.zone === 'hand' || c.zone === 'partner' || (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone));
+  const fromOk =
+    c.zone === 'hand' ||
+    c.zone === 'partner' ||
+    (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
+    (a.alt === 'mana' && c.zone === 'mana');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
   if (c.zone === 'partner' && !c.faceUp) return '裏向きのパートナーは召喚できません';
   if (c.zone === 'partner' && !face.isCreature) return 'パートナーの呪文側は唱えられません';
@@ -1057,8 +1158,9 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);
-    log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}`);
+    log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}${a.alt === 'joe' ? ' (J・O・E)' : a.alt === 'bad' ? ' (B・A・D)' : a.alt === 'mana' ? ' (マナ爆誕)' : a.alt === 'kirifu' ? ' (キリフダッシュ)' : ''}`);
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
+    if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     if (bases.length) {
       for (const b of bases) {
         const bc = s.cards[b];
@@ -1181,6 +1283,14 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       }
       s.pending.shift();
       const at = s.attack!;
+      if (a.guard != null) {
+        if (!(top.guards ?? []).includes(a.guard)) return 'ガードマンを使えません';
+        s.cards[a.guard].tapped = true;
+        log(s, p, `ガードマン: ${q(nameOf(s, L, a.guard))} がかわりに攻撃される`);
+        at.targetCard = a.guard;
+        at.step = 'resolve';
+        return null;
+      }
       if (a.blocker != null) {
         if (!top.blockers.includes(a.blocker) || s.cards[a.blocker].zone !== 'battle') return 'ブロックできないクリーチャーです';
         s.cards[a.blocker].tapped = true;

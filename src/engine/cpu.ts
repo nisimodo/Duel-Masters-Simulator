@@ -16,6 +16,7 @@ import {
   attackTargets,
   autoPay,
   canAttackWith,
+  playCost,
   cardCivs,
   faceOf,
   power,
@@ -23,6 +24,7 @@ import {
   type Lookup,
 } from './engine';
 import { matchesCond } from './cond';
+import { costOf } from './statics';
 import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
 
@@ -310,13 +312,20 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
     return v;
   };
 
-  for (const h of [...me.hand, ...me.partner.filter((i) => s.cards[i].faceUp)]) {
+  const fromOtherZones = [...me.mana, ...me.grave].filter((i) =>
+    L(s.cards[i].cid)?.faces.some((f) => f.isCreature && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === s.cards[i].zone)),
+  );
+  for (const h of [...me.hand, ...me.partner.filter((i) => s.cards[i].faceUp), ...fromOtherZones]) {
     const card = L(s.cards[h].cid);
     if (!card) continue;
     card.faces.forEach((f, fi) => {
-      if (f.cost > mana) return;
       if (s.cards[h].zone === 'partner' && !f.isCreature) return;
-      const pay = autoPay(s, L, p, f.civs as Civ[], f.cost);
+      if (s.cards[h].zone !== 'hand' && s.cards[h].zone !== 'partner' && !f.isCreature) return;
+      // G・ゼロが使えるならコストを支払わずに
+      const gz = playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], gzero: true }, fi) === 0;
+      const cost = gz ? 0 : costOf(s, L, p, h, fi);
+      if (cost > mana) return;
+      const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost);
       if (!pay) return;
       const rv = removalValue(card, fi);
       if (f.isCreature) {
@@ -346,7 +355,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         if (f.kw.blocker && defensive) value += 20;
         if (f.kw.speedAttacker) value += 5;
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo }, value });
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined }, value });
       } else if (f.isSpell) {
         if (rv <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
         cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 6 + rv });

@@ -2,6 +2,7 @@
 import { parseKeywords, type Keywords } from './keywords';
 import { parseTriggers, type TriggerSpec } from './triggers';
 import { parseStatics, type StaticSpec } from '../rules/statics';
+import { collectKwDefs, expandKwLines, type KwDef } from '../rules/kwdefs';
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
 export const CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];
@@ -77,7 +78,9 @@ export function cardImage(card: Card, face = 0): string {
   return IMG_BASE + card.img;
 }
 
-function toFace(f: RawFace): Face {
+function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
+  // 名前のある能力は定義 (注釈) に展開して解釈する
+  const abilityLines = expandKwLines(f.x, defs);
   const power = f.p ? Number((f.p.normalize('NFKC').match(/-?\d+/) || ['0'])[0]) : null;
   return {
     name: f.n,
@@ -89,16 +92,16 @@ function toFace(f: RawFace): Face {
     races: f.r,
     text: f.x,
     kw: parseKeywords(f.x, f.t),
-    triggers: parseTriggers(f.x),
-    statics: parseStatics(f.x),
+    triggers: parseTriggers(abilityLines),
+    statics: parseStatics(abilityLines),
     isCreature: f.t.includes('クリーチャー'),
     isSpell: f.t.includes('呪文'),
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),
   };
 }
 
-function toCard(r: RawCard): Card {
-  const faces = r.f.map(toFace);
+function toCard(r: RawCard, defs: Map<string, KwDef>): Card {
+  const faces = r.f.map((f) => toFace(f, defs));
   const civSet = new Set<Civ>();
   // サイキック等の裏面は表と同じ文明扱い。ツインパクトは両面の文明。
   for (const f of r.tw ? faces : faces.slice(0, 1)) f.civs.forEach((c) => civSet.add(c));
@@ -176,7 +179,8 @@ async function fetchDB(): Promise<CardDB> {
 }
 
 export function buildDB(rawCards: RawCard[], reg: Regulation, presets: PresetDeck[], builtAt = ''): CardDB {
-  const cards = rawCards.map(toCard);
+  const defs = collectKwDefs(rawCards.flatMap((c) => c.f.flatMap((f) => f.x)));
+  const cards = rawCards.map((r) => toCard(r, defs));
   const byId = new Map(cards.map((c) => [c.id, c]));
   const byName = new Map<string, Card>();
   for (const c of cards) {

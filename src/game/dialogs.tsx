@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
-import { autoPay, faceOf, nameOf, payCovers, power, type Lookup } from '../engine/engine';
+import { autoPay, faceOf, nameOf, payCovers, playCost, power, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 
 export function Modal({ children, onClose, title }: { children: React.ReactNode; onClose?: () => void; title?: string }) {
@@ -50,7 +50,26 @@ export function PayDialog({
   const card = L(s.cards[iid].cid)!;
   const f = card.faces[face];
   const mana = s.players[me].mana.filter((m) => !s.cards[m].tapped);
-  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], f.cost) ?? []);
+  const statics = f.statics ?? [];
+  const sasaN = statics.some((x) => x.s === 'sasageru');
+  const heOn = statics.some((x) => x.s === 'hyperEnergy');
+  const gz = statics.find((x) => x.s === 'gzero');
+  const [sasa, setSasa] = useState<number[]>([]);
+  const [he, setHe] = useState<number[]>([]);
+  const [gzero, setGzero] = useState(false);
+  const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean }) => {
+    const c = playCost(s, L, me, { t: 'play', iid, face, pay: [], ...opts }, face);
+    return typeof c === 'number' ? c : null;
+  };
+  const cost = costNow({ sasa, he, gzero });
+  const costErr = playCost(s, L, me, { t: 'play', iid, face, pay: [], sasa, he, gzero }, face);
+  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost) ?? []);
+  const sasaCands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'));
+  const heCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
+  const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean }) => {
+    const c = costNow(opts);
+    if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c) ?? []);
+  };
   const [showAll, setShowAll] = useState(false);
   const baseCands = s.players[me].battle.filter((b) => {
     const bf = faceOf(s, L, b);
@@ -60,16 +79,74 @@ export function PayDialog({
     return bf.isCreature && (!f.kw.evoCond || matchesCond(f.kw.evoCond, bc, bf));
   });
   const [evo, setEvo] = useState<number[]>(() => (baseCands.length === 1 ? [baseCands[0]] : []));
-  const ok = pay.length === f.cost && payCovers(L, s, pay, f.civs as Civ[]);
+  const ok = cost != null && pay.length === cost && (cost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
   const needEvo = f.isEvolution && f.isCreature;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);
   return (
     <Modal title={`${f.name} を${verb}`} onClose={onClose}>
       <div className="small">
-        コスト {f.cost} / 文明 {f.civs.length ? f.civs.join(',') : '無色'} ・ 選択中 {pay.length}枚{' '}
-        {ok ? <span className="ok">✓ 支払い可能</span> : <span className="warn">コスト・文明が合いません</span>}
+        コスト {cost ?? '-'}
+        {cost != null && cost !== f.cost ? ` (元のコスト ${f.cost})` : ''} / 文明 {f.civs.length ? f.civs.join(',') : '無色'} ・ 選択中 {pay.length}枚{' '}
+        {ok ? <span className="ok">✓ 支払い可能</span> : <span className="warn">{typeof costErr === 'string' ? costErr : 'コスト・文明が合いません'}</span>}
       </div>
+      {gz && (
+        <label className="small">
+          <input
+            type="checkbox"
+            checked={gzero}
+            onChange={(e) => {
+              setGzero(e.target.checked);
+              refreshPay({ sasa, he, gzero: e.target.checked });
+            }}
+          />{' '}
+          G・ゼロ (コストを支払わずに召喚)
+        </label>
+      )}
+      {sasaN && sasaCands.length > 0 && (
+        <div className="col" style={{ gap: 2 }}>
+          <b className="small">ササゲール: 破壊する自分のクリーチャー (コストが異なるもの)</b>
+          <div className="row">
+            {sasaCands.map((b) => (
+              <CardImg
+                key={b}
+                card={L(s.cards[b].cid)!}
+                face={s.cards[b].face}
+                width={50}
+                selected={sasa.includes(b)}
+                onHover={onHover}
+                onClick={() => {
+                  const next = sasa.includes(b) ? sasa.filter((x) => x !== b) : [...sasa, b];
+                  setSasa(next);
+                  refreshPay({ sasa: next, he, gzero });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {heOn && heCands.length > 0 && (
+        <div className="col" style={{ gap: 2 }}>
+          <b className="small">ハイパーエナジー: タップする自分のクリーチャー (コストが異なるもの、1体につき-2)</b>
+          <div className="row">
+            {heCands.map((b) => (
+              <CardImg
+                key={b}
+                card={L(s.cards[b].cid)!}
+                face={s.cards[b].face}
+                width={50}
+                selected={he.includes(b)}
+                onHover={onHover}
+                onClick={() => {
+                  const next = he.includes(b) ? he.filter((x) => x !== b) : [...he, b];
+                  setHe(next);
+                  refreshPay({ sasa, he: next, gzero });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="small muted">使うマナをクリックで選択 (コスト軽減などは「支払いを調整して出す」)</div>
       <div className="row">
         {mana.map((m) => (
@@ -103,7 +180,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !evo.length)} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo })}>
+        <button className="primary" disabled={!ok || (needEvo && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

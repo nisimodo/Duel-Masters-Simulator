@@ -40,7 +40,7 @@ function relMatch(s: GameState, L: Lookup, a: ActiveStatic, iid: number, sel: Se
   if (sel.owner === 'self' && c.owner !== a.owner) return false;
   if (sel.owner === 'opp' && c.owner === a.owner) return false;
   if (sel.other && iid === a.src) return false;
-  return matchesSel(s, L, iid, sel);
+  return matchesSel(s, L, iid, sel, true);
 }
 
 function targetMatch(s: GameState, L: Lookup, a: ActiveStatic, tg: StaticTarget, iid: number): boolean {

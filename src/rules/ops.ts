@@ -2,7 +2,7 @@
 // エンジン (src/engine/interp.ts) がこれを実行し、選択が必要な時はプレイヤー (CPU) に問い合わせる。
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
-export type SelZone = 'battle' | 'hand' | 'mana' | 'grave' | 'shield' | 'deck' | 'hyper' | 'gr';
+export type SelZone = 'battle' | 'hand' | 'mana' | 'grave' | 'shield' | 'deck' | 'hyper' | 'gr' | 'deckTop';
 
 /** カードの選択条件 */
 export interface Sel {
@@ -32,6 +32,8 @@ export interface Sel {
   other?: boolean;
   /** このクリーチャーよりパワーが小さい */
   powerLtSelf?: boolean;
+  /** このクリーチャーよりコストが小さい */
+  costLtSelf?: boolean;
   evolution?: boolean;
   nonEvolution?: boolean;
   twinpact?: boolean;
@@ -101,6 +103,12 @@ export type Op =
   | { op: 'afterAttack'; body: Op[] }
   /** 相手 (各プレイヤー) に対して同じ処理 */
   | { op: 'each'; body: Op[] }
+  /** キリフダッシュで召喚 (it のカードをコストを支払って) */
+  | { op: 'kirifuPlay' }
+  /** このカードの呪文側を唱える (ラスト・バースト等) */
+  | { op: 'castSelfSpell' }
+  /** 山札の上から条件に合うカードが出るまで表向きにする (見つかったカードが it、全部が looked) */
+  | { op: 'revealUntil'; sel: Sel }
   /** 今選んでいるカードを保存 (2つ目の選択のため) */
   | { op: 'save' }
   /** 手札をすべて山札に加える */

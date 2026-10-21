@@ -12,6 +12,7 @@ import {
   moveCard,
   nameOf,
   playCard,
+  autoPay,
   power,
   q,
   rand,
@@ -20,6 +21,7 @@ import {
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
 import { canBeChosen } from './statics';
+import { spellEffectLines } from '../lib/triggers';
 
 // ---------- 解析結果のキャッシュ ----------
 const progCache = new Map<string, ReturnType<typeof parseEffect>>();
@@ -45,7 +47,7 @@ export function mainOpp(s: GameState, p: number): number {
 const opps = (s: GameState, p: number) => s.players.map((_, i) => i).filter((i) => i !== p && !s.players[i].lost);
 
 // ---------- 選択条件 ----------
-function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid: number): boolean {
+function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid: number, noStatic = false): boolean {
   const k = sel.kind;
   const t = f.type;
   if (k === 'creature' && !f.isCreature) return false;
@@ -74,7 +76,8 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.costMin != null && f.cost < sel.costMin) return false;
   if (sel.costMax != null && f.cost > sel.costMax) return false;
   const c = s.cards[iid];
-  const pw = c.zone === 'battle' ? power(s, L, iid) : (f.power ?? 0);
+  // 常在型能力の評価中は、無限ループを避けるため常在型能力を含まないパワーで判定
+  const pw = c.zone === 'battle' ? (noStatic ? (f.power ?? 0) + c.powerMod : power(s, L, iid)) : (f.power ?? 0);
   if (sel.powerMin != null && pw < sel.powerMin) return false;
   if (sel.powerMax != null && pw > sel.powerMax) return false;
   if (sel.tapped != null && c.zone === 'battle' && c.tapped !== sel.tapped) return false;
@@ -91,13 +94,13 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
 }
 
 /** カードが条件に合うか (バトルゾーンでは今の面、それ以外はどちらかの面) */
-export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel): boolean {
+export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noStatic = false): boolean {
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
   if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
-  return faces.some((f) => faceMatches(card, f, sel, s, L, iid));
+  return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
 
 function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
@@ -105,10 +108,12 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
   const out: number[] = [];
   for (const o of owners)
     for (const z of sel.zones) {
-      const arr = s.players[o][z as ZoneName] as number[] | undefined;
+      const arr = z === 'deckTop' ? s.players[o].deck.slice(-1) : (s.players[o][z as ZoneName] as number[] | undefined);
       if (!arr) continue;
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
+        if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
+        if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
@@ -196,6 +201,8 @@ function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal
   log(s, ex.player, `${hidden && !reveal ? 'カード' : q(nm)} を${ZONE_JA[zone]}へ`);
 }
 const ZONE_JA: Record<string, string> = { grave: '墓地', hand: '手札', mana: 'マナゾーン', shield: 'シールド', deck: '山札', battle: 'バトルゾーン' };
+
+const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
 
 // ---------- 実行 ----------
 
@@ -472,6 +479,50 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
       case 'save':
         ex.saved = [...ex.it];
         break;
+      case 'castSelfSpell': {
+        // このカードの呪文側の効果を、呪文として解決する (カードは今の場所のまま)
+        const c = s.cards[ex.src];
+        const card = c && L(c.cid);
+        const fi = card ? card.faces.findIndex((f) => f.isSpell) : -1;
+        if (card && fi >= 0) {
+          const lines = spellEffectLines(card.faces[fi].text);
+          log(s, ex.player, `${q(card.faces[fi].name)} を唱えた (コストを支払わずに)`);
+          if (lines.length)
+            s.pending.push({ kind: 'ability', player: ex.player, src: ex.src, cid: c.cid, face: fi, event: 'spell', text: lines.join('\n'), effect: lines.join('\n'), optional: false, auto: false });
+        }
+        break;
+      }
+      case 'kirifuPlay': {
+        for (const i of ex.it) {
+          const card = L(s.cards[i].cid);
+          const fi = card ? card.faces.findIndex((f) => (f.statics ?? []).some((x) => x.s === 'kirifu')) : -1;
+          if (!card || fi < 0) continue;
+          const spec = card.faces[fi].statics.find((x) => x.s === 'kirifu');
+          const cost = spec && spec.s === 'kirifu' ? spec.cost : 0;
+          const pay = autoPay(s, L, ex.player, card.faces[fi].civs, cost) ?? autoPay(s, L, ex.player, [], cost);
+          if (!pay) continue;
+          playCard(s, ex.player, { t: 'play', iid: i, face: fi, pay, alt: 'kirifu', force: true }, L);
+        }
+        break;
+      }
+      case 'revealUntil': {
+        const deck = s.players[ex.player].deck;
+        const shown: number[] = [];
+        let found: number | null = null;
+        for (let k = deck.length - 1; k >= 0; k--) {
+          const i = deck[k];
+          shown.push(i);
+          const ok = matchesSel(s, L, i, op.sel) && (!op.sel.costLtSelf || maxCost(L, s.cards[i].cid) < maxCost(L, s.cards[ex.src].cid));
+          if (ok) {
+            found = i;
+            break;
+          }
+        }
+        ex.looked = shown;
+        ex.it = found != null ? [found] : [];
+        log(s, ex.player, `山札の上から${shown.length}枚を表向きにした${found != null ? ` → ${q(nameOf(s, L, found))}` : ' (見つからなかった)'}`);
+        break;
+      }
       case 'handToDeck': {
         const pl = s.players[ex.player];
         for (const i of [...pl.hand]) moveCard(s, L, i, 'deck', { pos: 'top' });

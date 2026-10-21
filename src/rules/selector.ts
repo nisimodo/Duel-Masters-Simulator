@@ -81,6 +81,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^非進化の?/, () => (sel.nonEvolution = true));
     changed ||= take(/^進化ではない/, () => (sel.nonEvolution = true));
     changed ||= take(/^このクリーチャーよりパワーが小さい/, () => (sel.powerLtSelf = true));
+    changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
       sel.civs = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);
       if (/と/.test(m[1])) sel.civAll = true;
