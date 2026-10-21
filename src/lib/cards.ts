@@ -110,7 +110,7 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
   const abilityLines = expandKwLines(sp.main, defs);
   // O・ドライブの「水:〜」「自然:〜」は文明ごとに分ける
   const rawGroups = sp.groups.flatMap((g) => {
-    if (g.kind !== 'odrive') return [{ ...g, civ: undefined as string | undefined }];
+    if (g.kind !== 'odrive') return [{ ...g, civ: (g as { race?: string }).race as string | undefined }];
     const byCiv = new Map<string | undefined, string[]>();
     for (const l of g.lines) {
       const m = normText(l).match(/^(光|水|闇|火|自然)[:：]\s*(.+)$/);

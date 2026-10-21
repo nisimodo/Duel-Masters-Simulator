@@ -95,7 +95,7 @@ export function mergeModal(lines: string[]): string[] {
   return out;
 }
 
-export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce' | 'odrive' | 'oniOff';
+export type AbilityGroupKind = 'wave' | 'accel' | 'survivor' | 'soul' | 'meta' | 'turbo' | 'sforce' | 'odrive' | 'oniOff' | 'fortE';
 
 const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^ウェーブストライカー/, 'wave'],
@@ -119,7 +119,7 @@ export const MARKED_LINE = /^(q|oP|oB|xB|P)\s+(.+)$|^(◇)\s*(.+)$/;
 
 export function splitAbilities(lines: string[]): {
   main: string[];
-  groups: { kind: AbilityGroupKind; lines: string[]; n?: number }[];
+  groups: { kind: AbilityGroupKind; lines: string[]; n?: number; race?: string }[];
   tap: string | null;
   /** タップして使う能力で、いっしょにタップするマナの枚数 */
   tapMana?: number;
@@ -142,6 +142,8 @@ export function splitAbilities(lines: string[]): {
   let inSilent = false;
   let nextAbility = false;
   let oniN: number | undefined;
+  let fortRace: string | undefined;
+  let fortNext = false;
   let odrive = 0; // 0: なし / 1: 次の行を取る / 2: 「水:」で始まる行を取る
   for (const raw of lines) {
     const t = normText(raw).trim();
@@ -153,6 +155,19 @@ export function splitAbilities(lines: string[]): {
         continue;
       }
       odrive = 0;
+    }
+    // フォートE:〇〇 (〇〇をマナゾーンでタップして召喚していた場合、次の能力を得る)
+    if (fortNext) {
+      fortNext = false;
+      push('fortE', raw);
+      continue;
+    }
+    const fe = t.match(/^フォートE[:：]\s*([^(（\s]+)/);
+    if (fe) {
+      main.push(raw);
+      fortRace = fe[1];
+      fortNext = true;
+      continue;
     }
     if (/^O・ドライブ/.test(t)) {
       main.push(raw);
@@ -249,5 +264,5 @@ export function splitAbilities(lines: string[]): {
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked, tapMana };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined, race: kind === 'fortE' ? fortRace : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked, tapMana };
 }

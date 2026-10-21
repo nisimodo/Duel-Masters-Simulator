@@ -347,6 +347,7 @@ export function moveCard(
   detach(s, iid);
   if (from === 'battle') {
     c.odrive = undefined;
+    c.paidRaces = undefined;
     c.buzz = undefined;
   }
   let dest: ZoneName = to;
@@ -1881,6 +1882,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         log(s, p, `O・ドライブ: ${paid.join('・')} を追加で支払った`);
       }
     }
+    c.paidRaces = [...new Set((a.pay ?? []).flatMap((m) => L(s.cards[m].cid)?.faces.flatMap((f) => f.races) ?? []))];
     for (const h of a.discards ?? []) {
       log(s, p, `${q(nameOf(s, L, h))} を捨てた`);
       moveCard(s, L, h, 'grave');

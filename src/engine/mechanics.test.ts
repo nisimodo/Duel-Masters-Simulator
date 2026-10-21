@@ -134,6 +134,7 @@ const db = buildDB(
     { id: 'tmpSp', n: 'tmpSp', img: '', f: [{ n: 'tmpSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['このターン、自分のクリーチャーが攻撃する時、カードを1枚引く。'] }] },
     cr('sinka', 1, 1000, ['シンカパワー：このクリーチャーが進化する時、カードを1枚引く。']),
     { id: 'evo1', n: 'evo1', img: '', f: [{ n: 'evo1', t: '進化クリーチャー', c: 'F', co: 1, p: '5000', r: ['テスト'], x: ['進化-自分のテスト1体の上に置く。'] }] },
+    cr('fort', 1, 1000, ['フォートE：テスト(このクリーチャーをバトルゾーンに出した時、テストを自分のマナゾーンでタップしてこのクリーチャーを召喚していた場合、このクリーチャーは次の能力を得る)', 'このクリーチャーのパワーは+5000される。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -496,6 +497,14 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'evo1')!, face: 0, pay: freeMana(s, 0, 1), evo: [find(s, 0, 'battle', 'sinka')!] });
     for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
     expect(s.players[0].hand.length).toBe(hand - 1 + 1);
+  });
+
+  it('フォートE: gains the next ability when summoned by tapping that race in mana', () => {
+    let s = setup([{ p: 0, cid: 'fort', zone: 'hand' }]);
+    const iid = find(s, 0, 'hand', 'fort')!;
+    s = act(s, 0, { t: 'play', iid, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(power(s, L, iid)).toBe(6000);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

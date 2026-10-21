@@ -55,6 +55,8 @@ export interface CardInst {
   cellOf?: number;
   /** O・ドライブで追加で支払った文明 */
   odrive?: string[];
+  /** 召喚する時にタップしたマナのカードの種族 (フォートE) */
+  paidRaces?: string[];
   /** バズレンダで追加で支払った回数 */
   buzz?: number;
   /** ビビッドローで表向きにしたターン */

@@ -35,6 +35,7 @@ export function effGroups(s: GameState, L: Lookup, iid: number): AbilityGroup[] 
     if (g.kind === 'accel' && !c.under.some((u) => /クロスギア/.test(L(s.cards[u].cid)?.faces[0]?.type ?? ''))) continue;
     if (g.kind === 'meta' && s.players[c.owner].mana.length < 7) continue;
     if (g.kind === 'oniOff' && s.players[c.owner].shield.length + s.players[mainOpp(s, c.owner)].shield.length <= (g.n ?? 0)) continue;
+    if (g.kind === 'fortE' && !(c.paidRaces ?? []).some((r) => g.civ != null && r.includes(g.civ))) continue;
     if (g.kind === 'odrive' && !(g.civ ? (c.odrive ?? []).includes(g.civ) : (c.odrive ?? []).length > 0)) continue;
     if (g.kind === 'turbo' && !(s.brokeThisTurn ?? []).some((b) => b !== iid && s.cards[b].owner === c.owner)) continue;
     if (g.kind === 'sforce' && (c.forceShield == null || s.cards[c.forceShield].zone !== 'shield')) continue;
