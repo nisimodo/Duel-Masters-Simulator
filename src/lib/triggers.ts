@@ -206,7 +206,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       const ms = parseSel(manaPut[1]);
       if (ms) subject = { ...ms, zones: ['mana'] };
     }
-    const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause);
+    const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
     const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
     out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || undefined });

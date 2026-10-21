@@ -27,6 +27,7 @@ function unOptional(s: string): string | null {
     [/付けてもよい$/, '付ける'],
     [/させてもよい$/, 'させる'],
     [/行ってもよい$/, '行う'],
+    [/とばしてもよい$/, 'とばす'],
     [/([一-鿿゠-ヿー]+)してもよい$/, '$1する'],
     [/してもよい$/, 'する'],
     // 下一段の動詞 「入れ替えてもよい」「与えてもよい」「止めてもよい」
@@ -181,6 +182,7 @@ function parseCond(c: string): Cond | null {
   if (/^(それら|表向きにしたカード)がすべて異なるコスト$/.test(c)) return { c: 'distinctCosts' };
   if (/^このクリーチャーがタップされてい$/.test(c)) return { c: 'selfTapped' };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
+  if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
   if ((m = c.match(/^自分のマナゾーンにカードが(\d+)枚以上な(?:けれ|け|い)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '<=', n: +m[1] - 1 };
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以上あ$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '>=', n: +m[2] };
   if ((m = c.match(/^相手の(手札|マナゾーンのカード|シールド)が自分のより多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : m[1] === 'シールド' ? 'shield' : 'mana' };
@@ -495,7 +497,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^相手はそれを(?:自身の)?山札の上か下に置く$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'it' }, chooser: 'opp' }];
   if (/^(残り|見せたカードはすべて、|残りのカード)を?、?好きな順序で山札の上か下(のどちらか)?に(置く|戻す)$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'rest' }, chooser: 'self' }];
   // 効果で唱えた呪文を、唱えた後に山札の下へ
-  if (/^(?:こうして呪文を唱えたなら、)?それを唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
+  if (/^(?:こうして呪文を唱えたなら、)?(?:それ|その呪文)を唱えた後、墓地(?:に置く)?のかわりに(?:持ち主の|自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   if (/^相手は(?:自身|自分)の山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'opp' }];
   // 唱えた後、墓地に置くかわりに山札の下 (呪文を出す処理で行う)
   if (/^(この呪文を(自分の手札から)?)?唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く$/.test(s)) return [];
@@ -730,6 +732,45 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (tt && sel) return [{ op: 'useMarked', key: '能力', perLooked: sel }];
   }
   if (/^ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  if (/^\*+$/.test(s)) return [];
+  if (/^この能力は、?各ターン(1|一)度しか使えない$/.test(s)) return [];
+  // シールド・山札を見る
+  {
+    const ps = s.match(/^(自分|相手)のシールドを(\d+|すべて)(?:つ|枚)?(?:選んで)?見る$/) ?? s.match(/^(自分|相手)のシールドを(ひとつ|1つ)選んで見る$/);
+    if (ps) {
+      ctx.looked = true;
+      return [{ op: 'peek', who: ps[1] === '自分' ? 'self' : 'opp', zone: 'shield', n: /\d/.test(ps[2]) ? +ps[2] : ps[2] === 'すべて' ? undefined : 1 }];
+    }
+    if (/^相手の山札を見る$/.test(s)) {
+      ctx.looked = true;
+      return [{ op: 'peek', who: 'opp', zone: 'deck' }];
+    }
+  }
+  // パワーをN倍 / N枚につきパワー±N
+  {
+    const mp = s.match(/^このターン、(.+?)のパワーを(\d+)倍に(?:し、((?:「[^」]+」)+)を与える|する)$/);
+    const t = mp && refTarget(mp[1]);
+    if (mp && t) {
+      const ops: Op[] = [{ op: 'multPower', target: t, times: +mp[2] }];
+      if (mp[3]) ops.push({ op: 'grant', target: t, kws: [...mp[3].matchAll(/「([^」]+)」/g)].map((x) => x[1]), until: 'turn' });
+      return ops;
+    }
+    const pp = s.match(/^このターン、(.+?)のパワーを、?(.+?)(\d+)(?:枚|体)につき([+-]\d+)する$/) ?? s.match(/^このターン、(.+?)(\d+)(?:枚|体)につき、(.+?)のパワーを([+-]\d+)する$/);
+    if (pp) {
+      const isFirst = /のパワーを/.test(s.split('につき')[0]);
+      const tgt = refTarget(isFirst ? pp[1] : pp[3]);
+      const perPhrase = isFirst ? pp[2] : pp[1];
+      const each = +(isFirst ? pp[3] : pp[2]);
+      const pz = perPhrase.match(/^(自分|相手)の(墓地|マナゾーン|手札)にある(.+)$/);
+      const per = pz ? parseSel(pz[3], { zones: [ZONE[pz[2]]] }) : parseSel(perPhrase);
+      if (per && pz) {
+        per.owner = pz[1] === '自分' ? 'self' : 'opp';
+        per.zones = [ZONE[pz[2]]];
+        if (per.kind === 'creature' && /カード$/.test(pz[3])) per.kind = 'card';
+      }
+      if (tgt && per) return [{ op: 'powerPer', target: tgt, per, each, delta: +pp[4] }];
+    }
+  }
   // ガチャ 「ドギラゴン・ガチャを3度回す」「もう1度ドキンダム・ガチャを回して、その能力を使う」
   {
     const ga = s.match(/^(?:もう)?(\d+)?度?(ドギラゴン|ドキンダム)・ガチャを(?:(\d+)度)?回(?:す|して、その能力を使う)$/);
@@ -1043,6 +1084,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // ---- シールドをブレイク (このクリーチャーは相手のシールドをNつブレイクする) ----
   if ((m = s.match(new RegExp(`^(?:この|その)クリーチャーは、?(?:相手の)?シールドを${N}(?:つ|枚)ブレイクする$`)))) return [{ op: 'breakShield', n: +m[1] }];
+  if ((m = s.match(new RegExp(`^このクリーチャーは、?自分のシールドを${N}(?:つ|枚)ブレイクする$`)))) return [{ op: 'breakShield', n: +m[1], own: true }];
 
   // ---- カードを引く ----
   if ((m = s.match(new RegExp(`^カードを${N}枚(まで)?引く$`)))) return [{ op: 'draw', n: +m[1], upTo: !!m[2], who: 'self' }];
@@ -1182,7 +1224,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^その(2|２)体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'it' }, b: { ref: 'it' } }];
 
   // ---- このクリーチャー ----
-  if ((m = s.match(/^この(?:クリーチャー|カード|呪文|タマシード|クロスギア|ドラグハート|フォートレス)を(.+)$/))) {
+  if ((m = s.match(/^この(?:クリーチャー|カード|呪文|タマシード|クロスギア|ドラグハート|フォートレス|フィールド)を(.+)$/))) {
     const ops = verbOps(m[1], { ref: 'self' });
     if (ops) return ops;
   }

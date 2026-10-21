@@ -28,6 +28,8 @@ export interface Sel {
   notCreature?: boolean;
   /** サイキックではない */
   notPsychic?: boolean;
+  /** コストが (自分のマナの枚数 / 手札の枚数) より小さい・以下 */
+  costVs?: { by: 'mana' | 'hand'; cmp: 'lt' | 'le' };
   /** この効果のカード自身 */
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
@@ -88,6 +90,8 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }
+  /** 自分と相手のシールドの数の合計がN以下 */
+  | { c: 'totalShieldsLE'; n: number }
   /** 相手の (手札/マナ/シールド) が自分より多い */
   | { c: 'oppMore'; zone: 'hand' | 'mana' | 'shield' }
   /** 両方を満たす */
@@ -116,7 +120,13 @@ export type Op =
   | { op: 'grSummon'; n: number }
   | { op: 'shuffle'; who?: 'opp' }
   | { op: 'battle'; a: Target; b: Target }
-  | { op: 'breakShield'; n: number }
+  | { op: 'breakShield'; n: number; own?: boolean }
+  /** シールド・山札を見る (自分だけに見える。見たカードは looked) */
+  | { op: 'peek'; who: 'self' | 'opp'; zone: 'shield' | 'deck'; n?: number }
+  /** sel に合うカードの数だけパワーを変える (このターン) */
+  | { op: 'powerPer'; target: Target; per: Sel; each: number; delta: number }
+  /** パワーをN倍にする (このターン) */
+  | { op: 'multPower'; target: Target; times: number }
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }
   | { op: 'optional'; body: Op[]; prompt: string }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }

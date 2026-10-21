@@ -74,6 +74,13 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
   if (sel.notColorless && !civs.length) return false;
+  if (sel.costVs) {
+    // 効果を使っているプレイヤー (手番のプレイヤー) のマナ・手札の枚数と比べる
+    const ctl = s.players[s.active];
+    const lim = sel.costVs.by === 'mana' ? ctl.mana.length : ctl.hand.length;
+    const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
+    if (sel.costVs.cmp === 'lt' ? !(cost < lim) : !(cost <= lim)) return false;
+  }
   if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
   if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
   if (sel.raceRef || sel.civRef || sel.costRef || sel.powerRef) {
@@ -123,7 +130,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -180,6 +187,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return !!s.cards[ex.src]?.tapped;
     case 'and':
       return evalCond(s, L, ex, c.a) && evalCond(s, L, ex, c.b);
+    case 'totalShieldsLE':
+      return me.shield.length + opp.shield.length <= c.n;
     case 'oppMore':
       return opp[c.zone].length > me[c.zone].length;
     case 'selfFaceUpShield': {
@@ -556,7 +565,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'breakShield': {
-        const o = mainOpp(s, ex.player);
+        const o = op.own ? ex.player : mainOpp(s, ex.player);
         const sh = s.players[o].shield;
         if (!sh.length) break;
         const n = Math.min(op.n, sh.length);
@@ -955,6 +964,38 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           abilities.push({ kind: 'ability', player: ex.player, src: ex.src, cid: c.cid, face: c.face, event: 'spell', text: `${g.name} ${face.label}: ${face.effect}`, effect: face.effect, optional: false, auto: false });
         }
         s.pending.unshift(...abilities);
+        break;
+      }
+      case 'peek': {
+        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const zone = s.players[who][op.zone];
+        const ids = op.n != null ? zone.slice(-op.n) : [...zone];
+        ex.looked = ids;
+        ex.it = [];
+        // 自分だけが見ている
+        const me = s.players[ex.player];
+        me.peek = [...new Set([...me.peek, ...ids])];
+        log(s, ex.player, `${op.who === 'self' ? '自分' : '相手'}の${op.zone === 'shield' ? 'シールド' : '山札'}を${ids.length}枚見た`);
+        break;
+      }
+      case 'powerPer': {
+        const n = Math.floor(candidates(s, L, ex, op.per).length / op.each) * op.delta;
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        for (const i of ids) {
+          if (s.cards[i].zone !== 'battle') continue;
+          s.cards[i].powerMod += n;
+          log(s, ex.player, `${q(nameOf(s, L, i))} のパワー${n >= 0 ? '+' : ''}${n}`);
+        }
+        break;
+      }
+      case 'multPower': {
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        for (const i of ids) {
+          if (s.cards[i].zone !== 'battle') continue;
+          const p0 = power(s, L, i);
+          s.cards[i].powerMod += p0 * (op.times - 1);
+          log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを${op.times}倍に`);
+        }
         break;
       }
       case 'skipTurn': {

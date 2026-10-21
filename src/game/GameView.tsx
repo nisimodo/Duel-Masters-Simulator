@@ -79,6 +79,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const logRef = useRef<HTMLDivElement>(null);
 
   const me = s && user ? s.players.findIndex((p) => p.uid === user.uid) : -1;
+  // 効果でシールドや山札を見た時は、自分にだけ表示する
+  const peekCount = me >= 0 ? (s?.players[me]?.peek.length ?? 0) : 0;
+  const peekPrev = useRef(peekCount);
+  useEffect(() => {
+    if (peekCount > peekPrev.current && !viewer) setViewer({ kind: 'peek', player: me });
+    peekPrev.current = peekCount;
+  }, [peekCount]);
   const viewerIdx = me >= 0 ? me : 0;
 
   // スリーブ・プレイマットを読み込む
