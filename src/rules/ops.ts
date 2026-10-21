@@ -154,6 +154,8 @@ export type Op =
   | { op: 'topOrBottom'; target: Target; chooser: 'self' | 'opp' }
   /** sel に合うカードの数だけ引く (each 体につき mult 枚) */
   | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
+  /** 山札の上からN枚を、選んだ自分のシールドの下に重ねる */
+  | { op: 'shieldStack'; n: number }
   /** パワーをNにする (このターン) */
   | { op: 'setPower'; target: Target; value: number }
   /** 相手とジャンケンで勝敗を決める (勝てば did) */

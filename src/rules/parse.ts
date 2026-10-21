@@ -232,6 +232,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^そのターンの終わりまで、/, 'このターン、')
     .replace(/^このターンの攻撃中、/, 'このターン、')
     .replace(/(\d+)(体|枚|つ)でもあれば、/, '$1$2以上あれば、')
+    .replace(/^(この|その)クリーチャーは、次の(自分|相手)のターンのはじめまで、?(.+)$/, '次の$2のターンのはじめまで、$1クリーチャーは$3')
+    .replace(/、それぞれ新しいシールドとして/, '、新しいシールドとして')
+    .replace(/^(自分の)?山札の上から(\d+)枚まで、/, '自分の山札の上から$2枚を')
     .replace(/^自分の山札のカードを、?上から(\d+)枚表向きにする$/, '自分の山札の上から$1枚を表向きにする')
     .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
     .replace(/(その|選んだ|選ばれた)種族の/g, '〈種族〉の')
@@ -378,10 +381,50 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = dp && parseSel(`${dp[1]}の${dp[2]}`);
     if (dp && sel) return [{ op: 'drawPer', sel, each: +dp[3], mult: +dp[4] }];
   }
-  // 一時的に離れない
+  // 一時的な能力 「次の自分のターンのはじめまで、このクリーチャーは離れない/破壊されない/すべてのバトルに勝つ/相手に選ばれず、攻撃されない」
   {
-    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、このクリーチャーは(?:バトルゾーンを)?離れない$/);
-    if (nl) return [{ op: 'grant', target: { ref: 'self' }, kws: ['離れない'], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その)クリーチャーは、?(.+)$/);
+    const map: [RegExp, string[]][] = [
+      [/^(バトルゾーンを)?離れない$/, ['離れない']],
+      [/^破壊されない$/, ['破壊されない']],
+      [/^すべてのバトルに勝つ$/, ['すべてのバトルに勝つ']],
+      [/^相手に選ばれず、攻撃されない$/, ['選ばれない', '攻撃されない']],
+      [/^相手に選ばれない$/, ['選ばれない']],
+      [/^攻撃されない$/, ['攻撃されない']],
+    ];
+    const hit = nl && map.find(([re]) => re.test(nl[3]));
+    if (nl && hit) return [{ op: 'grant', target: { ref: nl[2] === 'この' ? 'self' : 'it' }, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+  }
+  // シールドを選んで墓地・手札へ
+  {
+    const sh = s.match(/^(?:その中から)?(\d+|好きな)枚(?:数)?を?裏向きのまま選び、(?:自分の)?(墓地に置く|手札に加える)$/) ?? s.match(/^自分のシールドから(好きな)枚数を裏向きのまま選び、(?:自分の)?(手札に加える|墓地に置く)$/);
+    if (sh)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card' }, count: { n: sh[1] === '好きな' ? 99 : +sh[1], upTo: sh[1] === '好きな' }, chooser: 'self' }, purpose: 'benefit', prompt: '自分のシールドを選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: /墓地/.test(sh[2]) ? 'grave' : 'hand' },
+      ];
+  }
+  // シールドの下に重ねる
+  {
+    const ss = s.match(/^自分の山札の上から(\d+)枚(?:目)?を、?裏向きのまま、?自分のシールド(?:いずれか|(?:\d+)枚)の下に置く$/);
+    if (ss) return [{ op: 'shieldStack', n: +ss[1] }];
+  }
+  // 山札の上を見て/表向きにして、そのうちのN枚を〜 / このクリーチャーの下に置く
+  {
+    const lk = s.match(/^自分の山札の上から(\d+)枚を見て、(?:そのうちの|その中から)(\d+)枚を(.+)$/);
+    const rest = lk && verbOps(lk[3], { ref: 'it' });
+    if (lk && rest) {
+      ctx.looked = true;
+      return [{ op: 'top', n: +lk[1], to: 'look', who: 'self' }, { op: 'choose', target: { ref: 'looked', count: { n: +lk[2], upTo: false } }, purpose: 'benefit', prompt: s0 }, ...rest];
+    }
+    if (/^自分の山札の上から(\d+)枚を見て、好きな順序で(元に|山札の上に)?戻す$/.test(s)) return [{ op: 'top', n: +s.match(/(\d+)枚/)![1], to: 'look', who: 'self' }, { op: 'note', text: '好きな順序で戻した' }];
+    const sv = s.match(/^自分の山札の上から(\d+)枚(?:目)?を(?:見せる|表向きにする)$/);
+    if (sv) {
+      ctx.looked = true;
+      return [{ op: 'top', n: +sv[1], to: 'reveal', who: 'self' }];
+    }
+    const su = s.match(/^自分の山札の上から(\d+)枚(?:目)?を表向きに(?:して|し、)このクリーチャーの下に置く$/);
+    if (su) return [{ op: 'top', n: +su[1], to: 'reveal', who: 'self' }, { op: 'stackUnder', what: 'it' }];
   }
   if (/^相手はそれを(?:自身の)?山札の上か下に置く$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'it' }, chooser: 'opp' }];
   if (/^(残り|見せたカードはすべて、|残りのカード)を?、?好きな順序で山札の上か下(のどちらか)?に(置く|戻す)$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'rest' }, chooser: 'self' }];
@@ -780,7 +823,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^そのクリーチャーとこのクリーチャーを破壊する$/.test(s)) return [{ op: 'destroy', target: { ref: 'it' } }, { op: 'destroy', target: { ref: 'self' } }];
 
   // ---- シールドをブレイク (このクリーチャーは相手のシールドをNつブレイクする) ----
-  if ((m = s.match(new RegExp(`^このクリーチャーは(?:相手の)?シールドを${N}(?:つ|枚)ブレイクする$`)))) return [{ op: 'breakShield', n: +m[1] }];
+  if ((m = s.match(new RegExp(`^(?:この|その)クリーチャーは、?(?:相手の)?シールドを${N}(?:つ|枚)ブレイクする$`)))) return [{ op: 'breakShield', n: +m[1] }];
 
   // ---- カードを引く ----
   if ((m = s.match(new RegExp(`^カードを${N}枚(まで)?引く$`)))) return [{ op: 'draw', n: +m[1], upTo: !!m[2], who: 'self' }];

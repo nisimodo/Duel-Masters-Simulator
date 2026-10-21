@@ -181,7 +181,7 @@ export function moveCard(
       return 'battle';
     }
     // 破壊されない
-    if (to === 'grave' && own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow))) {
+    if (to === 'grave' && (own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow)) || (c.grants ?? []).some((g) => g.kws.includes('破壊されない')))) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊されない`);
       return 'battle';
     }
@@ -321,7 +321,7 @@ export function moveCard(
       s.players[uc.owner].battle.push(u);
     }
   }
-  const under = from === 'battle' ? [...c.under] : [];
+  const under = from === 'battle' || from === 'shield' ? [...c.under] : [];
   detach(s, iid);
   if (from === 'battle') {
     c.odrive = undefined;
@@ -1120,7 +1120,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
-      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked')) continue;
+      if (tc.justDive != null || isSealed(s, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked') || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない'))) continue;
       if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };

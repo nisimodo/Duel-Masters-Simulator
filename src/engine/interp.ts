@@ -288,6 +288,19 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.shift();
     ex.did = !!answer.yes;
     if (answer.yes) ex.ops.unshift(...op.body);
+  } else if (op.op === 'shieldStack') {
+    ex.ops.shift();
+    const host = (answer.picks ?? [])[0] ?? s.players[ex.player].shield[0];
+    const hc = host != null ? s.cards[host] : undefined;
+    const deck = s.players[ex.player].deck;
+    for (let k = 0; hc && k < op.n && deck.length; k++) {
+      const t = deck.pop()!;
+      s.cards[t].zone = 'under';
+      s.cards[t].parent = host!;
+      s.cards[t].faceUp = false;
+      hc.under.push(t);
+    }
+    if (hc) log(s, ex.player, `シールドの下に${op.n}枚重ねた`);
   } else if (op.op === 'topOrBottom') {
     ex.ops.shift();
     const top = (answer.options ?? [1])[0] === 0;
@@ -903,6 +916,12 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         ex.valueLabels = ['山札の上', '山札の下'];
         ex.pendingIds = ids;
         ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
+        return;
+      }
+      case 'shieldStack': {
+        const pl = s.players[ex.player];
+        if (!pl.shield.length) break;
+        ask(s, ex, { player: ex.player, mode: 'cards', prompt: `${ex.name}: 下に重ねるシールドを選ぶ`, options: [...pl.shield], min: 1, max: 1, purpose: 'benefit' });
         return;
       }
       case 'setPower': {

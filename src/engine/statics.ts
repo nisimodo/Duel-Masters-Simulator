@@ -211,6 +211,7 @@ export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: numbe
   if (c.zone === 'battle' && isSealed(s, iid)) return false;
   if (c.owner === chooser || c.zone !== 'battle') return true;
   if (c.justDive != null) return false;
+  if ((c.grants ?? []).some((g) => g.kws.includes('選ばれない'))) return false;
   return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell));
 }
 
