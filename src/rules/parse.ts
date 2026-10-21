@@ -185,6 +185,7 @@ function parseCond(c: string): Cond | null {
     const sel = parseSel(m[2], { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] });
     if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
   }
+  if (/^バトルゾーンにある自分のクリーチャーがこのクリーチャーだけであ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, cmp: '<=', n: 0 };
   if (/^このクリーチャーが(?:自分の)?墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
@@ -265,6 +266,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/「([^」]+)」付きであれば/, '「$1」を持つカードであれば')
+    .replace(/「([^」]+)」付きの?/g, '「$1」を持つ')
+    .replace(/^(パワー|コスト)の合計が(\d+)以下になるように(.+?)を99枚まで選び、/, '$3を、$1の合計が$2以下になるように好きな数選び、')
+    .replace(/^このようにして(.+?)をバトルゾーンに出した場合、/, 'それが$1であれば、')
     .replace(/クリ[―‐-]チャー/g, 'クリーチャー')
     .replace(/^自分のターンの終わりに、/, 'このターンの終わりに、')
     .replace(/^([^、]+?)より(多|少な)い場合、/, '$1より$2ければ、')
@@ -404,6 +409,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^自分はゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  {
+    const fl = s.match(/^このクリーチャーを《[^》]+》(?:の?ほう|側)に裏返(す|してもよい)$/);
+    const f: Op[] = [{ op: 'flip', target: { ref: 'self' } }];
+    if (fl) return fl[1] === 'す' ? f : [{ op: 'optional', body: f, prompt: s0 }];
+  }
   if (/^(?:その|それと同じ)枚数と同じ数のカードを引く$|^その枚数と同じ枚数のカードを引く$|^それと同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItPlus', plus: 0 }];
   if (/^(この|その)クリーチャーは、?可能(であれば|なら)ブロックする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['強制ブロック'], until: 'nextOwnTurn' }];
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
@@ -1419,11 +1429,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
 
   // ---- パワーの合計で選ぶ ----
-  if ((m = s.match(new RegExp(`^(.+?)を、?パワーの合計が${N}以下になるように好きな数選び、(.+)$`)))) {
+  if ((m = s.match(new RegExp(`^(.+?)を、?(パワー|コスト)の合計が${N}以下になるよう(?:に)?好きな数選び、(.+)$`)))) {
     const sel = parseSel(m[1]);
-    const ops = sel && verbOps(m[3], { ref: 'it' });
+    const ops = sel && verbOps(m[4], { ref: 'it' });
+    const count: Count = m[2] === 'パワー' ? { n: 99, upTo: true, sumPowerMax: +m[3] } : { n: 99, upTo: true, sumCostMax: +m[3] };
     if (sel && ops)
-      return [{ op: 'choose', target: { ref: 'sel', sel, count: { n: 99, upTo: true, sumPowerMax: +m[2] }, chooser: 'self' }, purpose: purposeOf(sel, m[3]), prompt: `パワーの合計が${m[2]}以下になるように選ぶ` }, ...ops];
+      return [{ op: 'choose', target: { ref: 'sel', sel, count, chooser: 'self' }, purpose: purposeOf(sel, m[4]), prompt: `${m[2]}の合計が${m[3]}以下になるように選ぶ` }, ...ops];
   }
 
   // ---- 「その〇〇を〜」 (直前に表向きにした/選んだカード) ----
