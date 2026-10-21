@@ -921,6 +921,11 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
         return;
       }
+      case 'drawItPlus': {
+        const d = drawCards(s, ex.player, ex.it.length + op.plus);
+        log(s, ex.player, `カードを${d}枚引いた`);
+        break;
+      }
       case 'atTurnEnd': {
         (s.endTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
         break;

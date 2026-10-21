@@ -1000,6 +1000,13 @@ function advance(s: GameState, L: Lookup): boolean {
     }
     if (a.step === 'breaking' || a.step === 'done') {
       s.attack = null;
+      // 「攻撃の終わりに、アンタップする」
+      const ac = s.cards[a.attacker];
+      if (ac?.zone === 'battle' && (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ'))) {
+        ac.tapped = false;
+        ac.grants = ac.grants!.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
+        log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ`);
+      }
       // キリフダッシュ: シールドをブレイクした攻撃の終わりに召喚できる
       if (a.broke) offerKirifu(s, L, a.owner);
       // 「攻撃の後、〜」を実行

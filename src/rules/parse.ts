@@ -82,6 +82,8 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の)?シールド化する$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^タップする$/)) return [{ op: 'tap', target }];
   if (m(/^タップまたはアンタップする$/)) return [{ op: 'toggleTap', target }];
+  if (m(/^このクリーチャーとバトルさせる$/)) return [{ op: 'battle', a: { ref: 'self' }, b: target }];
+  if (m(/^(《[^》]+》のほう|フォートレス側|ウエポン側)に裏返す$/)) return [{ op: 'flip', target }];
   if (m(/^アンタップする$/)) return [{ op: 'untap', target }];
   if (m(/^(自分の)?(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   // ドラグハート・ウエポン 「出し、このクリーチャーに装備する」「その選んだクリーチャーに装備して出す」(出す時に装備する)
@@ -550,6 +552,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     }
   }
   if (/^(その|それら)2体をバトルさせる$/.test(s)) return [{ op: 'battle', a: { ref: 'saved' }, b: { ref: 'it' } }];
+  // 手札を捨てて、その枚数よりN枚多く引く
+  {
+    const dd = s.match(/^自分の手札を(\d+)枚まで捨て、その枚数より(\d+)枚多くカードを引く$/);
+    if (dd)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +dd[1], upTo: true }, chooser: 'self' }, purpose: 'sacrifice', prompt: '捨てる手札を選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: 'grave' },
+        { op: 'drawItPlus', plus: +dd[2] },
+      ];
+    if (/^(その後、)?それらを好きな順序で(山札の上に)?戻す$/.test(s)) return [{ op: 'note', text: '好きな順序で戻した' }];
+    // 「このターン、そのクリーチャーの最初の(次の)攻撃の終わりに、そのクリーチャーをアンタップする」
+    const au = s.match(/^このターン、(この|その)クリーチャーの(?:最初|次)の攻撃の終わりに、(?:この|その)クリーチャーをアンタップする$/);
+    if (au) return [{ op: 'grant', target: { ref: au[1] === 'この' ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
+  }
   // ターンの終わりに
   {
     const te = s.match(/^(?:この|その)ターンの終わりに、(.+)$/);
