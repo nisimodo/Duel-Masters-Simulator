@@ -146,6 +146,8 @@ export type StaticSpec =
   | { s: 'gBreaker' }
   /** このクリーチャーは召喚できない */
   | { s: 'noSummon' }
+  /** 輪廻∞: このカードの呪文側を、バトルゾーンに置いたまま (コストを支払って) 唱えてもよい。そうした時 bonus */
+  | { s: 'rinne'; bonus?: string }
   /** 相手のクリーチャーは出たターン、自分を攻撃できない */
   | { s: 'oppNewNoAttack' }
   /** 条件つきで、このクリーチャーの召喚コストを増減する */
@@ -325,6 +327,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  if ((m = t0.match(/^輪廻∞[:：]このカードの呪文側を、?バトルゾーンに置いたまま唱えてもよい。?(?:そうした時、(.+))?$/))) return [{ s: 'rinne', bonus: m[1] }];
   if (/^相手のクリーチャーは、?(?:バトルゾーンに)?出たターン、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNewNoAttack' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)ステルス/))) return [{ s: 'stealth', civ: CIV_OF[m[1]] }];
   if ((m = t0.match(/^((?:光|水|闇|火|自然)(?:・(?:光|水|闇|火|自然))*)スレイヤー/))) return [{ s: 'civSlayer', civs: m[1].split('・').map((x) => CIV_OF[x]) }];

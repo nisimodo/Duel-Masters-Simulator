@@ -107,8 +107,11 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.mono && civs.length !== 1) return false;
   if (sel.races?.length && !sel.races.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.racesNot?.length && sel.racesNot.some((r) => f.races.some((x) => x.includes(r)))) return false;
-  if (sel.nameHas && !f.name.includes(sel.nameHas) && !card.name.includes(sel.nameHas)) return false;
-  if (sel.name && f.name !== sel.name && card.name !== sel.name && !card.faces.some((x) => x.name === sel.name)) return false;
+  if (sel.nameHas && ![f.name, card.name].some((x) => x.replace(/\s+/g, '').includes(sel.nameHas!.replace(/\s+/g, '')))) return false;
+  if (sel.name) {
+    const want = sel.name.replace(/\s+/g, '');
+    if (![f.name, card.name, ...card.faces.map((x) => x.name)].some((x) => x.replace(/\s+/g, '') === want)) return false;
+  }
   if (sel.costMin != null && f.cost < sel.costMin) return false;
   if (sel.costMax != null && f.cost > sel.costMax) return false;
   const c = s.cards[iid];

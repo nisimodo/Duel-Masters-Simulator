@@ -303,6 +303,8 @@ export type Action =
     }
   | { t: 'hyperize'; iid: number; taps: number[] }
   | { t: 'tapAbility'; iid: number }
+  /** 輪廻∞: バトルゾーンのこのカードの呪文側を唱える */
+  | { t: 'rinne'; iid: number; pay?: number[] }
   /** ダイナモ: iid をタップして onto にパワーと能力を加える */
   | { t: 'dynamo'; iid: number; onto: number }
   /** クロスギアをクリーチャーにクロスする */

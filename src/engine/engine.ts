@@ -1679,6 +1679,25 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       log(s, p, `ダイナモ: ${q(nameOf(s, L, a.iid))} のパワー${pw}と能力を ${q(nameOf(s, L, a.onto))} に加えた`);
       return null;
     }
+    case 'rinne': {
+      const c = s.cards[a.iid];
+      const card = L(c.cid);
+      const sp = (faceOf(s, L, a.iid)?.statics ?? []).find((x) => x.s === 'rinne');
+      const fi = card ? card.faces.findIndex((f) => f.isSpell) : -1;
+      if (c.owner !== p || c.zone !== 'battle' || !card || !sp || sp.s !== 'rinne' || fi < 0) return '輪廻∞を使えません';
+      if (s.turnStep !== 'main' || s.attack) return '今は使えません';
+      const sface = card.faces[fi];
+      const cost = costOf(s, L, p, a.iid, fi);
+      const pay = a.pay ?? autoPay(s, L, p, sface.civs ?? card.civs, cost);
+      if (!pay || pay.length < cost || pay.some((m) => s.cards[m].owner !== p || s.cards[m].zone !== 'mana' || s.cards[m].tapped)) return 'マナが足りません';
+      for (const m of pay) s.cards[m].tapped = true;
+      log(s, p, `輪廻∞: ${q(sface.name)} をバトルゾーンに置いたまま唱えた`);
+      const lines = spellEffectLines(sface.text);
+      if (lines.length) s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: lines.join('\n'), effect: lines.join('\n'), optional: false, auto: false });
+      if (sp.bonus) s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: c.face, event: 'spell', text: `輪廻∞: ${sp.bonus}`, effect: sp.bonus, optional: false, auto: false });
+      fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
+      return null;
+    }
     case 'tapAbility': {
       const c = s.cards[a.iid];
       const f = faceOf(s, L, a.iid);

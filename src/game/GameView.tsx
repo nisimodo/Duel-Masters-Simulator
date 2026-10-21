@@ -279,6 +279,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
               onClick: () => setPick({ title: 'パワーと能力を加えるダイナモを選ぶ', n: 1, cands, picks: [], done: ([onto]) => act({ t: 'dynamo', iid, onto }) }),
             });
           }
+          if ((f.statics ?? []).some((x) => x.s === 'rinne')) items.push({ label: '輪廻∞: 呪文側を唱える (コストは支払う)', disabled: !isMyTurn, onClick: () => act({ t: 'rinne', iid }) });
           if (f.tapAbility) items.push({ label: 'タップして能力を使う (攻撃のかわり)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'tapAbility', iid }) });
           const hz = card.hyper && c.face === 0 ? card.faces[0].statics.find((x) => x.s === 'hyperize') : undefined;
           if (hz && hz.s === 'hyperize') {

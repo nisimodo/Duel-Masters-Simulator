@@ -135,6 +135,15 @@ const db = buildDB(
     cr('sinka', 1, 1000, ['シンカパワー：このクリーチャーが進化する時、カードを1枚引く。']),
     { id: 'evo1', n: 'evo1', img: '', f: [{ n: 'evo1', t: '進化クリーチャー', c: 'F', co: 1, p: '5000', r: ['テスト'], x: ['進化-自分のテスト1体の上に置く。'] }] },
     cr('fort', 1, 1000, ['フォートE：テスト(このクリーチャーをバトルゾーンに出した時、テストを自分のマナゾーンでタップしてこのクリーチャーを召喚していた場合、このクリーチャーは次の能力を得る)', 'このクリーチャーのパワーは+5000される。']),
+    {
+      id: 'rin',
+      n: 'rin',
+      img: '',
+      f: [
+        { n: 'rin', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['テスト'], x: ['輪廻∞：このカードの呪文側を、バトルゾーンに置いたまま唱えてもよい（コストは支払う）。そうした時、カードを1枚引く。'] },
+        { n: 'rin呪文', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['カードを1枚引く。'] },
+      ],
+    },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -505,6 +514,17 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid, face: 0, pay: freeMana(s, 0, 1) });
     for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
     expect(power(s, L, iid)).toBe(6000);
+  });
+
+  it('輪廻∞: casts the spell side while staying in the battle zone', () => {
+    let s = setup([{ p: 0, cid: 'rin', zone: 'battle' }]);
+    const iid = find(s, 0, 'battle', 'rin')!;
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'rinne', iid });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(s.cards[iid].zone).toBe('battle');
+    expect(s.players[0].hand.length).toBe(hand + 2);
+    expect(s.players[0].mana.filter((m) => s.cards[m].tapped).length).toBe(1);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {
