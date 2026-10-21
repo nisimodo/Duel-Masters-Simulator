@@ -289,6 +289,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^カード名を(?:ひとつ|1つ)選んで言う$/, 'カード名を1つ選ぶ')
+    .replace(/(?:選んだ|選ばれた)(?:カード名と同じカード|カードと同じ名前の(?:カード)?|名前を持つカード|カード)/g, '〈名前〉のカード')
     .replace(/^この攻撃中に自分が「ニンジャ」能力を使っていなければ、/, '')
     .replace(/^このターンが終わる時、/, 'このターンの終わりに、')
     .replace(/その(?:ドラゴン|[゠-ヿー・]{3,})を(?=(?:自分の|持ち主の)?(?:墓地|手札|マナゾーン|山札))/, 'そのクリーチャーを')
@@ -436,6 +438,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   {
     const cv = s.match(/^(?:(.+?)以外の)?(種族|文明)を(?:ひとつ|1つ)選ぶ$/);
     if (cv) return [{ op: 'chooseValue', kind: cv[2] === '種族' ? 'race' : 'civ', exclude: cv[1], hostile: false }];
+    if (/^カード名を1つ選ぶ$/.test(s)) return [{ op: 'chooseValue', kind: 'name', hostile: false }];
     const nv = s.match(/^(?:(\d+)以下の)?数字を(?:ひとつ|1つ)選ぶ$/);
     if (nv) return [{ op: 'chooseValue', kind: 'number', max: nv[1] ? +nv[1] : undefined, hostile: false }];
   }
@@ -500,6 +503,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^相手は、?その中から、?〈名前〉のカードをすべて捨てる$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'card', nameRef: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }];
   {
     const nc = s.match(/^手札にあるこのクリーチャーと、自分の(.+?)を?(\d+)体、?を?入れ替え(る|てもよい)$/);
     const sel = nc && parseSel('自分の' + nc[1].replace(/でメカまたはシノビの/, 'のメカまたはシノビの'));

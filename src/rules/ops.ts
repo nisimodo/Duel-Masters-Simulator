@@ -34,6 +34,8 @@ export interface Sel {
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
   raceRef?: boolean;
+  /** 選んだカード名 */
+  nameRef?: boolean;
   civRef?: boolean;
   costRef?: boolean;
   powerRef?: boolean;
@@ -217,7 +219,7 @@ export type Op =
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
   | { op: 'unseal'; from: 'self' | 'any'; n: number }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
-  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number'; max?: number; exclude?: string; hostile: boolean }
+  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** このターンの終わりに、このクリーチャーを山札の下に置く */

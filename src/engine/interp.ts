@@ -85,6 +85,11 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   }
   if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
   if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
+  if (sel.nameRef) {
+    const nm = s.chosenValue?.name;
+    const card = L(s.cards[iid].cid);
+    if (!nm || !card || !card.faces.some((x) => x.name === nm)) return false;
+  }
   if (sel.raceRef || sel.civRef || sel.costRef || sel.powerRef) {
     const cv = s.chosenValue ?? {};
     const f = L(s.cards[iid].cid)?.faces[s.cards[iid].face];
@@ -141,7 +146,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -368,7 +373,7 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.shift();
     const v = (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
     if (v != null) {
-      s.chosenValue = op.kind === 'race' ? { race: v } : op.kind === 'civ' ? { civ: v } : { num: +v };
+      s.chosenValue = op.kind === 'race' ? { race: v } : op.kind === 'civ' ? { civ: v } : op.kind === 'name' ? { name: v } : { num: +v };
       log(s, ex.player, `${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : '数字'}「${v}」を選んだ`);
     }
   } else if (op.op === 'modal') {
@@ -381,7 +386,16 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
 }
 
 /** 種族・文明・数字の選択肢 (種族はバトルゾーンと手札にあるものを多い順に) */
-export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number', max?: number, exclude?: string): string[] {
+export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number' | 'name', max?: number, exclude?: string): string[] {
+  // カード名: ゲームに使われているカードの名前 (相手のカードを先に)
+  if (kind === 'name') {
+    const names = new Set<string>();
+    for (const c of s.cards) {
+      const card = L(c.cid);
+      if (card) for (const f of card.faces) names.add(f.name);
+    }
+    return [...names].slice(0, 120);
+  }
   if (kind === 'civ') return ['光', '水', '闇', '火', '自然'].filter((c) => !exclude?.includes(c));
   if (kind === 'number') return Array.from({ length: (max ?? 12) + 1 }, (_, i) => String(i));
   const count = new Map<string, number>();
@@ -812,7 +826,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ask(s, ex, {
           player: ex.player,
           mode: 'modal',
-          prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : '数字'}を1つ選ぶ`,
+          prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}を1つ選ぶ`,
           options: [],
           labels,
           min: 1,

@@ -240,7 +240,7 @@ export interface GameState {
   /** 次のターンのはじめに支払うコスト (逆転撃) */
   debts?: { player: number; cost: number }[];
   /** 直前に選んだ種族・文明・数字 */
-  chosenValue?: { race?: string; civ?: string; num?: number };
+  chosenValue?: { race?: string; civ?: string; num?: number; name?: string };
   /** このターンに誘発した能力の数 (無限ループ防止) */
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
