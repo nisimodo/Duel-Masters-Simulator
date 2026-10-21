@@ -15,6 +15,7 @@ export function normText(s: string): string {
     .replace(/自分自身/g, '自身')
     .replace(/　/g, ' ')
     // 「覚醒-自分のターンのはじめに、〜裏返す」「龍解:〜」は、そのまま誘発型能力として読む
+    .replace(/^\s*覚醒\s*\(サイキック\)\s*リンク\s*[-ー―:]\s*/, '')
     .replace(/^\s*(覚醒|龍解)\s*[-ー―:]\s*/, '')
     .trim();
 }
@@ -65,6 +66,8 @@ const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^超魂X/, 'soul'],
 ];
 export const TAP_ABILITY = /^このクリーチャーで攻撃する(かわりに|代わりに)、タップして次の能力を使ってもよい/;
+/** サイレントスキル: 自分のターンのはじめに、タップしていればアンタップするかわりに次の能力を使ってもよい */
+const SILENT_SKILL = /^サイレントスキル/;
 
 /**
  * カードのテキスト行を、常に有効な行・条件つき/共有の能力 (ウェーブストライカー・アクセル・超魂X・サバイバーのoS能力)・
@@ -76,6 +79,7 @@ export function splitAbilities(lines: string[]): {
   main: string[];
   groups: { kind: AbilityGroupKind; lines: string[] }[];
   tap: string | null;
+  silent: string | null;
   marked: Record<string, string[]>;
 } {
   const main: string[] = [];
@@ -88,8 +92,27 @@ export function splitAbilities(lines: string[]): {
   let cur: AbilityGroupKind | null = null;
   let tap: string[] | null = null;
   let inTap = false;
+  let silent: string[] | null = null;
+  let inSilent = false;
   for (const raw of lines) {
     const t = normText(raw).trim();
+    if (inSilent) {
+      if (!silent!.length) {
+        silent!.push(t.replace(/。$/, ''));
+        continue;
+      }
+      if (/^[▼▶►]/.test(t)) {
+        silent!.push('▼' + t.replace(/^[▼▶►]/, ''));
+        continue;
+      }
+      inSilent = false;
+    }
+    if (SILENT_SKILL.test(t)) {
+      main.push(raw);
+      silent = [];
+      inSilent = true;
+      continue;
+    }
     if (inTap) {
       if (!tap!.length) {
         tap!.push(t.replace(/。$/, ''));
@@ -130,5 +153,5 @@ export function splitAbilities(lines: string[]): {
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, marked };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked };
 }

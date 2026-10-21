@@ -137,7 +137,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       if (own || /各|すべての|いずれか/.test(clause) || !opp) ev.add('turnEndOwn');
       if (opp || /各|すべての|いずれか/.test(clause)) ev.add('turnEndOpp');
     }
-    const cross = /クロスしたクリーチャー/.test(clause);
+    const cross = /(クロスした|付けた|装備した)クリーチャー/.test(clause);
     if (/(出た|出した|召喚した)時/.test(clause)) {
       if (self) ev.add('enter');
       else if (/他のクリーチャーが/.test(clause) && !own && !opp) (ev.add('otherOwnEnter'), ev.add('oppEnter'));

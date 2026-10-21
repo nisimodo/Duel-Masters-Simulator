@@ -57,6 +57,8 @@ export interface Face {
   groups?: AbilityGroup[];
   /** 「攻撃するかわりに、タップして次の能力を使ってもよい」の効果 */
   tapAbility?: string;
+  /** サイレントスキルで使う能力 */
+  silentSkill?: string;
   /** 記号つきの能力 (q / oP / oB / xB / ◇)。他の能力から「〜能力を使う」で使う */
   marked?: Record<string, string>;
 }
@@ -125,6 +127,7 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),
     groups: groups.length ? groups : undefined,
     tapAbility: sp.tap ?? undefined,
+    silentSkill: sp.silent ?? undefined,
     marked: Object.keys(sp.marked).length ? Object.fromEntries(Object.entries(sp.marked).map(([k, v]) => [k, v.join('。')])) : undefined,
   };
 }

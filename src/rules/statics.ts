@@ -81,7 +81,9 @@ export type StaticSpec =
   /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
   | { s: 'lure' }
   /** 相手は呪文を唱えることができない */
-  | { s: 'oppSpellLock' };
+  | { s: 'oppSpellLock' }
+  /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
+  | { s: 'linkRelease' };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -95,7 +97,7 @@ function floorOf(t: string): number {
 function target(phrase: string): StaticTarget | null {
   const p = phrase.replace(/\s+/g, '').replace(/^バトルゾーンにある/, '');
   if (/^この(クリーチャー|タマシード|カード)$/.test(p)) return { t: 'self' };
-  if (/^これを(クロス|付け|装備)した(クリーチャー)?$/.test(p)) return { t: 'cross' };
+  if (/^これを(クロスした|付けた|装備した)(クリーチャー)?$/.test(p)) return { t: 'cross' };
   const m = p.match(/^(.+?)(?:すべて|全体)?$/);
   if (m) {
     const sel = parseSel(m[1].replace(/すべて$/, ''));
@@ -139,6 +141,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^ギャラクシールド\[[a-z]*(\d+)\]/))) return [{ s: 'galaxy', cost: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
+  if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^このクリーチャーは、?可能(であれば|なら(ば)?)、?毎ターン攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];
   if (/^相手は呪文を唱えることができない$/.test(t0)) return [{ s: 'oppSpellLock' }];

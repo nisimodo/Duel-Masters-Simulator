@@ -534,6 +534,39 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         moveCard(s, L, ex.src, zone);
         break;
       }
+      case 'superLink': {
+        const root = ex.src;
+        const rc = s.cards[root];
+        const card = rc && L(rc.cid);
+        if (!card || rc.zone !== 'battle' || rc.face !== 0 || card.faces.length < 2) break;
+        const pl = s.players[rc.owner];
+        const cells: number[] = [];
+        for (const n of op.names) {
+          const b = pl.battle.find((x) => x !== root && !cells.includes(x) && (L(s.cards[x].cid)?.faces[s.cards[x].face]?.name ?? '').includes(n));
+          if (b == null) break;
+          cells.push(b);
+        }
+        if (cells.length !== op.names.length) break;
+        const tapped = [root, ...cells].some((x) => s.cards[x].tapped);
+        const sick = [root, ...cells].every((x) => s.cards[x].sick);
+        for (const b of cells) {
+          pl.battle = pl.battle.filter((x) => x !== b);
+          const bc = s.cards[b];
+          rc.under.push(...bc.under);
+          for (const u of bc.under) s.cards[u].parent = root;
+          bc.under = [];
+          bc.zone = 'under';
+          bc.parent = root;
+          bc.cellOf = root;
+          bc.face = 1;
+        }
+        rc.under.push(...cells);
+        rc.face = 1;
+        rc.tapped = tapped;
+        rc.sick = sick;
+        log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
+        break;
+      }
       case 'toggleTap': {
         const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
         for (const i of ids) {

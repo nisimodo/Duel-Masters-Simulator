@@ -107,6 +107,8 @@ export type Op =
   | { op: 'payPlay'; cost: number }
   /** このクリーチャーと it を入れ替える (it はバトルゾーンへ、このクリーチャーは it がいたゾーンへ) */
   | { op: 'swap' }
+  /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
+  | { op: 'superLink'; names: string[] }
   /** タップしていればアンタップ、していなければタップ */
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */

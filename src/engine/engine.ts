@@ -165,6 +165,25 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // リンク解除: サイキック・セル1枚 (このカード) を超次元ゾーンへ戻し、残りは裏返ってバトルゾーンに残る
+    const cells = c.under.filter((u) => s.cards[u].cellOf === iid);
+    if (cells.length && own.some((x) => x.s === 'linkRelease')) {
+      const pl0 = s.players[c.owner];
+      for (const u of cells) {
+        const uc = s.cards[u];
+        c.under = c.under.filter((x) => x !== u);
+        uc.zone = 'battle';
+        uc.parent = null;
+        uc.cellOf = undefined;
+        uc.face = 0;
+        uc.tapped = c.tapped;
+        uc.sick = false;
+        pl0.battle.push(u);
+      }
+      log(s, c.owner, `リンク解除: ${q(card!.faces[c.face].name)} のサイキック・セルが裏返ってバトルゾーンに残る`);
+      c.face = 0;
+      return moveCard(s, L, iid, 'hyper', { ...opts, noReplace: true });
+    }
     // 解除: 離れるかわりにコストの小さいほうに裏返す
     if (own.some((x) => x.s === 'release') && card && card.faces.length > 1) {
       const costs = card.faces.map((f) => f.cost);
@@ -331,6 +350,13 @@ export function moveCard(
     }
   }
   return dest;
+}
+
+/** ブレイクするシールドの数 (パワード・ブレイカー: パワー6000ごとにさらに1つ) */
+export function breakCount(s: GameState, L: Lookup, iid: number): number {
+  const k = kwOf(s, L, iid);
+  const powered = (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'poweredBreaker') || staticKws(s, L, iid).includes('パワード・ブレイカー') || (s.cards[iid].grants ?? []).some((g) => g.kws.includes('パワード・ブレイカー'));
+  return powered ? k.breaker + Math.floor(power(s, L, iid, true) / 6000) : k.breaker;
 }
 
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
@@ -633,11 +659,21 @@ function startTurn(s: GameState, L: Lookup) {
   pl.charged = false;
   s.phase = 'main';
   s.turnStep = 'start';
+  // サイレントスキル: タップしていれば、アンタップするかわりに能力を使ってもよい
+  const silent = pl.battle.filter((b) => s.cards[b].tapped && !s.cards[b].noUntap && faceOf(s, L, b)?.silentSkill && programOf(faceOf(s, L, b)!.silentSkill!).complete);
+  for (const b of silent) s.cards[b].noUntap = true;
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
     if (c.noUntap) c.noUntap = false;
     else c.tapped = false;
     c.sick = false;
+  }
+  for (const b of silent) {
+    const f = faceOf(s, L, b)!;
+    startExec(s, L, p, b, [
+      { op: 'optional', body: programOf(f.silentSkill!).ops, prompt: `サイレントスキル: アンタップするかわりに「${f.silentSkill}」を使う` },
+      { op: 'if', cond: { c: 'did' }, body: [], else: [{ op: 'untap', target: { ref: 'self' } }] },
+    ], f.name);
   }
   // 「次の○○のターンのはじめまで」の制限を解除
   s.usedOnce = [];
@@ -1118,7 +1154,7 @@ function resolveAttack(s: GameState, L: Lookup) {
     lose(s, a.targetPlayer, 'ダイレクトアタック');
     return;
   }
-  const n = Math.min(kwOf(s, L, a.attacker).breaker, def.shield.length);
+  const n = Math.min(breakCount(s, L, a.attacker), def.shield.length);
   a.step = 'breaking';
   if (n < def.shield.length) {
     s.pending.unshift({ kind: 'breakSel', player: a.owner, target: a.targetPlayer, count: n });

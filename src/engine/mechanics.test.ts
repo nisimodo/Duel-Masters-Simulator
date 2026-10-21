@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, createGame, kwOf, power } from './engine';
+import { applyAction, breakCount, createGame, kwOf, power } from './engine';
 import type { Action, GameState } from './types';
 
 const cr = (id: string, cost: number, power: number, text: string[], civ = 'F') => ({
@@ -66,6 +66,27 @@ const db = buildDB(
     cr('lure', 1, 1000, ['相手のクリーチャーは、可能ならこのクリーチャーを攻撃する。']),
     { id: 'jc', n: 'jc', img: '', f: [{ n: 'jc', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['ジョーカーズ'], x: ['このクリーチャーが攻撃する時、このクリーチャーと自分のマナゾーンにあるコスト5以下のジョーカーズ1体を入れ替えてもよい。', 'スピードアタッカー'] }] },
     { id: 'jm', n: 'jm', img: '', f: [{ n: 'jm', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['ジョーカーズ'], x: [] }] },
+    {
+      id: 'cellA',
+      n: 'cellA',
+      img: '',
+      f: [
+        { n: 'セルA', t: 'サイキック・クリーチャー', c: 'F', co: 4, p: '4000', r: [], x: ['覚醒 (サイキック)リンク - 自分のターンのはじめに、バトルゾーンに自分の《セルB》があれば、そのクリーチャーとこのクリーチャーを裏返しリンクさせる。'] },
+        { n: 'スーパー', t: 'サイキック・スーパー・クリーチャー', c: 'F', co: 15, p: '20000', r: [], x: ['T・ブレイカー', 'リンク解除(このクリーチャーがバトルゾーンを離れる時、そのサイキック・セルのいずれか1枚を選んで超次元ゾーンに戻し、残りのカードを裏返す)'] },
+      ],
+    },
+    {
+      id: 'cellB',
+      n: 'cellB',
+      img: '',
+      f: [
+        { n: 'セルB', t: 'サイキック・クリーチャー', c: 'F', co: 7, p: '7000', r: [], x: [] },
+        { n: 'スーパー', t: 'サイキック・スーパー・クリーチャー', c: 'F', co: 15, p: '20000', r: [], x: ['T・ブレイカー'] },
+      ],
+    },
+    cr('silent', 2, 2000, ['サイレントスキル(自分のターンのはじめに、このクリーチャーがタップされていたら、アンタップするかわりに次の能力を使ってもよい)', 'カードを2枚引く。']),
+    { id: 'aura', n: 'aura', img: '', f: [{ n: 'aura', t: 'オレガ・オーラ', c: 'F', co: 2, p: '+6000', r: [], x: ['これを付けたクリーチャーのパワーを+6000する。', 'これを付けたクリーチャーに「パワード・ブレイカー」を与える。'] }] },
+    { id: 'grc', n: 'grc', img: '', f: [{ n: 'grc', t: 'GRクリーチャー', c: 'F', co: 2, p: '2000', r: [], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -407,5 +428,56 @@ describe('named mechanics', () => {
     }
     expect(s.cards[jm].zone).toBe('battle');
     expect(s.cards[jc].zone).toBe('mana');
+  });
+
+  it('覚醒リンク / リンク解除', () => {
+    let s = setup([
+      { p: 0, cid: 'cellA', zone: 'battle' },
+      { p: 0, cid: 'cellB', zone: 'battle' },
+    ]);
+    const a = find(s, 0, 'battle', 'cellA')!;
+    const b = find(s, 0, 'battle', 'cellB')!;
+    s = act(s, 0, { t: 'endTurn' });
+    for (let k = 0; k < 10 && s.cards[a].face === 0; k++) {
+      const top = s.pending[0];
+      if (top) s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+      else s = act(s, s.active, { t: 'endTurn' });
+    }
+    expect(s.cards[a].face).toBe(1);
+    expect(s.cards[b].cellOf).toBe(a);
+    expect(power(s, L, a)).toBe(20000);
+    s.active = 0;
+    s.pending = [];
+    s = act(s, 0, { t: 'move', iid: a, to: 'grave' });
+    expect(s.cards[a].zone).toBe('hyper');
+    expect(s.cards[b].zone).toBe('battle');
+    expect(s.cards[b].face).toBe(0);
+  });
+
+  it('サイレントスキル: stays tapped and uses the ability instead of untapping', () => {
+    let s = setup([{ p: 0, cid: 'silent', zone: 'battle', tapped: true }]);
+    const sl = find(s, 0, 'battle', 'silent')!;
+    s = act(s, 0, { t: 'endTurn' });
+    // 相手のターンを終える
+    for (let k = 0; k < 6 && s.active !== 0; k++) s = act(s, s.active, s.pending.length ? { t: 'resolve', use: true } : { t: 'endTurn' });
+    const hand = s.players[0].hand.length;
+    const top = s.pending[0];
+    expect(top?.kind).toBe('choice');
+    s = act(s, 0, { t: 'choose', yes: true, picks: [], options: [0] });
+    expect(s.cards[sl].tapped).toBe(true);
+    expect(s.players[0].hand.length).toBeGreaterThanOrEqual(hand + 2);
+  });
+
+  it('オーラ: attaches to a GR creature and grants パワード・ブレイカー', () => {
+    let s = setup([
+      { p: 0, cid: 'aura', zone: 'hand' },
+      { p: 0, cid: 'grc', zone: 'battle' },
+    ]);
+    const g = find(s, 0, 'battle', 'grc')!;
+    const au = find(s, 0, 'hand', 'aura')!;
+    s = act(s, 0, { t: 'play', iid: au, face: 0, pay: freeMana(s, 0, 2), evo: [g] });
+    expect(s.cards[au].parent).toBe(g);
+    expect(power(s, L, g)).toBe(8000);
+    expect(breakCount(s, L, g)).toBe(2);
   });
 });

@@ -52,7 +52,7 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
     }
     if (s.phase !== 'over') {
       unfinished++;
-      if (process.env.FUZZ_LOG) console.log('UNFINISHED', g, JSON.stringify(s.pending).slice(0, 300), s.log.slice(-12).map((x) => x.m));
+      console.log('UNFINISHED', g, JSON.stringify(s.pending).slice(0, 300), s.log.slice(-12).map((x) => x.m));
     }
   }
   console.error = origErr;
