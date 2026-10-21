@@ -1437,6 +1437,22 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     }
     moveCard(s, L, sh, 'hand');
     const card = L(s.cards[sh].cid);
+    // S・バック: 条件に合うカードがシールドから手札に加えられた時、それを捨ててこのクリーチャーを出せる
+    for (const h of pl.hand) {
+      const hf = L(s.cards[h].cid)?.faces[0];
+      const sb = (hf?.statics ?? []).find((x) => x.s === 'sBack');
+      if (h === sh || !hf?.isCreature || !sb || sb.s !== 'sBack' || !matchesSel(s, L, sh, sb.sel)) continue;
+      runExec(s, L, {
+        player: target,
+        src: h,
+        ops: [{ op: 'optional', body: [{ op: 'move', target: { ref: 'saved' }, to: 'grave' }, { op: 'play', target: { ref: 'self' }, mode: 'put' }], prompt: `S・バック: 《${card?.name ?? ''}》を捨てて《${hf.name}》を出す` }],
+        it: [],
+        looked: [],
+        saved: [sh],
+        did: false,
+        name: hf.name,
+      });
+    }
     // サバキZ: 裁きの紋章が手札に加えられた時、それを捨ててサバキZを持つクリーチャーを召喚できる
     if (card?.faces[0].races.some((r) => r.startsWith('裁きの紋章'))) {
       for (const h of pl.hand) {

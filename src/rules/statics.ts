@@ -134,6 +134,8 @@ export type StaticSpec =
   | { s: 'oppMustBlock' }
   /** サバキZ: 裁きの紋章が自分のシールドゾーンから手札に加えられた時、それを捨ててこのクリーチャーを召喚できる */
   | { s: 'sabakiZ' }
+  /** S・バック: その条件のカードがシールドから手札に加えられた時、それを捨ててこのクリーチャーを出せる */
+  | { s: 'sBack'; sel: Sel }
   /** 自分のターン中、クリーチャーをN体、自分のマナゾーンから召喚してもよい */
   | { s: 'manaSummonTurn'; n: number }
   /** 攻撃の終わりにアンタップする */
@@ -308,6 +310,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
   if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
+  if ((m = t0.match(/^S・バック[-－ー:：]([^(（]+)/))) {
+    const ph = m[1].replace(/のカード$/, '');
+    const sel = parseSel(/(カード|クリーチャー|呪文)$/.test(ph) ? ph : ph + 'のカード') ?? parseSel(ph + 'カード');
+    if (sel) return [{ s: 'sBack', sel: { ...sel, zones: ['hand'] } }];
+  }
   if ((m = t0.match(/^自分のターン中、クリーチャーを(\d+)体、自分のマナゾーンから召喚してもよい$/))) return [{ s: 'manaSummonTurn', n: +m[1] }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
   if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/) ?? t0.match(/^自分のマナゾーンにある(.+?)(\d+)(?:体|枚)につき、このクリーチャーの召喚コストを(\d+)少なくする/))) {
