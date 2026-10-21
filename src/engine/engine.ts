@@ -5,6 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
+import { ALL_CIVS, costOf, entersManaTapped, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 
@@ -50,9 +51,10 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
   const f = faceOf(s, L, iid);
   const base: Keywords = f ? f.kw : EMPTY_KW;
   const g = s.cards[iid].grants;
-  if (!g?.length) return base;
+  const extra = s.cards[iid].zone === 'battle' ? staticKws(s, L, iid) : [];
+  if (!g?.length && !extra.length) return base;
   const k: Keywords = { ...base };
-  for (const kw of g.flatMap((x) => x.kws)) {
+  for (const kw of [...(g ?? []).flatMap((x) => x.kws), ...extra]) {
     if (kw === 'ブロッカー') k.blocker = true;
     else if (kw === 'スピードアタッカー') k.speedAttacker = true;
     else if (kw === 'マッハファイター') k.machFighter = true;
@@ -74,11 +76,12 @@ const EMPTY_KW = parseKeywords([], '');
 
 export const isCreature = (s: GameState, L: Lookup, iid: number) => !!faceOf(s, L, iid)?.isCreature;
 
-export function power(s: GameState, L: Lookup, iid: number, attacking = false): number {
+export function power(s: GameState, L: Lookup, iid: number, attacking = false, ctx: PowerCtx = {}): number {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   let p = (f?.power ?? 0) + c.powerMod;
   if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
+  if (c.zone === 'battle') p += staticPower(s, L, iid, { ...ctx, attacking: attacking || ctx.attacking });
   return p;
 }
 
@@ -137,6 +140,28 @@ export function moveCard(
   const card = L(c.cid);
   const from = c.zone;
   const prevFace = c.face;
+  // EXライフ: 離れるかわりに、そのシールドを墓地に置く
+  if (from === 'battle' && to !== 'battle' && !opts.silent && c.exShield != null && s.cards[c.exShield]?.zone === 'shield') {
+    const sh = c.exShield;
+    c.exShield = undefined;
+    moveCard(s, L, sh, 'grave', { silent: true });
+    log(s, c.owner, `EXライフ: ${q(card?.faces[c.face]?.name ?? '')} は離れるかわりにシールドを1つ墓地に置いた`);
+    return 'battle';
+  }
+  // スター進化: 離れる時、一番上のカードだけが離れる
+  if (from === 'battle' && to !== 'battle' && c.under.length && /スター進化/.test(card?.faces[c.face]?.type ?? '')) {
+    const [first, ...restUnder] = c.under;
+    const fc = s.cards[first];
+    const arr = s.players[fc.owner].battle;
+    arr.splice(arr.indexOf(iid) >= 0 ? arr.indexOf(iid) : arr.length, 0, first);
+    fc.zone = 'battle';
+    fc.parent = null;
+    fc.under = restUnder;
+    for (const u of restUnder) s.cards[u].parent = first;
+    fc.tapped = c.tapped;
+    c.under = [];
+    log(s, c.owner, `スター進化: ${q(nameOf(s, L, first))} がバトルゾーンに残る`);
+  }
   const under = from === 'battle' ? [...c.under] : [];
   detach(s, iid);
   let dest: ZoneName = to;
@@ -157,7 +182,10 @@ export function moveCard(
   // 配列の末尾 = 山札の上 / 最新
   if (pos === 'top') arr.push(iid);
   else arr.unshift(iid);
-  if (dest === 'battle') c.sick = true;
+  if (dest === 'battle') {
+    c.sick = true;
+    if (card?.faces[c.face]?.kw.justDiver) c.justDive = c.owner;
+  }
   // 下にあったカードも同じゾーンへ (誘発はしない)
   for (const u of under) {
     const uc = s.cards[u];
@@ -410,6 +438,7 @@ function startTurn(s: GameState, L: Lookup) {
   // 「次の○○のターンのはじめまで」の制限を解除
   s.usedOnce = [];
   for (const c of s.cards) {
+    if (c.justDive === p) c.justDive = undefined;
     if (c.restrict && c.restrict.until === p) c.restrict = undefined;
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
   }
@@ -597,7 +626,8 @@ function checkState(s: GameState, L: Lookup) {
 /** 文明条件を満たすか (マナの各カードは1つの文明しか出せない) */
 export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[]): boolean {
   if (pay.length < need.length) return need.length === 0;
-  const opts = pay.map((i) => cardCivs(L, s.cards[i].cid));
+  const rainbow = pay.length > 0 && rainbowMana(s, L, s.cards[pay[0]].owner);
+  const opts = pay.map((i) => (rainbow ? ALL_CIVS : cardCivs(L, s.cards[i].cid)));
   const used = new Array(pay.length).fill(false);
   const go = (k: number): boolean => {
     if (k === need.length) return true;
@@ -618,7 +648,8 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
   const avail = s.players[p].mana.filter((i) => !s.cards[i].tapped);
   if (avail.length < cost) return null;
   if (cost === 0) return [];
-  const civsOf = (i: number) => cardCivs(L, s.cards[i].cid);
+  const rainbow = rainbowMana(s, L, p);
+  const civsOf = (i: number) => (rainbow ? ALL_CIVS : cardCivs(L, s.cards[i].cid));
   // 必要文明を少ない文明のカードから優先で確保
   const chosen: number[] = [];
   const pool = [...avail].sort((a, b) => civsOf(a).length - civsOf(b).length);
@@ -660,11 +691,16 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const sickOnlyMach = c.sick && !k.speedAttacker;
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps;
   const cards: number[] = [];
+  const mine = ownStatics(s, L, iid);
+  if (mine.some((x) => x.s === 'cantAttackCreatures')) return { players, cards };
+  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped');
   for (const o of opps)
     for (const t of s.players[o].battle) {
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
-      if (s.cards[t].tapped || (k.machFighter && c.sick)) cards.push(t);
+      const tc = s.cards[t];
+      if (tc.justDive != null || ownStatics(s, L, t).some((x) => x.s === 'noAttacked')) continue;
+      if (tc.tapped || untappedOk) cards.push(t);
     }
   return { players, cards };
 }
@@ -703,7 +739,12 @@ function blockStep(s: GameState, L: Lookup) {
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
-        return f?.isCreature && kwOf(s, L, b).blocker && !s.cards[b].tapped && !s.cards[b].restrict?.block && b !== a.targetCard;
+        if (!(f?.isCreature && kwOf(s, L, b).blocker && !s.cards[b].tapped && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
+        // 「パワーN以下のクリーチャーにブロックされない」等
+        const ap = power(s, L, a.attacker, true);
+        return !ownStatics(s, L, a.attacker).some(
+          (x) => x.s === 'unblockableBy' && ((x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap)),
+        );
       });
   const manaCount = s.players[def].mana.length;
   const ninjas = s.players[def].hand.filter((h) => {
@@ -716,8 +757,9 @@ function blockStep(s: GameState, L: Lookup) {
 }
 
 export function battle(s: GameState, L: Lookup, att: number, def: number) {
-  const pa = power(s, L, att, true);
-  const pd = power(s, L, def);
+  const blocking = s.attack?.blocked === def;
+  const pa = power(s, L, att, s.attack?.attacker === att, { inBattle: true });
+  const pd = power(s, L, def, false, { inBattle: true, blocking });
   const na = nameOf(s, L, att);
   const nd = nameOf(s, L, def);
   log(s, null, `バトル: ${q(na)}(${pa}) vs ${q(nd)}(${pd})`);
@@ -878,8 +920,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (s.phase !== 'main') return '攻撃中はマナチャージできません';
       const c = s.cards[a.iid];
       if (c.owner !== p || c.zone !== 'hand') return '手札のカードを選んでください';
-      const multi = cardCivs(L, c.cid).length > 1;
-      moveCard(s, L, a.iid, 'mana', { tapped: multi });
+      moveCard(s, L, a.iid, 'mana', { tapped: entersManaTapped(L, c.cid) });
       me.charged = true;
       log(s, p, `${q(nameOf(s, L, a.iid))} をマナチャージ`);
       return null;
@@ -927,15 +968,59 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
   }
 }
 
+/** 召喚・呪文の最終的なコスト (常在型能力 + ササゲール/ハイパーエナジー/G・ゼロ)。不正なら理由の文字列 */
+export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, { t: 'play' }>, fi: number): number | string {
+  const c = s.cards[a.iid];
+  const face = L(c.cid)!.faces[fi];
+  const statics = face.statics ?? [];
+  if (a.gzero) {
+    const g = statics.find((x) => x.s === 'gzero');
+    if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
+    const n = s.players[p].battle.filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
+    if (g.cond.c === 'countAtLeast' && n < g.cond.n) return 'G・ゼロの条件を満たしていません';
+    return 0;
+  }
+  let cost = costOf(s, L, p, a.iid, fi);
+  if (a.sasa?.length) {
+    if (!statics.some((x) => x.s === 'sasageru')) return 'このクリーチャーはササゲールで召喚できません';
+    const costs = new Set<number>();
+    let red = 0;
+    for (const b of a.sasa) {
+      const bc = s.cards[b];
+      const bf = faceOf(s, L, b);
+      const ss = bf?.statics?.find((x) => x.s === 'sasageru');
+      if (!bf || bc.owner !== p || bc.zone !== 'battle' || !ss || ss.s !== 'sasageru') return 'ササゲールを持つ自分のクリーチャーを選んでください';
+      if (costs.has(bf.cost)) return 'ササゲールはコストが異なるクリーチャーを選んでください';
+      costs.add(bf.cost);
+      red += ss.n;
+    }
+    cost = Math.max(Math.min(cost, 1), cost - red);
+  }
+  if (a.he?.length) {
+    if (!statics.some((x) => x.s === 'hyperEnergy')) return 'このクリーチャーはハイパーエナジーを持っていません';
+    const costs = new Set<number>();
+    for (const b of a.he) {
+      const bc = s.cards[b];
+      const bf = faceOf(s, L, b);
+      if (!bf?.isCreature || bc.owner !== p || bc.zone !== 'battle' || bc.tapped || b === a.iid) return 'タップしていない自分のクリーチャーを選んでください';
+      if (costs.has(bf.cost)) return 'ハイパーエナジーはコストが異なるクリーチャーを選んでください';
+      costs.add(bf.cost);
+    }
+    cost = Math.max(Math.min(cost, 1), cost - 2 * a.he.length);
+  }
+  return cost;
+}
+
 export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play' }>, L: Lookup): Result {
   const c = s.cards[a.iid];
   const card = L(c.cid);
   if (!card) return 'カード情報がありません';
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
-  if (c.zone !== 'hand' && c.zone !== 'partner' && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
-  if (c.zone === 'partner' && !c.faceUp) return '裏向きのパートナーは召喚できません';
   const face = card.faces[a.face] ?? card.faces[0];
+  const fromOk = c.zone === 'hand' || c.zone === 'partner' || (face.isCreature && (face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone));
+  if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
+  if (c.zone === 'partner' && !c.faceUp) return '裏向きのパートナーは召喚できません';
   if (c.zone === 'partner' && !face.isCreature) return 'パートナーの呪文側は唱えられません';
   // 支払い
   if (!a.free) {
@@ -945,12 +1030,22 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (mc.owner !== p || mc.zone !== 'mana' || mc.tapped) return 'マナの選択が不正です';
     }
     if (new Set(a.pay).size !== a.pay.length) return 'マナの選択が不正です';
+    const fi = card.faces.indexOf(face);
+    const cost = playCost(s, L, p, a, fi);
+    if (typeof cost === 'string') return cost;
     if (!a.force) {
-      if (a.pay.length !== face.cost) return `コスト${face.cost}分のマナを選んでください`;
-      if (!payCovers(L, s, a.pay, face.civs)) return '文明が足りません';
+      if (a.pay.length !== cost) return `コスト${cost}分のマナを選んでください`;
+      if (cost > 0 && !payCovers(L, s, a.pay, face.civs)) return '文明が足りません';
     }
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;
+    // ササゲール: 破壊 / ハイパーエナジー: タップ
+    for (const b of a.sasa ?? []) {
+      log(s, p, `ササゲール: ${q(nameOf(s, L, b))} を破壊`);
+      moveCard(s, L, b, 'grave');
+    }
+    for (const b of a.he ?? []) s.cards[b].tapped = true;
+    if (a.he?.length) log(s, p, `ハイパーエナジー: ${a.he.length}体タップ`);
   }
   const name = face.name;
   const how = a.free ? '(コストを支払わずに)' : '';
@@ -958,7 +1053,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     let bases: number[] = [];
     if (face.isEvolution) {
       bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === 'battle' && s.cards[b].owner === p);
-      if (!bases.length && !a.force) return '進化元のクリーチャーを選んでください';
+      // NEO進化・G-NEO進化は進化元なしでも召喚できる
+      if (!bases.length && !a.force && !/NEO/.test(face.type)) return '進化元のクリーチャーを選んでください';
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);
     log(s, p, `${q(name)} を${bases.length ? '進化' : ''}召喚${how}`);
@@ -988,6 +1084,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         s.cards[top].zone = 'shield';
         s.cards[top].faceUp = false;
         s.players[p].shield.push(top);
+        c.exShield = top;
         log(s, p, 'EXライフ: 山札の上から1枚をシールドに追加');
       }
     }

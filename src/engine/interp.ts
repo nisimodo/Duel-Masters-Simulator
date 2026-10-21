@@ -19,6 +19,7 @@ import {
   type Lookup,
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
+import { canBeChosen } from './statics';
 
 // ---------- 解析結果のキャッシュ ----------
 const progCache = new Map<string, ReturnType<typeof parseEffect>>();
@@ -108,6 +109,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
       if (!arr) continue;
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
+        if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
     }

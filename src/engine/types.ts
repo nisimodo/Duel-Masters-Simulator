@@ -41,6 +41,10 @@ export interface CardInst {
   restrict?: { attack: boolean; block: boolean; until: number };
   /** 次のアンタップを1回しない */
   noUntap?: boolean;
+  /** ジャストダイバー (このプレイヤーの次のターンのはじめまで選ばれず攻撃されない) */
+  justDive?: number;
+  /** EXライフで置いたシールド */
+  exShield?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
   grants?: { kws: string[]; until: number }[];
 }
@@ -178,7 +182,21 @@ export interface GameState {
 
 export type Action =
   | { t: 'charge'; iid: number }
-  | { t: 'play'; iid: number; face: number; pay: number[]; evo?: number[]; free?: boolean; force?: boolean }
+  | {
+      t: 'play';
+      iid: number;
+      face: number;
+      pay: number[];
+      evo?: number[];
+      free?: boolean;
+      force?: boolean;
+      /** ササゲールで破壊する自分のクリーチャー */
+      sasa?: number[];
+      /** ハイパーエナジーでタップする自分のクリーチャー */
+      he?: number[];
+      /** G・ゼロでコストを支払わずに召喚 */
+      gzero?: boolean;
+    }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }
   | { t: 'attackOpt'; iid: number | null }
   | { t: 'block'; blocker?: number | null; ninja?: number }

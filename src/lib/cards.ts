@@ -1,6 +1,7 @@
 // カードDBの型と読み込み
 import { parseKeywords, type Keywords } from './keywords';
 import { parseTriggers, type TriggerSpec } from './triggers';
+import { parseStatics, type StaticSpec } from '../rules/statics';
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
 export const CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];
@@ -45,6 +46,8 @@ export interface Face {
   kw: Keywords;
   /** 誘発型能力 */
   triggers: TriggerSpec[];
+  /** 常在型能力 */
+  statics: StaticSpec[];
   isCreature: boolean;
   isSpell: boolean;
   isEvolution: boolean;
@@ -87,6 +90,7 @@ function toFace(f: RawFace): Face {
     text: f.x,
     kw: parseKeywords(f.x, f.t),
     triggers: parseTriggers(f.x),
+    statics: parseStatics(f.x),
     isCreature: f.t.includes('クリーチャー'),
     isSpell: f.t.includes('呪文'),
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),

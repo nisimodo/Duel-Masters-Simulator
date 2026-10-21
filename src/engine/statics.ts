@@ -1,0 +1,201 @@
+// 常在型能力の適用 (パワー・キーワード・コスト・選ばれない・攻撃可否・マナの文明)
+import type { Civ } from '../lib/cards';
+import type { Sel } from '../rules/ops';
+import type { StaticCond, StaticSpec, StaticTarget, StaticWhen } from '../rules/statics';
+import { matchesSel, mainOpp } from './interp';
+import type { Lookup } from './engine';
+import type { GameState } from './types';
+
+export interface ActiveStatic {
+  src: number;
+  owner: number;
+  spec: StaticSpec;
+}
+
+/** バトルゾーンで有効な常在型能力 (クロスギア等は下に重なっていても「これをクロスした」系が有効) */
+export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
+  const out: ActiveStatic[] = [];
+  s.players.forEach((pl, p) => {
+    if (pl.lost) return;
+    for (const iid of pl.battle) {
+      const c = s.cards[iid];
+      const f = L(c.cid)?.faces[c.face];
+      for (const spec of f?.statics ?? []) out.push({ src: iid, owner: p, spec });
+      for (const u of c.under) {
+        const uc = s.cards[u];
+        const uf = L(uc.cid)?.faces[0];
+        for (const spec of uf?.statics ?? []) if (isCrossSpec(spec)) out.push({ src: u, owner: p, spec });
+      }
+    }
+  });
+  return out;
+}
+
+const isCrossSpec = (spec: StaticSpec) => (spec.s === 'power' || spec.s === 'grant') && spec.target.t === 'cross';
+
+/** 発生源から見た持ち主の関係も含めて Sel に合うか */
+function relMatch(s: GameState, L: Lookup, a: ActiveStatic, iid: number, sel: Sel): boolean {
+  const c = s.cards[iid];
+  if (!sel.zones.includes(c.zone as never)) return false;
+  if (sel.owner === 'self' && c.owner !== a.owner) return false;
+  if (sel.owner === 'opp' && c.owner === a.owner) return false;
+  if (sel.other && iid === a.src) return false;
+  return matchesSel(s, L, iid, sel);
+}
+
+function targetMatch(s: GameState, L: Lookup, a: ActiveStatic, tg: StaticTarget, iid: number): boolean {
+  if (tg.t === 'self') return iid === a.src;
+  if (tg.t === 'cross') return s.cards[a.src].parent === iid;
+  return relMatch(s, L, a, iid, tg.sel);
+}
+
+export interface PowerCtx {
+  attacking?: boolean;
+  inBattle?: boolean;
+  blocking?: boolean;
+}
+
+function whenOk(s: GameState, a: ActiveStatic, when: StaticWhen, ctx: PowerCtx): boolean {
+  switch (when) {
+    case 'always':
+      return true;
+    case 'battle':
+      return !!ctx.inBattle;
+    case 'attack':
+      return !!ctx.attacking;
+    case 'block':
+      return !!ctx.blocking;
+    case 'oppTurn':
+      return s.active !== a.owner;
+    case 'ownTurn':
+      return s.active === a.owner;
+  }
+}
+
+/** 常在型能力を含まないパワー (条件判定用・無限ループ防止) */
+export function basePower(s: GameState, L: Lookup, iid: number): number {
+  const c = s.cards[iid];
+  const f = L(c.cid)?.faces[c.face];
+  return (f?.power ?? 0) + c.powerMod;
+}
+
+function countRel(s: GameState, L: Lookup, a: ActiveStatic, sel: Sel): number {
+  let n = 0;
+  s.players.forEach((pl, p) => {
+    if (pl.lost) return;
+    if (sel.owner === 'self' && p !== a.owner) return;
+    if (sel.owner === 'opp' && p === a.owner) return;
+    for (const z of sel.zones) for (const i of (pl[z as 'battle'] as number[]) ?? []) if (relMatch(s, L, a, i, sel)) n++;
+  });
+  return n;
+}
+
+function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | undefined, iid: number): boolean {
+  if (!cond) return true;
+  switch (cond.c) {
+    case 'powerAtLeast':
+      return basePower(s, L, iid) + staticPowerOnly(s, L, iid) >= cond.n;
+    case 'totalShieldsLE':
+      return s.players[a.owner].shield.length + s.players[mainOpp(s, a.owner)].shield.length <= cond.n;
+    case 'countAtLeast':
+      return countRel(s, L, a, cond.sel) >= cond.n;
+  }
+}
+
+/** パワーへの常在型能力の修正 (攻撃中・バトル中などの文脈つき) */
+export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx = {}): number {
+  let d = 0;
+  for (const a of activeStatics(s, L)) {
+    const sp = a.spec;
+    if (sp.s !== 'power') continue;
+    if (!whenOk(s, a, sp.when, ctx) || !targetMatch(s, L, a, sp.target, iid)) continue;
+    if (sp.cond && sp.cond.c !== 'powerAtLeast' && !condOk(s, L, a, sp.cond, iid)) continue;
+    d += sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
+  }
+  return d;
+}
+
+/** 条件なしの常時のパワー修正だけ (powerAtLeast 判定用) */
+function staticPowerOnly(s: GameState, L: Lookup, iid: number): number {
+  let d = 0;
+  for (const a of activeStatics(s, L)) {
+    const sp = a.spec;
+    if (sp.s !== 'power' || sp.when !== 'always' || sp.cond || !targetMatch(s, L, a, sp.target, iid)) continue;
+    d += sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
+  }
+  return d;
+}
+
+/** 常在型能力で得ているキーワード */
+export function staticKws(s: GameState, L: Lookup, iid: number): string[] {
+  const out: string[] = [];
+  for (const a of activeStatics(s, L)) {
+    const sp = a.spec;
+    if (sp.s !== 'grant') continue;
+    if (!whenOk(s, a, sp.when, {}) || !targetMatch(s, L, a, sp.target, iid)) continue;
+    if (!condOk(s, L, a, sp.cond, iid)) continue;
+    out.push(...sp.kws);
+  }
+  return out;
+}
+
+/** そのカード自身が持つ常在型能力 */
+export function ownStatics(s: GameState, L: Lookup, iid: number): StaticSpec[] {
+  const c = s.cards[iid];
+  return L(c.cid)?.faces[c.face]?.statics ?? [];
+}
+
+/** 相手 (chooser) がこのカードを選べるか */
+export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: number, bySpell = false): boolean {
+  const c = s.cards[iid];
+  if (c.owner === chooser || c.zone !== 'battle') return true;
+  if (c.justDive != null) return false;
+  return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell));
+}
+
+/** カードを使うコスト (常在型能力による増減を含む。召喚時に選ぶ軽減は含まない) */
+export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx: number): number {
+  const c = s.cards[iid];
+  const f = L(c.cid)?.faces[faceIdx];
+  if (!f) return 0;
+  const base = f.cost;
+  let reduce = 0;
+  let floor = 0;
+  let add = 0;
+  const action = f.isSpell ? 'cast' : f.isCreature ? 'summon' : 'use';
+  for (const a of activeStatics(s, L)) {
+    const sp = a.spec;
+    if (sp.s !== 'cost') continue;
+    const sideOk = sp.side === 'any' || (sp.side === 'self' ? a.owner === p : a.owner !== p);
+    if (!sideOk) continue;
+    if (sp.action !== 'use' && sp.action !== action) continue;
+    if (!matchesSel(s, L, iid, { ...sp.sel, zones: [c.zone as never] })) continue;
+    if (sp.delta < 0) {
+      reduce += -sp.delta;
+      floor = Math.max(floor, sp.floor);
+    } else add += sp.delta;
+  }
+  let cost = base + add;
+  if (reduce) cost = Math.max(Math.min(cost, Math.max(floor, 0)), cost - reduce);
+  // シンパシー (自分の〇〇1体につき1少なく)
+  for (const sp of f.statics ?? []) {
+    if (sp.s !== 'sympathy') continue;
+    const n = s.players[p].battle.filter((b) => matchesSel(s, L, b, sp.sel)).length;
+    if (n) cost = Math.max(Math.min(cost, sp.floor), cost - n);
+  }
+  return Math.max(0, cost);
+}
+
+/** そのプレイヤーのマナが全文明を持つか */
+export function rainbowMana(s: GameState, L: Lookup, p: number): boolean {
+  return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'rainbowMana');
+}
+
+/** マナに置く時タップして置くカードか */
+export function entersManaTapped(L: Lookup, cid: string): boolean {
+  const card = L(cid);
+  if (!card) return false;
+  return card.civs.length > 1 || card.faces.some((f) => (f.statics ?? []).some((x) => x.s === 'tapMana'));
+}
+
+export const ALL_CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];

@@ -99,17 +99,19 @@ function purposeOf(sel: Sel, verb: string): Purpose {
 
 function parseCond(c: string): Cond | null {
   let m: RegExpMatchArray | null;
-  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
-    const sel = parseSel('自分の' + m[1]);
-    return sel ? { c: 'count', sel, cmp: '>=', n: +m[2] } : null;
-  }
-  if ((m = c.match(/^(?:バトルゾーンに)?自分の(.+?)があ$/))) {
-    const sel = parseSel('自分の' + m[1]);
-    return sel ? { c: 'count', sel, cmp: '>=', n: 1 } : null;
-  }
-  if ((m = c.match(/^(?:バトルゾーンに)?相手の(.+?)があ$/))) {
-    const sel = parseSel('相手の' + m[1]);
-    return sel ? { c: 'count', sel, cmp: '>=', n: 1 } : null;
+  if (!/^自分の(墓地|マナゾーン|手札)に/.test(c)) {
+    if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
+      const sel = parseSel('自分の' + m[1]);
+      if (sel) return { c: 'count', sel, cmp: '>=', n: +m[2] };
+    }
+    if ((m = c.match(/^(?:バトルゾーンに)?自分の(.+?)があ$/))) {
+      const sel = parseSel('自分の' + m[1]);
+      if (sel) return { c: 'count', sel, cmp: '>=', n: 1 };
+    }
+    if ((m = c.match(/^(?:バトルゾーンに)?相手の(.+?)があ$/))) {
+      const sel = parseSel('相手の' + m[1]);
+      if (sel) return { c: 'count', sel, cmp: '>=', n: 1 };
+    }
   }
   if ((m = c.match(new RegExp(`^自分の(墓地|マナゾーン|手札)に(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
     const sel = parseSel(m[2], { owner: 'self', zones: [ZONE[m[1]]] });
