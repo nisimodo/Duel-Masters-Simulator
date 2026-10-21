@@ -413,7 +413,22 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         value += metaScore(f) / 2; // 自分のメタカードも価値が高い
         if (alt === 'joe' || alt === 'bad' || alt === 'abyss') value = value * 0.6; // ターンの終わりに離れる
         if (alt === 'galaxy') value = value * 0.4; // シールドとして置くだけ
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined }, value: value + buzz * 8 });
+        // O・ドライブ: 余ったマナで追加の支払いができれば払う
+        let odrivePay: number[] | undefined;
+        const od = st.find((x) => x.s === 'odrive');
+        if (od && od.s === 'odrive') {
+          const free = me.mana.filter((m) => !s.cards[m].tapped && !pay.includes(m));
+          const out: number[] = [];
+          for (const r of od.reqs) {
+            const cs = free.filter((m) => !out.includes(m) && cardCivs(L, s.cards[m].cid).some((x) => CIV_NAME[x] === r.civ)).slice(0, r.n);
+            if (cs.length === r.n) out.push(...cs);
+          }
+          if (out.length) {
+            odrivePay = out;
+            value += 10;
+          }
+        }
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined, odrivePay }, value: value + buzz * 8 });
       } else if (/オーラ/.test(f.type)) {
         // オーラ: 一番強い自分のGRクリーチャーに (いなければGR召喚して) 付ける
         const holder = me.battle.filter((b) => /GR/.test(faceOf(s, L, b)?.type ?? '')).sort((a, b) => power(s, L, b) - power(s, L, a))[0];

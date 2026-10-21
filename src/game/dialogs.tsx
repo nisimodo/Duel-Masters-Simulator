@@ -1,4 +1,5 @@
 import { matchesSel } from '../engine/interp';
+import { CIV_NAME } from '../lib/cards';
 import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
@@ -72,6 +73,20 @@ export function PayDialog({
   const vivid = statics.find((x) => x.s === 'vivid');
   const vividOk = !!vivid && s.cards[iid].vividTurn === s.turn && s.cards[iid].zone === 'hand';
   const buzz = statics.find((x) => x.s === 'buzz');
+  const odrive = statics.find((x) => x.s === 'odrive');
+  const [odCivs, setOdCivs] = useState<string[]>([]);
+  // O・ドライブで追加でタップするマナ (支払いに使わないマナから文明が合うものを選ぶ)
+  const odPay = (() => {
+    if (!odrive || odrive.s !== 'odrive') return [] as number[];
+    const free = mana.filter((m) => !pay.includes(m));
+    const out: number[] = [];
+    for (const r of odrive.reqs) {
+      if (!odCivs.includes(r.civ)) continue;
+      const cs = free.filter((m) => !out.includes(m) && L(s.cards[m].cid)!.civs.some((x) => CIV_NAME[x] === r.civ)).slice(0, r.n);
+      if (cs.length === r.n) out.push(...cs);
+    }
+    return out;
+  })();
   const [buzzN, setBuzzN] = useState(0);
   const [taps, setTaps] = useState<number[]>([]);
   const costNow = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
@@ -163,6 +178,18 @@ export function PayDialog({
           />{' '}
           ビビッドロー (コスト{vivid.cost}で召喚)
         </label>
+      )}
+      {odrive && odrive.s === 'odrive' && (
+        <div className="row small">
+          O・ドライブ (追加でタップ):
+          {odrive.reqs.map((r) => (
+            <label key={r.civ}>
+              <input type="checkbox" checked={odCivs.includes(r.civ)} onChange={(e) => setOdCivs(e.target.checked ? [...odCivs, r.civ] : odCivs.filter((x) => x !== r.civ))} />
+              {r.civ}×{r.n}
+            </label>
+          ))}
+          {odCivs.length > 0 && <span className="muted"> → 追加で{odPay.length}枚タップ</span>}
+        </div>
       )}
       {buzz && buzz.s === 'buzz' && (
         <label className="small">
@@ -379,7 +406,7 @@ export function PayDialog({
         </>
       )}
       <div className="row">
-        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined })}>
+        <button className="primary" disabled={!ok || (needEvo && !isAura && !evo.length && !/NEO/.test(f.type))} onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, sasa, he, gzero, alt, taps: alt === 'mugen' || alt === 'fushigi' || alt === 'tapCast' ? taps : undefined, buzz: buzzN || undefined, odrivePay: odPay.length ? odPay : undefined })}>
           {verb}
         </button>
         <button onClick={() => onSubmit({ t: 'play', iid, face, pay, evo, force: true })}>支払いを調整して出す ({pay.length}枚タップ)</button>

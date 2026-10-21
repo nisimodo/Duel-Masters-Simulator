@@ -65,6 +65,8 @@ export interface Face {
 
 export interface AbilityGroup {
   kind: AbilityGroupKind;
+  /** O・ドライブ: この文明を追加で支払った時の能力 */
+  civ?: string;
   triggers: TriggerSpec[];
   statics: StaticSpec[];
 }
@@ -102,12 +104,23 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
   // 名前のある能力は定義 (注釈) に展開して解釈する
   const sp = splitAbilities(mergeModal(f.x));
   const abilityLines = expandKwLines(sp.main, defs);
-  const groups: AbilityGroup[] = sp.groups.map((g) => {
+  // O・ドライブの「水:〜」「自然:〜」は文明ごとに分ける
+  const rawGroups = sp.groups.flatMap((g) => {
+    if (g.kind !== 'odrive') return [{ ...g, civ: undefined as string | undefined }];
+    const byCiv = new Map<string | undefined, string[]>();
+    for (const l of g.lines) {
+      const m = normText(l).match(/^(光|水|闇|火|自然)[:：]\s*(.+)$/);
+      const k = m ? m[1] : undefined;
+      byCiv.set(k, [...(byCiv.get(k) ?? []), m ? m[2] : l]);
+    }
+    return [...byCiv].map(([civ, lines]) => ({ kind: g.kind, lines, civ }));
+  });
+  const groups: AbilityGroup[] = rawGroups.map((g) => {
     const al = expandKwLines(g.lines, defs);
     const statics = parseStatics(al);
     const kws = g.lines.map((l) => stripReminder(normText(l)).replace(/\s+/g, '').replace(/。$/, '')).filter((x) => GRANT_KWS.includes(x));
     if (kws.length) statics.push({ s: 'grant', target: { t: 'self' }, kws, when: 'always' });
-    return { kind: g.kind, triggers: parseTriggers(al), statics };
+    return { kind: g.kind, civ: g.civ, triggers: parseTriggers(al), statics };
   });
   const power = f.p ? Number((f.p.normalize('NFKC').match(/-?\d+/) || ['0'])[0]) : null;
   return {

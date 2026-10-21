@@ -104,6 +104,8 @@ export type StaticSpec =
   | { s: 'sealStay' }
   /** 可能であればブロックする */
   | { s: 'mustBlock' }
+  /** O・ドライブ: 召喚する時に、文明ごとに追加でN枚タップすれば能力を得る */
+  | { s: 'odrive'; reqs: { civ: string; n: number }[] }
   /** バズレンダ: 追加でコストNを好きな回数支払い、{OL} 能力を 1+その回数 使う */
   | { s: 'buzz'; n: number }
   /** ビビッドロー: 自分のターン中、攻撃の前にドローした時に表向きにすれば、このターンコストNで召喚できる */
@@ -177,6 +179,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
+  if (/^O・ドライブ/.test(t0)) {
+    const reqs = [...t0.matchAll(/(光|水|闇|火|自然)x(\d+)/g)].map((x) => ({ civ: x[1], n: +x[2] }));
+    if (reqs.length) return [{ s: 'odrive', reqs }];
+  }
   // 「自分のアンノウンの召喚コストを1、ゼニスの召喚コストを1少なくしてもよい」
   if ((m = t0.match(/^自分の(.+?)の召喚コストを(\d+)、(.+?)の召喚コストを(\d+)少なく(?:する|してもよい)(?:[、。]?ただし.*)?$/))) {
     const a = parseSel(m[1], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });

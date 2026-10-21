@@ -318,6 +318,10 @@ export function moveCard(
   }
   const under = from === 'battle' ? [...c.under] : [];
   detach(s, iid);
+  if (from === 'battle') {
+    c.odrive = undefined;
+    c.buzz = undefined;
+  }
   let dest: ZoneName = to;
   if (card && to !== 'battle') {
     if (card.zone === 'hyper' && to !== 'hyper') dest = 'hyper';
@@ -1629,6 +1633,24 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       moveCard(s, L, b, 'grave');
     }
     for (const b of a.he ?? []) s.cards[b].tapped = true;
+    // O・ドライブ: 追加でタップしたマナで満たした文明
+    const od = (face.statics ?? []).find((x) => x.s === 'odrive');
+    if (od && od.s === 'odrive' && a.odrivePay?.length) {
+      const extra = [...new Set(a.odrivePay)].filter((m) => s.cards[m].owner === p && s.cards[m].zone === 'mana' && !s.cards[m].tapped && !a.pay.includes(m));
+      const used = new Set<number>();
+      const paid: string[] = [];
+      for (const r of od.reqs) {
+        const cs = extra.filter((m) => !used.has(m) && manaCivs(s, L, m).some((x) => CIV_NAME[x] === r.civ)).slice(0, r.n);
+        if (cs.length < r.n) continue;
+        cs.forEach((m) => used.add(m));
+        paid.push(r.civ);
+      }
+      for (const m of used) s.cards[m].tapped = true;
+      if (paid.length) {
+        c.odrive = paid;
+        log(s, p, `O・ドライブ: ${paid.join('・')} を追加で支払った`);
+      }
+    }
     if (a.alt === 'tapCast') {
       for (const b of a.taps ?? []) s.cards[b].tapped = true;
       log(s, p, `${(a.taps ?? []).length}体タップして、コストを支払うかわりにした`);

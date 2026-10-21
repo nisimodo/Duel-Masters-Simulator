@@ -53,6 +53,8 @@ export interface CardInst {
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
   cellOf?: number;
+  /** O・ドライブで追加で支払った文明 */
+  odrive?: string[];
   /** バズレンダで追加で支払った回数 */
   buzz?: number;
   /** ビビッドローで表向きにしたターン */
@@ -246,6 +248,8 @@ export type Action =
       alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast' | 'vivid';
       /** バズレンダで追加で支払う回数 */
       buzz?: number;
+      /** O・ドライブで追加でタップするマナ */
+      odrivePay?: number[];
       /** ムゲンクライムでタップする自分のクリーチャー */
       taps?: number[];
     }

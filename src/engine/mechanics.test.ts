@@ -107,6 +107,7 @@ const db = buildDB(
     cr('buzz', 2, 2000, ['バズレンダ [ff01](このクリーチャーのコストを支払う時、追加で [ff01]を好きな回数支払ってもよい。このクリーチャーがバトルゾーンに出た時、その{OL} 能力を1回と、追加で [ff01]支払った回数、使う)', '{OL}カードを1枚引く。']),
     cr('vivid', 7, 7000, ['ビビッドロー [ff02](自分のターン中、攻撃の前にこのクリーチャーをドローした時、表向きにしてもよい。そうしたら、このターンこのクリーチャーを [ff02] 支払って召喚してもよい)']),
     { id: 'gyaku', n: 'gyaku', img: '', f: [{ n: 'gyaku', t: '呪文', c: 'F', co: 9, p: null, r: [], x: ['逆転撃{ff05}:クリーチャーが自分を攻撃する時、その攻撃中にまだ「逆転撃」を使っていなければ、この呪文を自分の手札からコストを支払わずに唱えてもよい。そうしたら、次の自分のターンのはじめに{ff05}を支払う。支払えなければ、自分はゲームに負ける。', 'カードを1枚引く。'] }] },
+    cr('odr', 2, 2000, ['O・ドライブ 火x2 (このクリーチャーを召喚する時、自分のマナゾーンで火のカードをさらに2枚タップしてもよい。そうした場合、次の能力を得る)', 'このクリーチャーが出た時、カードを2枚引く。', 'W・ブレイカー']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -679,5 +680,22 @@ describe('named mechanics', () => {
     const f = L('gyaku')!.faces[0];
     expect(f.triggers.some((t) => t.fromHand && t.events.includes('oppAttack'))).toBe(true);
     expect(programOf(f.triggers[0].effect).complete).toBe(true);
+  });
+
+  it('O・ドライブ: the extra ability works only when the extra mana is tapped', () => {
+    let s = setup([{ p: 0, cid: 'odr', zone: 'hand' }], 4);
+    const o = find(s, 0, 'hand', 'odr')!;
+    const hand = s.players[0].hand.length;
+    const mana = s.players[0].mana;
+    s = act(s, 0, { t: 'play', iid: o, face: 0, pay: mana.slice(0, 2), odrivePay: mana.slice(2, 4) });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    expect(s.players[0].hand.length).toBe(hand - 1 + 2);
+    expect(kwOf(s, L, o).breaker).toBe(2);
+    let t = setup([{ p: 0, cid: 'odr', zone: 'hand' }], 4);
+    const o2 = find(t, 0, 'hand', 'odr')!;
+    const h2 = t.players[0].hand.length;
+    t = act(t, 0, { t: 'play', iid: o2, face: 0, pay: t.players[0].mana.slice(0, 2) });
+    for (let k = 0; k < 4 && t.pending.length; k++) t = act(t, t.pending[0].player, { t: 'resolve', use: true });
+    expect(t.players[0].hand.length).toBe(h2 - 1);
   });
 });

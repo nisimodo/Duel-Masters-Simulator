@@ -73,8 +73,6 @@ const GROUP_HEAD: [RegExp, AbilityGroupKind][] = [
   [/^メタモーフ/, 'meta'],
   [/^ターボラッシュ/, 'turbo'],
   [/^シールド・フォース/, 'sforce'],
-  // O・ドライブ: 召喚する時に追加でマナをタップした時だけ得る能力 (追加の支払いは未対応なので使わない)
-  [/^O・ドライブ/, 'odrive'],
 ];
 /** 次の行を「このクリーチャーの能力」として使うキーワード */
 const NEXT_ABILITY_HEAD = /^(マーシャル・タッチ|返霊\s*\d*)\s*[(（]/;
@@ -108,8 +106,24 @@ export function splitAbilities(lines: string[]): {
   let silent: string[] | null = null;
   let inSilent = false;
   let nextAbility = false;
+  let odrive = 0; // 0: なし / 1: 次の行を取る / 2: 「水:」で始まる行を取る
   for (const raw of lines) {
     const t = normText(raw).trim();
+    // O・ドライブ: 次の行と、「水:」「自然:」で始まる行が追加の支払いをした時の能力
+    if (odrive) {
+      if (odrive === 1 || /^(光|水|闇|火|自然)[:：]/.test(t)) {
+        push('odrive', raw);
+        odrive = 2;
+        continue;
+      }
+      odrive = 0;
+    }
+    if (/^O・ドライブ/.test(t)) {
+      main.push(raw);
+      odrive = 1;
+      if (!groups.has('odrive')) groups.set('odrive', []);
+      continue;
+    }
     if (nextAbility) {
       nextAbility = false;
       (marked['能力'] ??= []).push(t.replace(/。$/, ''));
