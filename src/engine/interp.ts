@@ -71,6 +71,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.colorless && civs.length) return false;
   if (sel.multicolor && civs.length < 2) return false;
   if (sel.monocolor && civs.length >= 2) return false;
+  if (sel.faceDown != null && !!s.cards[iid].manaDown !== sel.faceDown) return false;
   if (sel.civInMana) {
     const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
     if (!civs.every((x) => have.has(x))) return false;
@@ -103,7 +104,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor && !sel.civInMana) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -571,6 +572,15 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         rc.tapped = tapped;
         rc.sick = sick;
         log(s, ex.player, `覚醒リンク: ${q(card.faces[1].name)} になった`);
+        break;
+      }
+      case 'faceDown':
+      case 'faceUp': {
+        for (const i of resolveRef(s, ex, op.target) ?? []) {
+          if (s.cards[i].zone !== 'mana') continue;
+          s.cards[i].manaDown = op.op === 'faceDown';
+        }
+        log(s, ex.player, `マナゾーンのカードを${op.op === 'faceUp' ? '表向き' : '裏向き'}にした`);
         break;
       }
       case 'toggleTap': {

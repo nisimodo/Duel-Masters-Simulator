@@ -93,6 +93,9 @@ const db = buildDB(
     cr('meta', 3, 3000, ['メタモーフ(自分のマナゾーンに7枚以上カードがあれば、このクリーチャーは次の能力を得る)', 'W・ブレイカー']),
     { id: 'cyc', n: 'cyc', img: '', f: [{ n: 'cyc', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['サイクロン(このターン、この呪文を唱える直前にクリーチャーを召喚していれば、この呪文を唱えた後、墓地に置くかわりに自分の手札に戻す)', 'カードを1枚引く。'] }] },
     { id: 'baku2', n: 'baku2', img: '', f: [{ n: 'baku2', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次のうちいずれかひとつを選ぶ。', '▶カードを1枚引く。', '▶カードを2枚引く。', '爆進ダブル(バトルゾーンに自分の進化クリーチャーがあれば、この効果を両方とも選んでもよい)'] }] },
+    cr('ek', 3, 3000, ['エターナル・Κ(このクリーチャーが離れる時、かわりに自分のマナゾーンにある裏向きのカードを3枚、表向きにしてもよい)']),
+    cr('crystal', 6, 6000, ['水晶ソウル3(このクリーチャーを召喚する時、自分のマナゾーンにある裏向きのカードのマナの数字は3になる)']),
+    cr('downer', 1, 1000, ['このクリーチャーが出た時、自分のマナゾーンのカードを1枚、裏向きにしてもよい。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -527,5 +530,32 @@ describe('named mechanics', () => {
     const prog = programOf(spellEffectLines(f.text).join('。'));
     const mod = prog.ops.find((o) => o.op === 'modal');
     expect(mod && mod.op === 'modal' && mod.bonus).toBeTruthy();
+  });
+
+  it('エターナル・Κ / 水晶ソウル / 裏向きのマナ', () => {
+    let s = setup([
+      { p: 0, cid: 'ek', zone: 'battle' },
+      { p: 0, cid: 'crystal', zone: 'hand' },
+    ], 4);
+    const mana = s.players[0].mana;
+    for (const m of mana.slice(0, 3)) s.cards[m].manaDown = true;
+    const ek = find(s, 0, 'battle', 'ek')!;
+    s = act(s, 0, { t: 'move', iid: ek, to: 'grave' });
+    expect(s.cards[ek].zone).toBe('battle');
+    expect(mana.every((m) => !s.cards[m].manaDown)).toBe(true);
+    // 水晶ソウル: 裏向き1枚(3) + 表向き3枚 = 6
+    s.cards[mana[0]].manaDown = true;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'crystal')!, face: 0, pay: mana.slice(0, 4) });
+    expect(find(s, 0, 'battle', 'crystal')).toBeDefined();
+  });
+
+  it('マナゾーンのカードを裏向きにする', () => {
+    let s = setup([{ p: 0, cid: 'downer', zone: 'hand' }]);
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'downer')!, face: 0, pay: freeMana(s, 0, 1) });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'choose', picks: [s.players[0].mana[1]] }) : { t: 'resolve', use: true });
+    }
+    expect(s.players[0].mana.filter((m) => s.cards[m].manaDown).length).toBe(1);
   });
 });

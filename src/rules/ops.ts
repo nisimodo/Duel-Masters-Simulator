@@ -22,6 +22,8 @@ export interface Sel {
   monocolor?: boolean;
   /** その文明がすべて自分のマナゾーンにある */
   civInMana?: boolean;
+  /** 裏向き (true) / 表向き (false) のカードだけ */
+  faceDown?: boolean;
   mono?: boolean;
   races?: string[];
   nameHas?: string;
@@ -111,6 +113,8 @@ export type Op =
   | { op: 'swap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  /** マナゾーンのカードを裏向き/表向きにする */
+  | { op: 'faceDown' | 'faceUp'; target: Target }
   /** タップしていればアンタップ、していなければタップ */
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */

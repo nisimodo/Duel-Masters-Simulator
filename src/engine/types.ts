@@ -53,6 +53,8 @@ export interface CardInst {
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
   cellOf?: number;
+  /** 裏向きのマナ (文明を持たない) */
+  manaDown?: boolean;
   /** シールド・フォースで選んだシールド */
   forceShield?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */

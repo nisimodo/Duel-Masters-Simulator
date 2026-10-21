@@ -381,6 +381,9 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const isTarget = (attackTg?.cards.includes(iid) ?? false) || effectCands.includes(iid);
     const selected = (mode.kind === 'effect' && mode.picks.includes(iid)) || breakPicks.includes(iid) || (mode.kind === 'attack' && mode.attacker === iid);
     const pw = f?.isCreature ? power(s, L, iid) : null;
+    // 裏向きのマナは相手には見えない
+    if (c.zone === 'mana' && c.manaDown && c.owner !== me)
+      return <CardBack key={iid} width={opts.width} title="裏向きのマナ" onClick={(e) => onCardClick(iid, e)} />;
     return (
       <CardImg
         key={iid}
@@ -395,11 +398,12 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         onContextMenu={(e) => openMenu(e, nameOf(s, L, iid), cardMenu(iid))}
       >
         {opts.showPower && pw != null && <span className={`pw${c.powerMod ? ' mod' : ''}`}>{pw}</span>}
-        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker) || c.noAttack) && (
+        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown)) && (
           <span className="tag">
             {c.under.length > 0 && `+${c.under.length} `}
             {c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker && '酔 '}
             {c.noAttack && '✕攻'}
+            {c.zone === 'mana' && c.manaDown && '裏'}
           </span>
         )}
       </CardImg>

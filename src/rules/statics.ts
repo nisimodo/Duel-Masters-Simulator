@@ -83,7 +83,11 @@ export type StaticSpec =
   /** 相手は呪文を唱えることができない */
   | { s: 'oppSpellLock' }
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
-  | { s: 'linkRelease' };
+  | { s: 'linkRelease' }
+  /** エターナル・Κ: 離れる時、かわりに裏向きのマナをN枚表向きにする */
+  | { s: 'eternalK'; n: number }
+  /** 水晶ソウルN: 召喚する時、裏向きのマナはN枚分になる */
+  | { s: 'crystalSoul'; n: number };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -142,6 +146,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^フシギバース\[[a-z]*(\d+)\]/))) return [{ s: 'fushigi', n: +m[1] }];
   if (/^アビスラッシュ/.test(t0)) return [{ s: 'abyss' }];
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
+  if (/^エターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3) }];
+  if ((m = t0.match(/^水晶ソウル(\d+)/))) return [{ s: 'crystalSoul', n: +m[1] }];
   if ((m = t0.match(/^パワード・ブロッカー\+?(\d+)/))) return [{ s: 'power', target: { t: 'self' }, delta: +m[1], when: 'block' }];
   if (/^このクリーチャーは、?可能(であれば|なら(ば)?)、?毎ターン攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];

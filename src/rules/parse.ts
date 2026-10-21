@@ -207,6 +207,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sl = s.match(/^バトルゾーンに自分の((?:《[^》]+》(?:と|、)?)+)があれば、(?:それら|その(?:\d+体の)?クリーチャー)とこのクリーチャーを裏返し(?:て)?リンクさせる$/);
     if (sl) return [{ op: 'superLink', names: [...sl[1].matchAll(/《([^》]+)》/g)].map((x) => x[1]) }];
   }
+  // マナゾーンのカードを裏向き/表向きにする
+  {
+    const fd = s.match(/^自分のマナゾーン(?:の|にある)(裏向きの|表向きの)?カードを(\d+)枚(まで)?、?(裏向き|表向き)にする$/);
+    if (fd) {
+      const down = fd[4] === '裏向き';
+      const sel: Sel = { owner: 'self', zones: ['mana'], kind: 'card', faceDown: !down };
+      return [
+        { op: 'choose', target: { ref: 'sel', sel, count: { n: +fd[2], upTo: !!fd[3] }, chooser: 'self' }, purpose: down ? 'sacrifice' : 'benefit', prompt: s0 },
+        { op: down ? 'faceDown' : 'faceUp', target: { ref: 'it' } },
+      ];
+    }
+  }
   // コストの下限 (直前の軽減の注記)
   if (/^ただし、?コストは\d+(以下に(は)?ならない|より少なくならない)$/.test(s)) return [];
   // D・D・D など 「このカードを [ll02] 支払って自分の手札から実行してもよい」

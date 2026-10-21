@@ -130,6 +130,7 @@ export function detach(s: GameState, iid: number) {
 
 function resetCard(c: CardInst) {
   c.grants = undefined;
+  c.manaDown = undefined;
   c.restrict = undefined;
   c.noUntap = undefined;
   c.tapped = false;
@@ -184,6 +185,16 @@ export function moveCard(
       log(s, c.owner, `リンク解除: ${q(card!.faces[c.face].name)} のサイキック・セルが裏返ってバトルゾーンに残る`);
       c.face = 0;
       return moveCard(s, L, iid, 'hyper', { ...opts, noReplace: true });
+    }
+    // エターナル・Κ: 裏向きのマナをN枚表向きにして、とどまる
+    const ek = own.find((x) => x.s === 'eternalK');
+    if (ek && ek.s === 'eternalK') {
+      const down = s.players[c.owner].mana.filter((m) => s.cards[m].manaDown);
+      if (down.length >= ek.n) {
+        for (const m of down.slice(0, ek.n)) s.cards[m].manaDown = false;
+        log(s, c.owner, `エターナル・Κ: 裏向きのマナを${ek.n}枚表向きにして、${q(card!.faces[c.face].name)} はとどまる`);
+        return 'battle';
+      }
     }
     // 解除: 離れるかわりにコストの小さいほうに裏返す
     if (own.some((x) => x.s === 'release') && card && card.faces.length > 1) {
@@ -913,10 +924,16 @@ function checkState(s: GameState, L: Lookup) {
 
 // ---------- マナ ----------
 /** 文明条件を満たすか (マナの各カードは1つの文明しか出せない) */
+/** マナとして出す文明 (裏向きのマナは文明を持たない) */
+export function manaCivs(s: GameState, L: Lookup, iid: number): Civ[] {
+  const c = s.cards[iid];
+  return c.zone === 'mana' && c.manaDown ? [] : cardCivs(L, c.cid);
+}
+
 export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[]): boolean {
   if (pay.length < need.length) return need.length === 0;
   const rainbow = pay.length > 0 && rainbowMana(s, L, s.cards[pay[0]].owner);
-  const opts = pay.map((i) => (rainbow ? ALL_CIVS : cardCivs(L, s.cards[i].cid)));
+  const opts = pay.map((i) => (rainbow ? ALL_CIVS : manaCivs(s, L, i)));
   const used = new Array(pay.length).fill(false);
   const go = (k: number): boolean => {
     if (k === need.length) return true;
@@ -938,7 +955,7 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
   if (avail.length < cost) return null;
   if (cost === 0) return [];
   const rainbow = rainbowMana(s, L, p);
-  const civsOf = (i: number) => (rainbow ? ALL_CIVS : cardCivs(L, s.cards[i].cid));
+  const civsOf = (i: number) => (rainbow ? ALL_CIVS : manaCivs(s, L, i));
   // 必要文明を少ない文明のカードから優先で確保
   const chosen: number[] = [];
   const pool = [...avail].sort((a, b) => civsOf(a).length - civsOf(b).length);
@@ -1451,7 +1468,14 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const fi = card.faces.indexOf(face);
     const cost = playCost(s, L, p, a, fi);
     if (typeof cost === 'string') return cost;
-    if (!a.force) {
+    const crystal = (face.statics ?? []).find((x) => x.s === 'crystalSoul');
+    if (!a.force && crystal && crystal.s === 'crystalSoul') {
+      // 水晶ソウル: 裏向きのマナはN枚分
+      const val = a.pay.reduce((n, m) => n + (s.cards[m].manaDown ? crystal.n : 1), 0);
+      if (val < cost || a.pay.length > cost) return `コスト${cost}分のマナを選んでください (裏向きのマナは${crystal.n}枚分)`;
+      const up = a.pay.filter((m) => !s.cards[m].manaDown);
+      if (!payCovers(L, s, up.length ? up : a.pay, face.civs)) return '文明が足りません';
+    } else if (!a.force) {
       if (a.pay.length !== cost) return `コスト${cost}分のマナを選んでください`;
       if (cost > 0 && !payCovers(L, s, a.pay, face.civs)) return '文明が足りません';
     }
@@ -1571,7 +1595,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     // サイクロン: 直前にクリーチャーを召喚していれば手札に戻る
     const cyclone = kwLine(/^サイクロン/) && me.lastPlay?.turn === s.turn && me.lastPlay.kind === 'creature';
     if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
-    moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
+    const crystalCharger = kwLine(/^水晶チャージャー/);
+    if (crystalCharger) {
+      moveCard(s, L, a.iid, 'mana');
+      c.manaDown = true;
+      log(s, p, '水晶チャージャー: 裏向きにしてマナゾーンへ');
+    } else moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
