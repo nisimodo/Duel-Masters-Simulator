@@ -174,6 +174,8 @@ export interface GameInit {
 }
 
 export interface GameState {
+  /** バトルの結果でクリーチャーを破壊している最中 */
+  inBattleNow?: boolean;
   /** 「ゲーム中に一度」を使ったカード */
   onceGame?: number[];
   /** このターンにシールドをブレイクしたクリーチャー (ターボラッシュ用) */

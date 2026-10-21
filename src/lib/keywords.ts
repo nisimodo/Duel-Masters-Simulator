@@ -83,7 +83,7 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
   const lines = rawLines.map((l) => normText(l));
   const all = lines.join('\n');
   let breaker = 1;
-  if (has(lines, /^ワールド・ブレイカー/)) breaker = 99;
+  if (has(lines, /^(ワールド・ブレイカー|∞ブレイカー)/)) breaker = 99;
   else if (has(lines, /^Q・ブレイカー/)) breaker = 4;
   else if (has(lines, /^T・ブレイカー/)) breaker = 3;
   else if (has(lines, /^W・ブレイカー/)) breaker = 2;

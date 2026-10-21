@@ -26,7 +26,7 @@ export type StaticSpec =
   | { s: 'unblockableBy'; maxPower?: number; smallerThanSelf?: boolean }
   | { s: 'tapMana' }
   | { s: 'rainbowMana' }
-  | { s: 'summonFrom'; zone: 'mana' | 'grave' }
+  | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper' }
   | { s: 'sympathy'; sel: Sel; floor: number }
   | { s: 'sasageru'; n: number }
   | { s: 'gzero'; cond: StaticCond }
@@ -91,7 +91,15 @@ export type StaticSpec =
   /** このクリーチャーが破壊される/離れる時、かわりに〜 (effect を実行してとどまる) */
   | { s: 'replaceLeave'; on: 'destroy' | 'leave'; effect: string }
   /** コストを支払うかわりに、自分の〇〇をN体タップして使う */
-  | { s: 'tapCast'; sel: Sel; n: number };
+  | { s: 'tapCast'; sel: Sel; n: number }
+  /** タップしてバトルゾーンに出る */
+  | { s: 'entersTapped' }
+  /** 出たターンでも相手プレイヤーを攻撃できる */
+  | { s: 'hastePlayer' }
+  /** 破壊されない (inBattle: バトル中だけ) */
+  | { s: 'indestructible'; inBattle?: boolean }
+  /** 自分のターンのはじめにアンタップしない */
+  | { s: 'noUntapStart' };
 
 function floorOf(t: string): number {
   // 「ただし、コストは1以下にはならない」→ 最低2、「コストは1より少なくならない」→ 最低1
@@ -209,17 +217,23 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sel = parseSel('自分の' + m[1]);
     return sel ? [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[2] ? +m[2] : 1 } }] : null;
   }
-  if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0)) return [{ s: 'tapMana' }];
+  if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0) || /^この(カード|クロスギア|クリーチャー|呪文)は、?マナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'tapMana' }];
+  if (/^このクリーチャーは、?タップしてバトルゾーンに出る$/.test(t0) || /^バトルゾーンに出す時、このクリーチャーはタップして置く$/.test(t0)) return [{ s: 'entersTapped' }];
+  if (/^このクリーチャーは、?(バトルゾーンに)?出たターン、?相手プレイヤーを攻撃できる$/.test(t0)) return [{ s: 'hastePlayer' }];
+  if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
+  if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
+  if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
+  if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];
-  if ((m = t0.match(/^このクリーチャーを自分の(マナゾーン|墓地)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : 'mana' }];
+  if ((m = t0.match(/^このクリーチャーを自分の(マナゾーン|墓地|超次元ゾーン)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : m[1] === '超次元ゾーン' ? 'hyper' : 'mana' }];
 
   // ---- 攻撃・ブロック・選択 ----
   if (/^このクリーチャーは攻撃されない$/.test(t0)) return [{ s: 'noAttacked' }];
-  if (/^このクリーチャーは、?タップされていないクリーチャーを攻撃できる$/.test(t0)) return [{ s: 'attackUntapped' }];
+  if (/^このクリーチャーは、?(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(t0)) return [{ s: 'attackUntapped' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
   if (/^このクリーチャーは、?(このクリーチャー|これ)よりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'unblockableBy', smallerThanSelf: true }];
-  if (/^このクリーチャーは、?(呪文によって)?相手に選ばれない$/.test(t0) || /^(呪文の効果(によって|で))?(バトルゾーンにある自分のクリーチャーを相手が|相手がバトルゾーンにあるクリーチャーを|相手がクリーチャーを)選ぶ時、このクリーチャーを?選(ぶことはできない|ばれない)$/.test(t0))
+  if (/^このクリーチャーは、?(呪文によって)?相手に選ばれない$/.test(t0) || /^(呪文の効果(によって|で))?(バトルゾーンにある自分のクリーチャーを相手が|相手がバトルゾーンにあるクリーチャーを|相手がクリーチャーを)選ぶ時、このクリーチャーを?は?選(ぶことはできない|ばれない|べない)$/.test(t0))
     return [{ s: 'untargetable', bySpellOnly: /呪文/.test(t0) }];
   if (/^このクリーチャーはブロックされず、相手に選ばれない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
 
@@ -269,8 +283,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
 
   // ---- コスト ----
-  if ((m = t.match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:、?ただし.*)?$/)) ||
-    (m = t.match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:、?ただし.*)?$/))) {
+  if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:[、。]?ただし.*)?$/)) ||
+    (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる)(?:てもよい)?(?:[、。]?ただし.*)?$/))) {
     const sel = parseSel(m[2], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
     if (sel) {
       const action = m[3] === '召喚' ? 'summon' : m[3] === '唱える' ? 'cast' : 'use';

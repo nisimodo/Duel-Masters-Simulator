@@ -300,7 +300,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       case 'hyper':
       case 'deck':
       case 'gr':
-        if (c.zone === 'grave') summonFromItems(iid, items);
+        if (c.zone === 'grave' || c.zone === 'hyper') summonFromItems(iid, items);
         if (own) {
           card.faces.forEach((f, fi) => {
             if (card.hyper && fi > 0) return;

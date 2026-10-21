@@ -76,7 +76,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'W・ブレイカー') k.breaker = Math.max(k.breaker, 2);
     else if (kw === 'T・ブレイカー') k.breaker = Math.max(k.breaker, 3);
     else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
-    else if (kw === 'ワールド・ブレイカー') k.breaker = 99;
+    else if (kw === 'ワールド・ブレイカー' || kw === '∞ブレイカー') k.breaker = 99;
     else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
     else {
       const pa = kw.match(/^パワーアタッカー\+(\d+)$/);
@@ -168,6 +168,11 @@ export function moveCard(
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
     const own = card?.faces[c.face]?.statics ?? [];
+    // 破壊されない
+    if (to === 'grave' && own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow))) {
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊されない`);
+      return 'battle';
+    }
     // リンク解除: サイキック・セル1枚 (このカード) を超次元ゾーンへ戻し、残りは裏返ってバトルゾーンに残る
     const cells = c.under.filter((u) => s.cards[u].cellOf === iid);
     if (cells.length && own.some((x) => x.s === 'linkRelease')) {
@@ -321,6 +326,7 @@ export function moveCard(
   else arr.unshift(iid);
   if (dest === 'battle') {
     c.sick = true;
+    if ((card?.faces[c.face]?.statics ?? []).some((x) => x.s === 'entersTapped')) c.tapped = true;
     if (card?.faces[c.face]?.kw.justDiver) c.justDive = c.owner;
   }
   // 下にあったカードも同じゾーンへ (誘発はしない)
@@ -706,7 +712,7 @@ function startTurn(s: GameState, L: Lookup) {
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
     if (c.noUntap) c.noUntap = false;
-    else c.tapped = false;
+    else if (!(c.zone === 'battle' && (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noUntapStart'))) c.tapped = false;
     c.sick = false;
   }
   for (const b of silent) {
@@ -1012,7 +1018,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const f = faceOf(s, L, iid);
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack) return false;
   const k = kwOf(s, L, iid);
-  if (c.sick && !k.speedAttacker && !k.machFighter) return false;
+  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer')) return false;
   return true;
 }
 
@@ -1022,10 +1028,12 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   if (!f) return { players: [], cards: [] };
   const opps = opponentsOf(s, c.owner);
   const k = kwOf(s, L, iid);
-  const sickOnlyMach = c.sick && !k.speedAttacker;
+  const mine = ownStatics(s, L, iid);
+  const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer');
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps;
   const cards: number[] = [];
-  const mine = ownStatics(s, L, iid);
+  // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
+  if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };
   if (mine.some((x) => x.s === 'cantAttackCreatures')) return { players, cards };
   const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped');
   for (const o of opps)
@@ -1121,6 +1129,7 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
   if (killD && kwOf(s, L, def).slayer) killA = true;
   void fa;
   void fd;
+  s.inBattleNow = true;
   if (killD) {
     log(s, null, `${q(nd)} は破壊された`);
     moveCard(s, L, def, 'grave');
@@ -1129,6 +1138,7 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
     log(s, null, `${q(na)} は破壊された`);
     moveCard(s, L, att, 'grave');
   }
+  s.inBattleNow = false;
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
 }

@@ -317,7 +317,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
     return v;
   };
 
-  const fromOtherZones = [...me.mana, ...me.grave].filter((i) =>
+  const fromOtherZones = [...me.mana, ...me.grave, ...me.hyper].filter((i) =>
     L(s.cards[i].cid)?.faces.some(
       (f) =>
         f.isCreature &&

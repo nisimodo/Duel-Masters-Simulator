@@ -544,7 +544,10 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         if (other == null || self?.zone !== 'battle') break;
         const zone = s.cards[other].zone as 'mana' | 'grave';
         log(s, ex.player, `${q(nameOf(s, L, ex.src))} と ${q(nameOf(s, L, other))} を入れ替えた`);
-        moveCard(s, L, other, 'battle');
+        // 攻撃中の入れ替え (Jチェンジ) は、出たクリーチャーがタップして攻撃を引き継ぐ
+        const attacking = s.attack?.attacker === ex.src;
+        moveCard(s, L, other, 'battle', { tapped: attacking });
+        if (attacking) s.attack!.attacker = other;
         moveCard(s, L, ex.src, zone);
         break;
       }
