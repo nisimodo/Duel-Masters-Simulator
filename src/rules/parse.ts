@@ -64,6 +64,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
     .replace(/^シャッフルし、/, '');
   const m = (re: RegExp) => re.test(v);
   if (m(/^選ぶ$/)) return [];
+  if (m(/^(?:相手に)?見せ(?:る|てもよい)$/)) return [];
   // 新しいシールドとして加える
   if (/^(?:相手に見せてから|すべてのプレイヤーに見せ、)?(?:裏向きにし(?:て)?|裏向きのまま)?、?(?:それぞれ別の)?新しいシールドとして、?(?:持ち主の|自分の)?シールド(?:ゾーン)?に(?:裏向きにして|裏向きのまま)?(?:加える|置く)$/.test(v))
     return [{ op: 'move', target, to: 'shield' }];
@@ -289,6 +290,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^自分のクリーチャーと相手のクリーチャーを1体(?:ずつ)?選(ぶ|んでもよい)$/, '自分と相手のクリーチャーを1体選$1')
+    .replace(/^(?:その選んだクリーチャー2体|その2体)を?バトルさせる$|^そうした場合、その2体はバトルする$|^その2体はバトルする$/, 'その2体をバトルさせる')
     .replace(/、(?:そのカード|それら)を(?:相手に)?見せる$/, '')
     .replace(/^自分の山札の一番上のカードを、?(?:表にして、?)?(?:自分の)?マナゾーンに置/, '自分の山札の上から1枚目をマナゾーンに置')
     .replace(/^カード名を(?:ひとつ|1つ)選んで言う$/, 'カード名を1つ選ぶ')
@@ -507,6 +510,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^このクリーチャーの下にあるカードをすべて(?:相手に)?見せ(?:る|てもよい)$/.test(s)) return [];
   if (/^相手は、?その中から、?〈名前〉のカードをすべて捨てる$/.test(s))
     return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'card', nameRef: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }];
   {
