@@ -69,6 +69,8 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
+  if (m(/^(自分の)?山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle' }];
   if (m(/^新しいシールドとして(自分の|持ち主の)?シールドゾーンに表向きのまま(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
   if (m(/^(持ち主の|自分の)?墓地に(置く|送る)$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^(持ち主の|自分の)?山札の(一番)?下に(置く|戻す)$/)) return [{ op: 'move', target, to: 'deckBottom' }];
@@ -202,6 +204,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/(\d+枚目?)を、/g, '$1を')
     .replace(/^その下にあるカードを/, 'このクリーチャーの下にあるカードを')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/^バトルゾーンにある、/, '')
+    .replace(/クリーチャーすべてを/, 'クリーチャーをすべて')
+    .replace(/を表向きにして手札に/, 'を手札に')
+    .replace(/^自分の山札からカードを/, 'カードを')
+    .replace(/^(自分の)?山札の一番上のカードを(\d+)枚、?表にして/, '自分の山札の上から$2枚を')
+    .replace(/^相手の手札からカードを(\d+)枚見ないで選び、相手は、/, '相手の手札からカードを$1枚見ないで選び、相手は')
     .replace(/好きな順番で/g, '好きな順序で')
     .replace(/マナゾーンにタップして置く$/, 'タップしてマナゾーンに置く')
     .replace(/^(.+?)は、?このターンの終わりまで((?:「[^」]+」(?:と|、)?)+)を得る$/, 'このターン、$1は$2を得る')
@@ -225,6 +233,34 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'choose', target: { ref: 'sel', sel, count: { n: +fd[2], upTo: !!fd[3] }, chooser: 'self' }, purpose: down ? 'sacrifice' : 'benefit', prompt: s0 },
         { op: down ? 'faceDown' : 'faceUp', target: { ref: 'it' } },
       ];
+    }
+  }
+  // 唱えた後、墓地に置くかわりに山札の下 (呪文を出す処理で行う)
+  if (/^(この呪文を(自分の手札から)?)?唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く$/.test(s)) return [];
+  // コストを支払うかわりにタップして唱える (常在型能力で処理)
+  if (/^コストを支払うかわりに、/.test(s)) return [];
+  // シールドをさらにN枚ブレイクする
+  {
+    const xb = s.match(/^(このターン|次の自分のターンのはじめまで)、(.+?)は、?(?:相手の)?シールドをさらに(\d+)(?:枚|つ)ブレイクする$/);
+    const t = xb && refTarget(xb[2]);
+    if (xb && t) return [{ op: 'grant', target: t, kws: [`ブレイク+${xb[3]}`], until: xb[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
+  }
+  // 山札の上から表向きでシールド化
+  {
+    const su = s.match(/^(?:自分の)?山札の上から(\d+)枚を表向きで(?:シールド化する|新しいシールドとしてシールドゾーンに(?:置く|加える))$/);
+    if (su) return [{ op: 'top', n: +su[1], to: 'shieldUp', who: 'self' }];
+  }
+  // 相手の手札をすべて捨てさせる
+  if (/^相手は(?:自身|自分)の手札をすべて(?:、?持ち主の墓地に置く|捨てる)$/.test(s)) return [{ op: 'discard', who: 'opp', count: { all: true }, how: 'ownerChooses' }];
+  // 山札から探して手札に (古い書き方)
+  {
+    const sr = s.match(/^自分の山札から(.+?)を(\d+)枚(?:まで)?さがして(?:相手に見せ、)?(?:自分の)?手札に加える$/);
+    if (sr) {
+      const sel = parseSel(sr[1], { zones: ['deck'] });
+      if (sel) {
+        ctx.looked = true;
+        return [{ op: 'lookDeck' }, { op: 'choose', target: { ref: 'looked', sel, count: { n: +sr[2], upTo: true } }, purpose: 'benefit', prompt: s0 }, { op: 'move', target: { ref: 'it' }, to: 'hand' }, { op: 'shuffle' }];
+      }
     }
   }
   // 手札のカードを相手に見せる (コストとして)

@@ -69,6 +69,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   }
   if (sel.civNot?.length && sel.civNot.some((c) => civs.includes(c))) return false;
   if (sel.colorless && civs.length) return false;
+  if (sel.notColorless && !civs.length) return false;
   if (sel.multicolor && civs.length < 2) return false;
   if (sel.monocolor && civs.length >= 2) return false;
   if (sel.faceDown != null && !!s.cards[iid].manaDown !== sel.faceDown) return false;
@@ -104,7 +105,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -439,11 +440,13 @@ export function runExec(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
-      case 'shuffle':
-        shuffleArr(s, s.players[ex.player].deck);
-        s.players[ex.player].peek = [];
+      case 'shuffle': {
+        const who = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        shuffleArr(s, s.players[who].deck);
+        s.players[who].peek = [];
         log(s, ex.player, '山札をシャッフル');
         break;
+      }
       case 'battle': {
         const a = resolveRef(s, ex, op.a) ?? [];
         const b = resolveRef(s, ex, op.b) ?? [];

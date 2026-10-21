@@ -75,6 +75,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
       sel.civNot = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);
     });
     changed ||= take(/^(アンタップされている|アンタップしている|アンタップ状態の)/, () => (sel.tapped = false));
+    changed ||= take(/^無色ではない/, () => (sel.notColorless = true));
     changed ||= take(/^無色の?/, () => (sel.colorless = true));
     changed ||= take(/^多色ではない/, () => (sel.monocolor = true));
     changed ||= take(/^多色の?/, () => (sel.multicolor = true));

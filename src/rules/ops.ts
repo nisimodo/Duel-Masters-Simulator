@@ -22,6 +22,8 @@ export interface Sel {
   monocolor?: boolean;
   /** その文明がすべて自分のマナゾーンにある */
   civInMana?: boolean;
+  /** 無色ではない */
+  notColorless?: boolean;
   /** 裏向き (true) / 表向き (false) のカードだけ */
   faceDown?: boolean;
   mono?: boolean;
@@ -95,7 +97,7 @@ export type Op =
   | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
-  | { op: 'shuffle' }
+  | { op: 'shuffle'; who?: 'opp' }
   | { op: 'battle'; a: Target; b: Target }
   | { op: 'breakShield'; n: number }
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }

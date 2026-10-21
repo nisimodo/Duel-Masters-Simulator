@@ -77,6 +77,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'T・ブレイカー') k.breaker = Math.max(k.breaker, 3);
     else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
     else if (kw === 'ワールド・ブレイカー') k.breaker = 99;
+    else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
     else {
       const pa = kw.match(/^パワーアタッカー\+(\d+)$/);
       if (pa) k.powerAttacker += +pa[1];
@@ -1635,10 +1636,14 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const cyclone = kwLine(/^サイクロン/) && me.lastPlay?.turn === s.turn && me.lastPlay.kind === 'creature';
     if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
     const crystalCharger = kwLine(/^水晶チャージャー/);
+    const toBottom = face.text.some((l) => /唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く/.test(normText(l)));
     if (crystalCharger) {
       moveCard(s, L, a.iid, 'mana');
       c.manaDown = true;
       log(s, p, '水晶チャージャー: 裏向きにしてマナゾーンへ');
+    } else if (toBottom && !cyclone) {
+      moveCard(s, L, a.iid, 'deck', { pos: 'bottom' });
+      log(s, p, '唱えた後、山札の下へ');
     } else moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
