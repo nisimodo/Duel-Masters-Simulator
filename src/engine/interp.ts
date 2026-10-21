@@ -23,7 +23,7 @@ import {
   type Lookup,
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
-import { canBeChosen, isSealed } from './statics';
+import { activeStatics, canBeChosen, isSealed } from './statics';
 import { spellEffectLines } from '../lib/triggers';
 import { GACHA } from '../rules/gacha';
 
@@ -1293,6 +1293,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'extraTurn': {
+        if (activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn')) {
+          log(s, ex.player, 'ターンを追加できない (能力)');
+          break;
+        }
         s.extraTurnFor = ex.player;
         log(s, ex.player, 'このターンの後に、もう一度自分のターンを行う');
         break;

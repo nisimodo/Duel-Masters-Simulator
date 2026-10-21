@@ -501,7 +501,7 @@ function countAct(s: GameState, p: number, k: 'atk' | 'blk') {
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
 export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
   return s.players[p].battle.filter((b) => {
-    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃'))) return false;
+    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃')) && !activeStatics(s, L).some((x) => x.spec.s === 'allMustAttack')) return false;
     if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
     const tg = attackTargets(s, L, b);
     // 実際に攻撃を宣言できるか (挑発などの制限も含めて) 確かめる
@@ -1470,7 +1470,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
         });
       }
     }
-    const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger);
+    const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger) && !activeStatics(s, L).some((x) => x.owner === target && x.spec.s === 'noSTrigger');
     const strike = !!card?.faces.some((f) => f.kw.gStrike) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }
@@ -1967,6 +1967,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon')) return 'このクリーチャーは召喚できません';
+  if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');
   if (face.isCreature && !a.force && onlyIf && onlyIf.s === 'summonOnlyIf') {
     const me1 = s.players[p];

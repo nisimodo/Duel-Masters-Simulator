@@ -114,6 +114,14 @@ export type StaticSpec =
   | { s: 'oppSpellLock'; sel?: Sel }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
+  /** 誰も sel のクリーチャーを召喚できない */
+  | { s: 'noSummonSel'; sel: Sel }
+  /** すべてのクリーチャーは、可能であれば攻撃する */
+  | { s: 'allMustAttack' }
+  /** 自分は「S・トリガー」能力を使えない */
+  | { s: 'noSTrigger' }
+  /** 誰もターンを追加できない */
+  | { s: 'noExtraTurn' }
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
   | { s: 'linkRelease' }
   /** エターナル・Κ: 離れる時、かわりに裏向きのマナをN枚表向きにする */
@@ -264,6 +272,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^自分のマナゾーンにあるカードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
   if ((m = t.match(/^(?:ラビリンス[:：])?自分のシールド(?:の数)?が相手(?:のシールド)?より多ければ、(.+)$/))) return { cond: { c: 'shieldsMore' }, rest: m[1] };
   if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
+  if ((m = t.match(/^相手のシールドが(\d+)(?:つ|枚)以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
@@ -289,6 +298,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/はすべて、(「)/, 'は$1')
     .replace(/^(これをクロスしたクリーチャー|このクリーチャー)は、(「)/, '$1は$2')
     .replace(/^G・ゼロ[-－ー]/, 'G・ゼロ:')
+    .replace(/コストを最大(\d+)少なく/, 'コストを$1少なく')
     .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
@@ -521,7 +531,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?タップしてバトルゾーンに出る$/.test(t0) || /^バトルゾーンに出す時、このクリーチャーはタップして置く$/.test(t0)) return [{ s: 'entersTapped' }];
   if (/^このクリーチャーは、?(バトルゾーンに)?出たターン、?相手プレイヤーを攻撃できる$/.test(t0)) return [{ s: 'hastePlayer' }];
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
-  if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
+  if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0) || /^このクリーチャーは、?バトル中破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
+  if ((m = t0.match(/^誰も(.+?)を召喚できない$/)) && parseSel(m[1])) return [{ s: 'noSummonSel', sel: { ...parseSel(m[1])!, zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'hyper'] } }];
+  if (/^すべてのクリーチャーは、?可能であれば攻撃する$/.test(t0)) return [{ s: 'allMustAttack' }];
+  if (/^このクリーチャーは、?可能なら毎ターン、?クリーチャーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
+  if (/^自分は「S・トリガー」能力を使えない$/.test(t0)) return [{ s: 'noSTrigger' }];
+  if (/^誰もターンを追加できない$/.test(t0)) return [{ s: 'noExtraTurn' }];
+  if (/^相手の呪文を唱えるコストは無限のマナを必要とする$/.test(t0)) return [{ s: 'oppSpellLock' }];
+  if (/^∞ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
   if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)のクリーチャーを召喚するコストと(?:光|水|闇|火|自然)の呪文を唱えるコストは、?それぞれ([+-])(\d+)される$/))) {
     const civ = CIV_OF[m[1]];
