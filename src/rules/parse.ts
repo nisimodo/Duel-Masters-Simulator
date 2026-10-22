@@ -534,6 +534,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
   // 「〜を数える」「その数だけ〜」
   {
+    const lc = s.match(/^その数以下の(.+?)を(?:バトルゾーンから)?選び、(.+)$/);
+    const lsel = lc && parseSel(lc[1]);
+    const lops = lc && verbOps(lc[2], { ref: 'it' });
+    if (lc && lsel && lops) return [{ op: 'choose', target: { ref: 'sel', sel: lsel, count: { n: 99, upTo: true, fromCount: true }, chooser: 'self' }, purpose: purposeOf(lsel, lc[2]), prompt: `${lc[1]}を選ぶ` }, ...lops];
     const ct = s.match(/^(?:バトルゾーンにある)?(.+?)(?:の枚数)?を数える$/);
     if (ct) {
       if (/^自分のマナゾーンにある文明$/.test(ct[1])) return [{ op: 'countSet', civsOf: 'mana' }];
@@ -551,6 +555,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (cr) {
       let rest = cr[1];
       if (/^(?:カードを)?引(?:く|いてもよい)$/.test(rest)) rest = rest.replace(/^(?:カードを)?引/, 'カードを1枚引');
+      else if (/を選び、/.test(rest) && !/\d+(体|枚)/.test(rest)) rest = rest.replace(/を選び、/, 'を1体選び、');
       else if (/^自分の山札の上から/.test(rest)) rest = rest.replace(/^自分の山札の上から、?/, '自分の山札の上から1枚目を').replace(/を(?:自分の)?(マナゾーン|墓地)に(タップして)?置/, (_, z, t) => `を${t ?? ''}${z}に置`).replace(/^(自分の山札の上から1枚目)をを/, '$1を');
       const body = sentence(rest, ctx);
       if (body) return [{ op: 'repeatCount', body }];

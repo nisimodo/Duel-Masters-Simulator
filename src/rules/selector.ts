@@ -63,7 +63,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
     changed ||= take(/^〈種族〉の/, () => (sel.raceRef = true));
     changed ||= take(/^〈名前〉の/, () => (sel.nameRef = true));
-    changed ||= take(/^(?:その数以下のコストを持つ|コストがその数以下の|その数以下のコストの|その数以下の)/, () => (sel.costLeCount = true));
+    changed ||= take(/^(?:その数以下のコストを持つ|コストがその数以下の|その数以下のコストの)/, () => (sel.costLeCount = true));
     changed ||= take(/^〈文明〉の/, () => (sel.civRef = true));
     changed ||= take(/^〈数字コスト〉の/, () => (sel.costRef = true));
     changed ||= take(/^〈数字パワー〉の/, () => (sel.powerRef = true));

@@ -80,7 +80,7 @@ export interface Sel {
   twinpact?: boolean;
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; fromCount?: boolean } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 

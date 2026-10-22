@@ -524,8 +524,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.it = cands;
           break;
         }
-        const n = Math.min(cnt.n, cands.length);
-        if (!cnt.upTo && cands.length <= cnt.n) {
+        const want = cnt.fromCount ? (ex.count ?? ex.it.length) : cnt.n;
+        if (cnt.fromCount && want <= 0) {
+          ex.it = [];
+          break;
+        }
+        const n = Math.min(want, cands.length);
+        if (!cnt.upTo && cands.length <= want) {
           ex.it = cands;
           noteChosen(s, L, ex);
           break;
