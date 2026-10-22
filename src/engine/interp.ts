@@ -9,6 +9,7 @@ import {
   breakShields,
   cardCivs,
   drawCards,
+  fireEvent,
   fireFlipped,
   fireMugetsu,
   log,
@@ -181,6 +182,11 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
   return out;
 }
 
+/** 「相手がこのクリーチャーを選んだ時」 */
+function noteChosen(s: GameState, L: Lookup, ex: Exec) {
+  for (const i of ex.it) if (s.cards[i]?.zone === 'battle' && s.cards[i].owner !== ex.player) fireEvent(s, L, i, ['chosenByOpp']);
+}
+
 function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
   const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : a === b);
   const me = s.players[ex.player];
@@ -345,6 +351,7 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
   if (!op) return;
   if (op.op === 'choose' || op.op === 'discard' || op.op === 'breakShield') {
     ex.it = answer.picks ?? [];
+    if (op.op === 'choose') noteChosen(s, L, ex);
     ex.ops.shift();
     if (op.op === 'discard') {
       for (const i of ex.it) moveTo(s, L, ex, i, 'grave', true);
@@ -517,6 +524,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const n = Math.min(cnt.n, cands.length);
         if (!cnt.upTo && cands.length <= cnt.n) {
           ex.it = cands;
+          noteChosen(s, L, ex);
           break;
         }
         ask(s, ex, {

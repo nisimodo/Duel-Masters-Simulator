@@ -630,6 +630,11 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
+/** 能力を誘発させる (interp から使う) */
+export function fireEvent(s: GameState, L: Lookup, iid: number, events: TrigEvent[]) {
+  if (s.cards[iid]) fireSelf(s, L, iid, s.cards[iid].face, events);
+}
+
 /** 龍解・覚醒した時 */
 export function fireFlipped(s: GameState, L: Lookup, iid: number) {
   fireSelf(s, L, iid, s.cards[iid].face, ['flipped']);
@@ -1436,6 +1441,8 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
       s.cards[w].tapped = false;
       log(s, s.cards[w].owner, `${q(nameOf(s, L, w))} をアンタップ`);
     }
+  if (killD && !killA) fireSelf(s, L, def, s.cards[def].face, ['loseBattle']);
+  if (killA && !killD) fireSelf(s, L, att, s.cards[att].face, ['loseBattle']);
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
   // 「バトルの後で〜」

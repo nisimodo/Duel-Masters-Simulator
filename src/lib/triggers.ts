@@ -51,7 +51,9 @@ export type TrigEvent =
   | 'ownAttacked' // 自分のクリーチャーが攻撃された時
   | 'oppSTrigger' // 相手が「S・トリガー」を使った時
   | 'ownDraw' // 自分がカードを引いた時
-  | 'oppDraw'; // 相手がカードを引いた時
+  | 'oppDraw' // 相手がカードを引いた時
+  | 'chosenByOpp' // 相手がこのクリーチャーを選んだ時
+  | 'loseBattle'; // このクリーチャーがバトルに負けた時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -101,6 +103,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   oppSTrigger: '相手が「S・トリガー」を使った時',
   ownDraw: '自分がカードを引いた時',
   oppDraw: '相手がカードを引いた時',
+  chosenByOpp: '相手に選ばれた時',
+  loseBattle: 'バトルに負けた時',
   spell: '呪文の効果',
 };
 
@@ -218,6 +222,11 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^自分の(?:他の)?[^、]+?が(?:相手(?:の)?クリーチャーと)?バトルする時/.test(clause) && !self) ev.add('ownBattle');
     if (/^自分の[^、]*?クリーチャーが攻撃された時/.test(clause)) ev.add('ownAttacked');
     if (/相手が「S・トリガー」(?:能力)?を使った時/.test(clause)) ev.add('oppSTrigger');
+    if (/相手が(?:この(?:クリーチャー|カード)|バトルゾーンにあるこのクリーチャー)を選んだ時/.test(clause)) ev.add('chosenByOpp');
+    if (/このクリーチャーがバトルに負けた時/.test(clause)) ev.add('loseBattle');
+    if (/^(?:各ターン、)?クリーチャーが破壊された時/.test(clause)) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
+    if (/^(?:鬼エンド[:：])?クリーチャーが攻撃する時/.test(clause)) (ev.add('ownAttack'), ev.add('oppAttack'));
+    if (/^このクリーチャーを表向きにして(?:自分の)?シールドゾーンに(?:加えた|置いた)時/.test(clause)) ev.add('toShieldFaceUp');
     if (/相手がカードを引いた時/.test(clause)) ev.add('oppDraw');
     else if (/自分がカードを引いた時/.test(clause)) ev.add('ownDraw');
     if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
