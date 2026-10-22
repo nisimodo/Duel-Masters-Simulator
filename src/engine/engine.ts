@@ -569,6 +569,7 @@ function gLink(s: GameState, L: Lookup, iid: number) {
   c.linkedTo = top;
   t.under.push(iid);
   log(s, c.owner, `G・リンク: ${q(nameOf(s, L, iid))} が ${q(nameOf(s, L, top))} とリンクした`);
+  fireSelf(s, L, top, t.face, ['godLinked']);
 }
 
 // ---------- 誘発型能力 ----------
