@@ -54,7 +54,9 @@ export type TrigEvent =
   | 'oppDraw' // 相手がカードを引いた時
   | 'chosenByOpp' // 相手がこのクリーチャーを選んだ時
   | 'loseBattle' // このクリーチャーがバトルに負けた時
-  | 'godLinked'; // このクリーチャーがゴッドとリンクした時
+  | 'godLinked' // このクリーチャーがゴッドとリンクした時
+  | 'crossDestroyed' // これをクロス/装備/付けたクリーチャーが破壊された時
+  | 'crossWin'; // これをクロス/装備/付けたクリーチャーがバトルに勝った時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -107,6 +109,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   chosenByOpp: '相手に選ばれた時',
   loseBattle: 'バトルに負けた時',
   godLinked: 'リンクした時',
+  crossDestroyed: '付けたクリーチャーが破壊された時',
+  crossWin: '付けたクリーチャーがバトルに勝った時',
   spell: '呪文の効果',
 };
 
@@ -226,6 +230,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/相手が「S・トリガー」(?:能力)?を使った時/.test(clause)) ev.add('oppSTrigger');
     if (/相手が(?:この(?:クリーチャー|カード)|バトルゾーンにあるこのクリーチャー)を選んだ時/.test(clause)) ev.add('chosenByOpp');
     if (/このクリーチャーがバトルに負けた時/.test(clause)) ev.add('loseBattle');
+    if (/これを(?:クロスした|装備した|付けた)クリーチャーが破壊(?:された|される)時/.test(clause)) ev.add('crossDestroyed');
+    if (/これを(?:クロスした|装備した|付けた)クリーチャーがバトルに勝った時/.test(clause)) ev.add('crossWin');
     if (/このクリーチャーが(?:ゴッドと|他のカード\d+枚と)?リンクした時/.test(clause)) ev.add('godLinked');
     if (/^(?:各ターン、)?クリーチャーが破壊された時/.test(clause)) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
     if (/^(?:鬼エンド[:：])?クリーチャーが攻撃する時/.test(clause)) (ev.add('ownAttack'), ev.add('oppAttack'));

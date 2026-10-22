@@ -426,6 +426,8 @@ export function moveCard(
     if (from === 'battle' && dest !== 'battle') {
       const destroyed = dest === 'grave';
       fireSelf(s, L, iid, prevFace, destroyed ? ['destroyed', 'leave'] : ['leave']);
+      // クロスギア・ドラグハート・オーラの「これを付けたクリーチャーが破壊された時」
+      if (destroyed) for (const u of under) if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossDestroyed']);
       if (destroyed) fireWatchers(s, L, c.owner, iid, 'otherOwnDestroyed', 'oppDestroyed');
     }
     if (dest === 'grave' && from !== 'grave') fireSelf(s, L, iid, prevFace, ['toGrave']);
@@ -1444,6 +1446,10 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
     }
   if (killD && !killA) fireSelf(s, L, def, s.cards[def].face, ['loseBattle']);
   if (killA && !killD) fireSelf(s, L, att, s.cards[att].face, ['loseBattle']);
+  for (const w of [killD && !killA ? att : null, killA && !killD ? def : null])
+    if (w != null)
+      for (const u of s.cards[w].under)
+        if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossWin']);
   if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
   if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
   // 「バトルの後で〜」
