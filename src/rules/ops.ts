@@ -71,6 +71,8 @@ export interface Sel {
   costLtIt?: boolean;
   /** コストが it のコスト + N */
   costItPlus?: number;
+  /** コストが数えた数以下 */
+  costLeCount?: boolean;
   /** このクリーチャーよりコストが小さい */
   costLtSelf?: boolean;
   evolution?: boolean;
@@ -194,6 +196,10 @@ export type Op =
   | { op: 'moveOthers'; zone: 'mana' | 'hand' | 'battle'; who: 'self' | 'opp'; to: Dest }
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
+  /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle' }
+  /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
+  | { op: 'repeatCount'; body: Op[] }
   /** バトルする it のかわりに、このクリーチャーがバトルする */
   | { op: 'battleInstead' }
   /** 攻撃しているクリーチャーを破壊する */

@@ -167,6 +167,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
@@ -720,6 +721,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.player = op.p;
         ex.it = [];
         break;
+      case 'repeatCount': {
+        ex.ops.shift();
+        const n = Math.min(30, ex.count ?? ex.it.length);
+        for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
+        continue;
+      }
       case 'repeatPer': {
         ex.ops.shift();
         const n = Math.min(20, candidates(s, L, ex, op.sel).length);
@@ -930,6 +937,14 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'afterBattle': {
         (s.afterBattleExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
+        break;
+      }
+      case 'countSet': {
+        if (op.civsOf) {
+          const ids = op.civsOf === 'mana' ? s.players[ex.player].mana : s.players[ex.player].battle;
+          ex.count = new Set(ids.flatMap((i) => L(s.cards[i].cid)?.civs ?? [])).size;
+        } else ex.count = op.sel ? candidates(s, L, ex, op.sel).length : 0;
+        log(s, ex.player, `数えた: ${ex.count}`);
         break;
       }
       case 'battleInstead': {

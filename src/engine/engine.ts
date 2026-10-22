@@ -1325,7 +1325,8 @@ function attackOptions(s: GameState, L: Lookup): number[] {
   if (!att || !attFace) return [];
   return s.players[owner].hand.filter((h) => {
     const card = L(s.cards[h].cid);
-    if (!card) return false;
+    // この攻撃中に入れ替えで手札に戻ったカードは、もう一度は使わない (無限ループ防止)
+    if (!card || (a.usedOpts ?? []).includes(h)) return false;
     return card.faces.some(
       (f) => (f.kw.revChange && matchesCond(f.kw.revChange, att, attFace)) || (f.kw.invasion && matchesCond(f.kw.invasion, att, attFace)),
     );
@@ -2250,6 +2251,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       const rc = card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace));
       const inv = card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace));
       const oldName = nameOf(s, L, at.attacker);
+      at.usedOpts = [...(at.usedOpts ?? []), at.attacker, a.iid];
       if (rc >= 0) {
         // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す
         moveCard(s, L, at.attacker, 'hand');

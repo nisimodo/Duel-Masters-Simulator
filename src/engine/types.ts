@@ -172,6 +172,8 @@ export interface Exec {
   ops: Op[];
   it: number[];
   looked: number[];
+  /** 「〜を数える」で数えた数 */
+  count?: number;
   /** 2つ目の選択の前に保存したカード */
   saved?: number[];
   did: boolean;
@@ -198,6 +200,8 @@ export interface AttackState {
   step: 'opt' | 'atkTrig' | 'block' | 'resolve' | 'breaking' | 'done';
   /** バトルする時/ブロックされなかった時の能力を発動済み */
   preFired?: boolean;
+  /** この攻撃中に革命チェンジ・侵略で使った/戻ったカード */
+  usedOpts?: number[];
   /** この攻撃でシールドをブレイクした (キリフダッシュ) */
   broke?: boolean;
 }

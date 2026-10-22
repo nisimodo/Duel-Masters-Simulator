@@ -291,6 +291,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^自分の山札の上から、((?:その数|それ)と同じ枚数のカードを)、?/, '$1、自分の山札の上から')
     .replace(/^それが墓地に置かれる直前に進化クリーチャーの下にあった場合、/, '進化クリーチャーの下から墓地に置かれていれば、')
     .replace(/攻撃またはブロックできない$/, '攻撃もブロックもできない')
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
@@ -328,7 +329,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/シールドを(\d+)(枚|つ)裏向きのまま選び/, 'シールドを$1$2選び')
     .replace(/シールドを裏向きのまま(\d+)(枚|つ)(まで)?選び、表にして/, 'シールドを$1$2$3選び、')
     .replace(/^そうした場合、/, 'そうしたら、')
-    .replace(/^(自分の山札の上から\d+枚(?:目)?)を、?(?:裏向きにし(?:て)?|裏向きのまま)、?(?:それぞれ別の)?新しいシールドとして(?:自分の)?シールド(?:ゾーン)?に(?:加える|置く)$/, '$1をシールド化する')
+    .replace(/^(自分の山札の上から\d+枚(?:目)?)を、?(?:裏向きにし(?:て)?|裏向きのまま)?、?(?:それぞれ別の)?新しいシールドとして(?:自分の)?シールド(?:ゾーン)?に(?:加える|置く)$/, '$1をシールド化する')
     .replace(/選んで(?=裏向きにし)/, '選び、')
     .replace(/^このターン(?=(?:その|この|自分の|相手の)(?:クリーチャー|[^、]*クリーチャー)は)/, 'このターン、')
     .replace(/^(?:このターンが終わるまで|このターンの終わりまで|そのターンの終わりまで|このターン中|そのターン中|その攻撃の終わりまで)、?/, 'このターン、')
@@ -531,6 +532,30 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  // 「〜を数える」「その数だけ〜」
+  {
+    const ct = s.match(/^(?:バトルゾーンにある)?(.+?)(?:の枚数)?を数える$/);
+    if (ct) {
+      if (/^自分のマナゾーンにある文明$/.test(ct[1])) return [{ op: 'countSet', civsOf: 'mana' }];
+      if (/^自分のクリーチャーが持つ文明$/.test(ct[1])) return [{ op: 'countSet', civsOf: 'battle' }];
+      const z = ct[1].match(/^(自分|相手)の(マナゾーン|墓地|手札|シールド)(?:にある(.+))?$/);
+      if (z) {
+        const zone = ({ マナゾーン: 'mana', 墓地: 'grave', 手札: 'hand', シールド: 'shield' } as const)[z[2] as 'マナゾーン'];
+        const sel = z[3] ? parseSel(z[3], { zones: [zone] }) : ({ owner: 'any', zones: [zone], kind: 'card' } as Sel);
+        if (sel) return [{ op: 'countSet', sel: { ...sel, owner: z[1] === '自分' ? 'self' : 'opp', zones: [zone], kind: z[3] && !/カード$/.test(z[3]) ? sel.kind : 'card' } }];
+      }
+      const sel = parseSel(ct[1]);
+      if (sel) return [{ op: 'countSet', sel }];
+    }
+    const cr = s.match(/^(?:その数だけ|(?:その(?:文明の)?数|〈文明〉の数|それ)と同じ(?:枚数|数)(?:の(?:カード)?)?を?)、?(.+)$/);
+    if (cr) {
+      let rest = cr[1];
+      if (/^(?:カードを)?引(?:く|いてもよい)$/.test(rest)) rest = rest.replace(/^(?:カードを)?引/, 'カードを1枚引');
+      else if (/^自分の山札の上から/.test(rest)) rest = rest.replace(/^自分の山札の上から、?/, '自分の山札の上から1枚目を').replace(/を(?:自分の)?(マナゾーン|墓地)に(タップして)?置/, (_, z, t) => `を${t ?? ''}${z}に置`).replace(/^(自分の山札の上から1枚目)をを/, '$1を');
+      const body = sentence(rest, ctx);
+      if (body) return [{ op: 'repeatCount', body }];
+    }
+  }
   if (/^かわりにこのクリーチャーにバトルさせる$/.test(s)) return [{ op: 'battleInstead' }];
   if (/^かわりに自分の他の.+?を\d+体破壊してもよい$/.test(s)) return []; // 置換効果は常在型能力で処理する
   if (/^このクリーチャーを(?:自分の)?(?:手札または)?墓地からバトルゾーンにタップして出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }, { op: 'tap', target: { ref: 'self' } }];
