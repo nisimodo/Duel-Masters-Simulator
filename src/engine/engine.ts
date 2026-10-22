@@ -710,18 +710,20 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
         }
       }
     for (const iid of s.players[p].battle) {
-      if (iid === exclude || isSealed(s, iid)) continue;
+      if (isSealed(s, iid)) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
       for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
         if (!spec.events.includes(ev) || spec.fromHand) continue;
+        // 出たカード自身は、「自分の〇〇が出た時」(「他の」なし) だけ誘発する
+        if (iid === exclude && !(spec.includeSelf && ev === 'otherOwnEnter')) continue;
         // 「自分の光のハンターが出た時」などは、そのカードが条件に合う時だけ
         if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
         pushAbility(s, L, iid, s.cards[iid].face, spec, ev, subject);
       }
       // (手札から使う能力は下でまとめて)
       // 下にあるリンクしたゴッド・装備したドラグハート・クロスギアの能力 (龍解など)
-      for (const u of s.cards[iid].under) {
+      for (const u of iid === exclude ? [] : s.cards[iid].under) {
         const uc = s.cards[u];
         const ucard = L(uc.cid);
         if (uc.linkedTo !== iid && !/ドラグハート|クロスギア/.test(ucard?.faces[uc.face]?.type ?? '')) continue;
@@ -1340,6 +1342,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const lim = s.players[c.owner].actLimit;
   if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
+  if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'))) return false;
   return true;

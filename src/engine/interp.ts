@@ -492,6 +492,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
               log(s, who, '山札の上から1枚をシールド化');
             } else moveTo(s, L, ex, i, op.to, op.to !== 'hand');
           }
+          // 「それがドラゴンなら」: 置いたカードを「それ」で参照する
+          ex.looked = ids;
         }
         break;
       }

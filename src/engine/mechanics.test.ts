@@ -161,6 +161,8 @@ const db = buildDB(
     { id: 'st2', n: 'st2', img: '', f: [{ n: 'st2', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
     { id: 'st3', n: 'st3', img: '', f: [{ n: 'st3', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
     { id: 'st4', n: 'st4', img: '', f: [{ n: 'st4', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
+    { id: 'ash', n: 'ash', img: '', f: [{ n: 'ash', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ブルー・コマンド・ドラゴン', '生徒会組'], x: ['各ターンに１度、自分のドラゴンが出た時、カードを１枚引いてもよい。'] }] },
+    { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['アーマード・ドラゴン'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -625,6 +627,29 @@ describe('named mechanics', () => {
     }
     expect(s.cards[zero].face).toBe(1);
     expect(s.players[0].battle).toEqual([zero]);
+  });
+
+  it('各ターンに1度、自分のドラゴンが出た時: includes itself and fires once per turn per card', () => {
+    let s = setup([
+      { p: 0, cid: 'ash', zone: 'battle' },
+      { p: 0, cid: 'ash', zone: 'hand' },
+      { p: 0, cid: 'drg', zone: 'hand' },
+    ], 4);
+    const resolveAll = () => {
+      for (let k = 0; k < 8 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+      }
+    };
+    const h0 = s.players[0].hand.length;
+    // 2体目のashが出る: 自分自身と、場のash の両方が誘発 (2枚引く)
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'ash')!, face: 0, pay: freeMana(s, 0, 1) });
+    resolveAll();
+    expect(s.players[0].hand.length).toBe(h0 - 1 + 2);
+    // 同じターンに別のドラゴンが出ても、もう誘発しない
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'drg')!, face: 0, pay: freeMana(s, 0, 1) });
+    resolveAll();
+    expect(s.players[0].hand.length).toBe(h0 - 2 + 2);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

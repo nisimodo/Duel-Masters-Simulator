@@ -53,7 +53,9 @@ export type StaticSpec =
   | { s: 'tapMana' }
   | { s: 'rainbowMana' }
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper' }
-  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana' }
+  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana'; each?: number }
+  /** 出たターンに攻撃できないクリーチャー (全員) */
+  | { s: 'newNoAttackSel'; sel: Sel }
   /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
   | { s: 'discardDiscount'; n: number; d: number }
   /** 相手の〇〇は攻撃/ブロックできない */
@@ -308,6 +310,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/\s+/g, '')
     .replace(/。$/, '')
     .replace(/はすべて、(「)/, 'は$1')
+    .replace(/すべてに、(「)/, 'すべてに$1')
     .replace(/^(これをクロスしたクリーチャー|このクリーチャー)は、(「)/, '$1は$2')
     .replace(/^G・ゼロ[-－ー]/, 'G・ゼロ:')
     .replace(/コストを最大(\d+)少なく/, 'コストを$1少なく')
@@ -536,10 +539,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
     return [{ s: 'destroyTo', zone: z }];
   }
-  if ((m = t0.match(/^シンパシー[:：](.+)$/))) {
-    const sel = parseSel(m[1]);
-    return sel ? [{ s: 'sympathy', sel: { ...sel, owner: 'self' }, floor: floorOf(full) }] : null;
+  if ((m = t0.match(/^(W・)?シンパシー[:：](.+)$/))) {
+    const sel = parseSel(m[2]);
+    return sel ? [{ s: 'sympathy', sel: { ...sel, owner: 'self' }, floor: floorOf(full), each: m[1] ? 2 : undefined }] : null;
   }
+  if ((m = t0.match(/^(.+?)は、?出たターンに?攻撃できない$/)) && !/^(相手|自分)の/.test(m[1]) && parseSel(m[1])) return [{ s: 'newNoAttackSel', sel: parseSel(m[1])! }];
   if ((m = t0.match(/^ササゲール(\d+)/))) return [{ s: 'sasageru', n: +m[1] }];
   if (/^ハイパーエナジー/.test(t0)) return [{ s: 'hyperEnergy' }];
   if ((m = t0.match(/^G・ゼロ[:：]このターン、自分が呪文を(\d+)枚以上唱えていれば/))) return [{ s: 'gzero', cond: { c: 'spellsThisTurn', n: +m[1] } }];

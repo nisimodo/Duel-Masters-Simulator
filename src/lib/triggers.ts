@@ -137,6 +137,8 @@ export interface TriggerSpec {
   fromHand?: boolean;
   /** 墓地にある時にも使う能力 (無月の門) */
   fromGrave?: boolean;
+  /** 「自分の〇〇が出た時」(「他の」がない) は、このカード自身が出た時も誘発する */
+  includeSelf?: boolean;
 }
 
 const SKIP = /^(ブロッカー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|S・トリガー|シールド・トリガー|スーパー・S・トリガー|G・ストライク|スピードアタッカー|マッハファイター|ジャストダイバー|スレイヤー|[WTQ]・ブレイカー|ワールド・ブレイカー|EXライフ|チャージャー|G・ゼロ|シンパシー|パワーアタッカー)/;
@@ -273,7 +275,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     const eff0 = effect.replace(/\s+/g, '');
     const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined });
+    const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined, includeSelf });
   }
   return out;
 }

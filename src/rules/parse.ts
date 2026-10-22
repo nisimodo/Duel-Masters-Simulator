@@ -298,6 +298,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/自分の山札の上からさらに(?:もう)?(\d+)枚、?(タップして)?(?:自分の)?マナゾーンに置く$/, '自分の山札の上から$1枚を$2マナゾーンに置く')
     .replace(/全て/g, 'すべて')
     .replace(/^このターン(?=(?:その|この|自分の|相手の)[^、]+?は)/, 'このターン、')
     .replace(/^(このターン|そのターン)、自分はゲームに負けず、相手は勝てない$/, '$1、自分はゲームに負けず、相手はゲームに勝てない')
@@ -998,6 +999,15 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'choose', target: { ref: 'looked', sel, count: { all: true } }, purpose: 'benefit', prompt: s0 },
         { op: 'move', target: { ref: 'it' }, to: 'hand' },
         { op: 'move', target: { ref: 'rest' }, to: /墓地/.test(lh[2]) ? 'grave' : 'deckBottom' },
+      ];
+    // 「その中の〇〇をすべて、タップしてマナゾーンに置き、それ以外のカードを墓地に置く」
+    const lm = s.match(/^その中(?:から|の)(.+?)をすべて、?(タップして)?(?:自分の)?(マナゾーン|墓地|手札)に(?:置き|加え)、(?:それ以外のカード|残り(?:のカード)?)を(?:すべて)?(?:好きな順序で)?(?:自分の)?(墓地に置く|山札の(?:一番)?下に(?:戻す|置く)|手札に加える)$/);
+    const msel = lm && parseSel(lm[1], { zones: ['deck'] });
+    if (lm && msel)
+      return [
+        { op: 'choose', target: { ref: 'looked', sel: msel, count: { all: true } }, purpose: 'benefit', prompt: s0 },
+        { op: 'move', target: { ref: 'it' }, to: lm[3] === '手札' ? 'hand' : lm[3] === '墓地' ? 'grave' : lm[2] ? 'manaTapped' : 'mana' },
+        { op: 'move', target: { ref: 'rest' }, to: /墓地/.test(lm[4]) ? 'grave' : /手札/.test(lm[4]) ? 'hand' : 'deckBottom' },
       ];
     if (/^(?:その後、)?同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItPlus', plus: 0 }];
     const kd = s.match(/^こうして(?:破壊した|捨てた|墓地に置いた)(?:クリーチャー|カード)(\d+)(?:体|枚)につき、?(?:カードを)?(\d+)枚(?:、カードを)?引く$/);

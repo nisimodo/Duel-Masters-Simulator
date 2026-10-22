@@ -1,6 +1,7 @@
 // 常在型能力の適用 (パワー・キーワード・コスト・選ばれない・攻撃可否・マナの文明)
 import type { AbilityGroup, Civ, Face } from '../lib/cards';
 import type { Sel } from '../rules/ops';
+import { parseSel } from '../rules/selector';
 import type { StaticCond, StaticSpec, StaticTarget, StaticWhen } from '../rules/statics';
 import { matchesSel, mainOpp } from './interp';
 import type { Lookup } from './engine';
@@ -306,10 +307,23 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
     if (sp.s !== 'selfCost' || !condOk(s, L, { src: iid, owner: p, spec: sp }, sp.cond, iid)) continue;
     cost = sp.delta < 0 ? Math.max(Math.min(cost, sp.floor), cost + sp.delta) : cost + sp.delta;
   }
-  // シンパシー (自分の〇〇1体につき1少なく)
-  for (const sp of f.statics ?? []) {
-    if (sp.s !== 'sympathy') continue;
-    const n = s.players[p][sp.zone ?? 'battle'].filter((b) => matchesSel(s, L, b, sp.sel)).length;
+  // シンパシー (自分の〇〇1体につき1少なく / W・シンパシーは2少なく)
+  const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana'; each?: number }[] = [];
+  for (const sp of f.statics ?? []) if (sp.s === 'sympathy') syms.push(sp);
+  // 他のカードから与えられたシンパシー (「自分の手札にある〇〇すべてに「シンパシー:〜」を与える」)
+  if (c.zone === 'hand')
+    for (const a of activeStatics(s, L)) {
+      const sp = a.spec;
+      if (sp.s !== 'grant' || a.owner !== p || sp.target.t !== 'sel' || !sp.target.sel.zones.includes('hand')) continue;
+      if (!matchesSel(s, L, iid, { ...sp.target.sel, zones: ['hand'] })) continue;
+      for (const kw of sp.kws) {
+        const m = kw.match(/^(W・)?シンパシー[:：](.+)$/);
+        const sel = m && parseSel(m[2]);
+        if (sel) syms.push({ sel: { ...sel, owner: 'self' }, floor: 1, each: m![1] ? 2 : undefined });
+      }
+    }
+  for (const sp of syms) {
+    const n = s.players[p][sp.zone ?? 'battle'].filter((b) => matchesSel(s, L, b, sp.sel)).length * (sp.each ?? 1);
     if (n) cost = Math.max(Math.min(cost, sp.floor), cost - n);
   }
   return Math.max(0, cost);
