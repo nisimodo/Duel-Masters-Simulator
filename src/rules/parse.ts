@@ -211,6 +211,10 @@ function parseCond(c: string): Cond | null {
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
   if (/^手札が1枚もないプレイヤーがい$/.test(c)) return { c: 'anyHandEmpty' };
+  if ((m = c.match(/^バトルゾーンに(「[^」]+」を持つクリーチャー|[^自相][^、]*?クリーチャー)があ$/))) {
+    const sel = parseSel(m[1]);
+    if (sel) return { c: 'count', sel: { ...sel, owner: 'any' }, cmp: '>=', n: 1 };
+  }
   if (/^この(?:最終)?禁断(?:フィールド|クリーチャー)?に封印が1つもな(?:けれ|け)?$/.test(c)) return { c: 'noSeals' };
   if ((m = c.match(/^このターン(?:中)?、他に(\d+)体以上破壊されてい$/))) return { c: 'destroyedThisTurn', n: +m[1] };
   if (/^進化クリーチャーの下から墓地に置かれてい$/.test(c)) return { c: 'wasUnderEvo' };
@@ -294,6 +298,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^次の相手のターン、相手は呪文を唱える(?:ことが)?できない$/, '次の自分のターンのはじめまで、相手は呪文を唱えられない')
+    .replace(/^相手は、?自身の手札から(\d+)枚選んで捨てる$/, '相手は自身の手札を$1枚選び、捨てる')
+    .replace(/^自分の(手札|シールド)が相手より少ない場合、/, '相手の$1が自分のより多ければ、')
+    .replace(/^自分のマナゾーンのカードが相手より少ない場合、/, '相手のマナゾーンのカードが自分のより多ければ、')
+    .replace(/^(その後、)?自分の山札の一番下のカードを、/, '自分の山札の一番下のカードを')
+    .replace(/(クリーチャー)はすべて「/, '$1すべてに「')
     .replace(/^このターン(?:中)?、(他に\d+体以上破壊されてい)たら、/, 'このターン中、$1れば、')
     .replace(/^自分の山札の上から、((?:その数|それ)と同じ枚数のカードを)、?/, '$1、自分の山札の上から')
     .replace(/^それが墓地に置かれる直前に進化クリーチャーの下にあった場合、/, '進化クリーチャーの下から墓地に置かれていれば、')
@@ -567,7 +577,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       if (body) return [{ op: 'repeatCount', body }];
     }
   }
-  if (/^かわりにこのクリーチャーにバトルさせる$/.test(s)) return [{ op: 'battleInstead' }];
+  if (/^かわりにこのクリーチャー(?:にバトルさせる|がバトルする)$/.test(s)) return [{ op: 'battleInstead' }];
+  if (/^そのカードのコストと同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItCost' }];
+  {
+    const bb = s.match(/^自分の山札の一番下から(\d+)枚を(墓地|マナゾーン)に置く$/);
+    if (bb) return Array.from({ length: +bb[1] }, (): Op => ({ op: 'deckBottomTo', to: bb[2] === '墓地' ? 'grave' : 'mana' }));
+  }
   if (/^かわりに自分の他の.+?を\d+体破壊してもよい$/.test(s)) return []; // 置換効果は常在型能力で処理する
   if (/^このクリーチャーを(?:自分の)?(?:手札または)?墓地からバトルゾーンにタップして出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }, { op: 'tap', target: { ref: 'self' } }];
   if (/^このターン、(?:自分の)?マナゾーンからクリーチャーを召喚してもよい$/.test(s)) return [{ op: 'manaSummon', n: 99 }];

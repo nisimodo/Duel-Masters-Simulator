@@ -958,6 +958,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `数えた: ${ex.count}`);
         break;
       }
+      case 'drawItCost': {
+        const i = ex.it[0] ?? ex.looked[0];
+        const n = i != null ? (L(s.cards[i].cid)?.faces[s.cards[i].face]?.cost ?? 0) : 0;
+        const d = drawCards(s, ex.player, Math.min(n, 20));
+        log(s, ex.player, `カードを${d}枚引いた`);
+        break;
+      }
       case 'zeroLink': {
         const star = s.cards[ex.src];
         const pl = s.players[ex.player];

@@ -206,6 +206,8 @@ export type Op =
   | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle' }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
+  /** it のコストと同じ枚数のカードを引く */
+  | { op: 'drawItCost' }
   /** この零龍星雲を自分の《滅亡の起源 零無》にリンクする (4枚目で零龍卍誕) */
   | { op: 'zeroLink' }
   /** バトルする it のかわりに、このクリーチャーがバトルする */
