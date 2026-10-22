@@ -1314,7 +1314,10 @@ function queueAttackTriggers(s: GameState, L: Lookup) {
   fireSelf(s, L, a.attacker, s.cards[a.attacker].face, ['attack']);
   for (const u of s.cards[a.attacker].under) fireSelf(s, L, u, 0, ['crossAttack']);
   fireWatchers(s, L, a.owner, null, 'ownAttack', 'oppAttack', a.attacker);
-  if (a.targetCard != null) fireSelf(s, L, a.targetCard, s.cards[a.targetCard].face, ['attacked']);
+  if (a.targetCard != null) {
+    fireSelf(s, L, a.targetCard, s.cards[a.targetCard].face, ['attacked']);
+    fireWatchers(s, L, s.cards[a.targetCard].owner, null, 'ownAttacked', null, a.targetCard);
+  }
   // ウラ・ニンジャ・ストライク: 攻撃された側の手札から
   s.players.forEach((pl, dp) => {
     if (dp === a.owner || pl.lost) return;
@@ -1510,6 +1513,8 @@ function resolveAttack(s: GameState, L: Lookup) {
       if (s.cards[foe].zone === 'battle') {
         fireSelf(s, L, a.attacker, s.cards[a.attacker].face, ['battle']);
         fireSelf(s, L, foe, s.cards[foe].face, ['battle']);
+        fireWatchers(s, L, a.owner, a.attacker, 'ownBattle', null, a.attacker);
+        fireWatchers(s, L, s.cards[foe].owner, foe, 'ownBattle', null, foe);
       }
     } else {
       fireSelf(s, L, a.attacker, s.cards[a.attacker].face, ['unblocked']);

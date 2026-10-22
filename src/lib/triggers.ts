@@ -46,7 +46,9 @@ export type TrigEvent =
   | 'mugetsuUsed' // 自分の「無月の門」能力を使った時
   | 'flipped' // このクリーチャーが龍解した時 / 覚醒した時
   | 'ownShieldAdded' // 自分のシールドゾーンにカードが置かれた時
-  | 'ownShieldLeft'; // カードが自分のシールドゾーンを離れた時
+  | 'ownShieldLeft' // カードが自分のシールドゾーンを離れた時
+  | 'ownBattle' // 自分の(他の)〇〇がバトルする時
+  | 'ownAttacked'; // 自分のクリーチャーが攻撃された時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -91,6 +93,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   flipped: '龍解・覚醒した時',
   ownShieldAdded: 'シールドゾーンにカードが置かれた時',
   ownShieldLeft: 'シールドゾーンを離れた時',
+  ownBattle: '自分のクリーチャーがバトルする時',
+  ownAttacked: '自分のクリーチャーが攻撃された時',
   spell: '呪文の効果',
 };
 
@@ -204,6 +208,9 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/カードが自分のシールドゾーンを離れた時|自分のシールドが(?:シールドゾーンを)?離れた時/.test(clause)) ev.add('ownShieldLeft');
     if (/他のクリーチャーが破壊された時/.test(clause) && !own && !opp) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
     if (/このクリーチャーがバトルした時/.test(clause)) ev.add('battle');
+    if (/このクリーチャーがバトルゾーンから(?:自分の)?墓地に置かれる時/.test(clause)) ev.add('destroyed');
+    if (/^自分の(?:他の)?[^、]+?が(?:相手(?:の)?クリーチャーと)?バトルする時/.test(clause) && !self) ev.add('ownBattle');
+    if (/^自分の[^、]*?クリーチャーが攻撃された時/.test(clause)) ev.add('ownAttacked');
     if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
@@ -215,10 +222,10 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     const optional = /てもよい|ことができる/.test(effect);
     // 他のカードを見張る能力の対象 (「自分の(他の)〇〇が出た時」「相手が〇〇を召喚した時」)
     let subject: Sel | undefined;
-    const watch = [...ev].some((e) => /^(otherOwn|opp)(Enter|Destroyed|Attack)$|^ownAttack$/.test(e));
+    const watch = [...ev].some((e) => /^(otherOwn|opp)(Enter|Destroyed|Attack)$|^own(Attack|Battle|WinBattle|Attacked)$/.test(e));
     if (watch) {
       const sm =
-        clause.match(/(?:自分|相手)の(?:他の)?(.+?)(?:が|を)(?:バトルゾーンに)?(?:出(?:た|した)|召喚した|攻撃する|破壊された)時/) ??
+        clause.match(/(?:自分|相手)の(?:他の)?(.+?)(?:が|を)(?:バトルゾーンに)?(?:出(?:た|した)|召喚した|攻撃する|破壊された|(?:相手(?:の)?クリーチャーと)?バトルする|バトルに勝った|攻撃された)時/) ??
         clause.match(/相手が(.+?)を(?:バトルゾーンに)?(?:出(?:した)?|召喚した)時/);
       if (sm && !/^クリーチャー$/.test(sm[1])) subject = parseSel(sm[1]) ?? undefined;
     }
