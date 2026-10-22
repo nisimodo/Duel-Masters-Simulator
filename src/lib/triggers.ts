@@ -49,7 +49,9 @@ export type TrigEvent =
   | 'ownShieldLeft' // カードが自分のシールドゾーンを離れた時
   | 'ownBattle' // 自分の(他の)〇〇がバトルする時
   | 'ownAttacked' // 自分のクリーチャーが攻撃された時
-  | 'oppSTrigger'; // 相手が「S・トリガー」を使った時
+  | 'oppSTrigger' // 相手が「S・トリガー」を使った時
+  | 'ownDraw' // 自分がカードを引いた時
+  | 'oppDraw'; // 相手がカードを引いた時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -97,6 +99,8 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   ownBattle: '自分のクリーチャーがバトルする時',
   ownAttacked: '自分のクリーチャーが攻撃された時',
   oppSTrigger: '相手が「S・トリガー」を使った時',
+  ownDraw: '自分がカードを引いた時',
+  oppDraw: '相手がカードを引いた時',
   spell: '呪文の効果',
 };
 
@@ -214,6 +218,8 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^自分の(?:他の)?[^、]+?が(?:相手(?:の)?クリーチャーと)?バトルする時/.test(clause) && !self) ev.add('ownBattle');
     if (/^自分の[^、]*?クリーチャーが攻撃された時/.test(clause)) ev.add('ownAttacked');
     if (/相手が「S・トリガー」(?:能力)?を使った時/.test(clause)) ev.add('oppSTrigger');
+    if (/相手がカードを引いた時/.test(clause)) ev.add('oppDraw');
+    else if (/自分がカードを引いた時/.test(clause)) ev.add('ownDraw');
     if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {

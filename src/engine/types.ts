@@ -109,6 +109,8 @@ export interface PlayerState {
   spellLockUntil?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
+  /** まだ「カードを引いた時」を誘発させていないドロー */
+  drawnPending?: number[];
   /** 「ファイナル革命」を使ったターン */
   finalRevTurn?: number;
   /** このターンに唱えた呪文の数 */

@@ -758,6 +758,7 @@ export function drawCards(s: GameState, p: number, n: number) {
     c.faceUp = true;
     pl.hand.push(top);
     drawn++;
+    (pl.drawnPending ??= []).push(top);
     // ビビッドロー: 自分のターン中、攻撃の前にドローしたら表向きにする
     if (s.active === p && !s.attack && s.phase !== 'over' && (vividLookup?.(c.cid)?.faces[0]?.statics ?? []).some((x) => x.s === 'vivid')) {
       c.vividTurn = s.turn;
@@ -1048,6 +1049,14 @@ function offerKirifu(s: GameState, L: Lookup, p: number) {
  */
 function advance(s: GameState, L: Lookup): boolean {
   if (s.phase === 'over') return false;
+  // 「カードを引いた時」: 引いた後、次の処理の前に誘発させる
+  for (let p = 0; p < s.players.length; p++) {
+    const dp = s.players[p].drawnPending;
+    if (!dp?.length) continue;
+    s.players[p].drawnPending = [];
+    fireWatchers(s, L, p, null, 'ownDraw', 'oppDraw', dp[dp.length - 1]);
+    return true;
+  }
   const top = s.pending[0];
   if (top) {
     if (top.kind === 'ability') {
