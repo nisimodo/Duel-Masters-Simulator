@@ -171,6 +171,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
     }
     case 'shieldsMore':
       return s.players[a.owner].shield.length > s.players[mainOpp(s, a.owner)].shield.length;
+    case 'selfTapped':
+      return !!s.cards[a.src]?.tapped;
     case 'selfNew':
       return !!s.cards[a.src]?.sick;
     case 'handLE':

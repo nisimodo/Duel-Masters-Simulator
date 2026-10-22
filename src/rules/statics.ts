@@ -25,6 +25,8 @@ export type StaticCond =
   | { c: 'selfNew' }
   /** パワーがN以下 */
   | { c: 'powerAtMost'; n: number }
+  /** このクリーチャーがタップされている */
+  | { c: 'selfTapped' }
   /** sel に合うものが N 個未満 */
   | { c: 'countLess'; sel: Sel; n: number }
   /** 相手のシールドが N 枚未満 */
@@ -283,6 +285,8 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^相手のシールドが(\d+)(?:つ|枚)以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
+  if ((m = t.match(/^自分の手札が(\d+)枚もない(?:時|なら)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] - 1 }, rest: m[2] };
+  if ((m = t.match(/^このクリーチャーがタップされて(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)以下(?:の時|なら|であれば)、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] }, rest: m[2] };

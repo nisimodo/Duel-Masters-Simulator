@@ -2314,6 +2314,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
           const fi = a.face ?? card.faces.findIndex((f) => f.kw.shieldTrigger);
           const face = card.faces[fi] ?? card.faces[0];
           log(s, p, `S・トリガー発動！ ${q(face.name)}`);
+          fireWatchers(s, L, p, null, null, 'oppSTrigger');
           const err = playCard(s, p, { t: 'play', iid: top.iid, face: card.faces.indexOf(face), pay: [], free: true, force: true }, L);
           if (err) return err;
           const ob = face.marked?.oB;
