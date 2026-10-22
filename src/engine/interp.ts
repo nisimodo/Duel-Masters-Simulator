@@ -234,6 +234,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return me.shield.length + opp.shield.length <= c.n;
     case 'oppMore':
       return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
+    case 'wasUnderEvo':
+      return !!s.cards[ex.src]?.wasUnderEvo;
     case 'finalRev':
       if (me.finalRevTurn === s.turn) return false;
       me.finalRevTurn = s.turn;

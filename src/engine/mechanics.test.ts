@@ -145,6 +145,7 @@ const db = buildDB(
       ],
     },
     cr('hakuyon', 2, 2000, ['自分の「無月の門」能力を使った時、このクリーチャーを自分の墓地からバトルゾーンにタップして出してもよい。']),
+    cr('ebase', 1, 1000, ['このカードが墓地に置かれた時、それが墓地に置かれる直前に進化クリーチャーの下にあった場合、カードを１枚引いてもよい。']),
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -551,6 +552,25 @@ describe('named mechanics', () => {
     }
     expect(s.cards[hk].zone).toBe('battle');
     expect(s.cards[hk].tapped).toBe(true);
+  });
+
+  it('墓地に置かれる直前に進化クリーチャーの下にあった場合: draws when the evolution is destroyed', () => {
+    let s = setup([
+      { p: 0, cid: 'ebase', zone: 'battle' },
+      { p: 0, cid: 'evo1', zone: 'hand' },
+    ]);
+    const base = find(s, 0, 'battle', 'ebase')!;
+    const evo = find(s, 0, 'hand', 'evo1')!;
+    s = act(s, 0, { t: 'play', iid: evo, face: 0, pay: freeMana(s, 0, 1), evo: [base] });
+    for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'move', iid: evo, to: 'grave' });
+    for (let k = 0; k < 6 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[base].zone).toBe('grave');
+    expect(s.players[0].hand.length).toBe(hand + 1);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

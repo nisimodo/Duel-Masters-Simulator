@@ -136,6 +136,7 @@ export function detach(s: GameState, iid: number) {
 
 function resetCard(c: CardInst) {
   c.grants = undefined;
+  c.wasUnderEvo = undefined;
   c.manaDown = undefined;
   c.restrict = undefined;
   c.noUntap = undefined;
@@ -403,6 +404,7 @@ export function moveCard(
     if (uCard?.zone === 'gr') ud = 'gr';
     resetCard(uc);
     uc.zone = ud;
+    uc.wasUnderEvo = ud === 'grave' && !!card?.faces[prevFace]?.isEvolution;
     uc.face = 0;
     uc.faceUp = !(ud === 'shield' || ud === 'deck' || ud === 'gr');
     const ua = s.players[uc.owner][ud] as number[];
@@ -435,6 +437,8 @@ export function moveCard(
       if (destroyed) fireWatchers(s, L, c.owner, iid, 'otherOwnDestroyed', 'oppDestroyed');
     }
     if (dest === 'grave' && from !== 'grave') fireSelf(s, L, iid, prevFace, ['toGrave']);
+    // 進化クリーチャーの下から墓地に置かれたカードの「このカードが墓地に置かれた時」
+    for (const u of under) if (s.cards[u].wasUnderEvo) fireSelf(s, L, u, 0, ['toGrave']);
     if (dest === 'mana' && from !== 'mana') {
       fireSelf(s, L, iid, 0, ['toManaSelf']);
       fireWatchers(s, L, c.owner, null, 'ownManaPut', null, iid);

@@ -45,6 +45,8 @@ export interface CardInst {
   justDive?: number;
   /** EXライフで置いたシールド */
   exShield?: number;
+  /** 墓地に置かれる直前に進化クリーチャーの下にあった */
+  wasUnderEvo?: boolean;
   /** エクストラEXライフの残りのシールド */
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */

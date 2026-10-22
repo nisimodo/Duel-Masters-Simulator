@@ -116,6 +116,8 @@ export type Cond =
   | { c: 'selfCardsGE'; n: number }
   /** そのターン中に他の「ファイナル革命」をまだ使っていない (満たせば使ったことにする) */
   | { c: 'finalRev' }
+  /** このカードは墓地に置かれる直前に進化クリーチャーの下にあった */
+  | { c: 'wasUnderEvo' }
   /** 自分のマナゾーンのカードがすべてその文明 */
   | { c: 'manaAllCiv'; civ: Civ }
   /** 両方を満たす */
