@@ -192,6 +192,8 @@ export type Op =
   | { op: 'moveOthers'; zone: 'mana' | 'hand' | 'battle'; who: 'self' | 'opp'; to: Dest }
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
+  /** バトルする it のかわりに、このクリーチャーがバトルする */
+  | { op: 'battleInstead' }
   /** 攻撃しているクリーチャーを破壊する */
   | { op: 'destroyAttacker' }
   /** このターン (または次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない */

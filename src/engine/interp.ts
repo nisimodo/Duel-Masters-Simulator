@@ -930,6 +930,18 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         (s.afterBattleExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
         break;
       }
+      case 'battleInstead': {
+        const at = s.attack;
+        const who = ex.it[0];
+        const me = ex.src;
+        if (!at || who == null || s.cards[me]?.zone !== 'battle' || me === who) break;
+        if (at.attacker === who) at.attacker = me;
+        else if (at.blocked === who) at.blocked = me;
+        else if (at.targetCard === who) at.targetCard = me;
+        else break;
+        log(s, ex.player, `${q(nameOf(s, L, who))} のかわりに ${q(nameOf(s, L, me))} がバトルする`);
+        break;
+      }
       case 'destroyAttacker': {
         const at = s.attack?.attacker;
         if (at != null && s.cards[at].zone === 'battle') {
