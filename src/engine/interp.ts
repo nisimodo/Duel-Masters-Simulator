@@ -237,6 +237,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
     case 'wasUnderEvo':
       return !!s.cards[ex.src]?.wasUnderEvo;
+    case 'anyHandEmpty':
+      return s.players.some((pl) => !pl.lost && pl.hand.length === 0);
+    case 'destroyedThisTurn':
+      return (s.destroyedTurn?.turn === s.turn ? s.destroyedTurn.n : 0) - 1 >= c.n;
     case 'finalRev':
       if (me.finalRevTurn === s.turn) return false;
       me.finalRevTurn = s.turn;
@@ -950,6 +954,30 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = new Set(ids.flatMap((i) => L(s.cards[i].cid)?.civs ?? [])).size;
         } else ex.count = op.sel ? candidates(s, L, ex, op.sel).length : 0;
         log(s, ex.player, `数えた: ${ex.count}`);
+        break;
+      }
+      case 'zeroLink': {
+        const star = s.cards[ex.src];
+        const pl = s.players[ex.player];
+        const zero = pl.battle.find((b) => /零龍の儀/.test(L(s.cards[b].cid)?.faces[s.cards[b].face]?.type ?? ''));
+        if (!star || star.zone !== 'battle' || zero == null) break;
+        pl.battle.splice(pl.battle.indexOf(ex.src), 1);
+        star.zone = 'under';
+        star.parent = zero;
+        star.linkedTo = zero;
+        s.cards[zero].under.push(ex.src);
+        ex.did = true;
+        log(s, ex.player, `${q(nameOf(s, L, ex.src))} を零龍にリンクした (${s.cards[zero].under.filter((u) => s.cards[u].linkedTo === zero).length}/4)`);
+        if (s.cards[zero].under.filter((u) => s.cards[u].linkedTo === zero).length >= 4) {
+          // 零龍卍誕: 5枚全部を裏返して、1体のリンクしたクリーチャーにする
+          const card = L(s.cards[zero].cid)!;
+          const fi = card.faces.findIndex((f) => f.isCreature);
+          if (fi >= 0) s.cards[zero].face = fi;
+          for (const u of s.cards[zero].under) if (s.cards[u].linkedTo === zero) s.cards[u].face = Math.max(0, L(s.cards[u].cid)!.faces.findIndex((f) => f.isCreature));
+          s.cards[zero].sick = false;
+          log(s, ex.player, '零龍卍誕！');
+          fireEvent(s, L, zero, ['zeroBirth']);
+        }
         break;
       }
       case 'battleInstead': {

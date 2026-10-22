@@ -439,7 +439,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     }
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:持ち主の)?墓地に置く$/.test(t0)) return [{ s: 'breakToGrave' }];
-  if (/^この(鼓動|最終禁断フィールド|禁断フィールド|フィールド|カード|クリーチャー)は(、)?(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'neverLeave' }];
+  if (/^この(鼓動|最終禁断フィールド|禁断フィールド|フィールド|カード|クリーチャー)は(、)?(バトルゾーンを)?離れない$/.test(t0) || /^零龍カードはバトルゾーンを離れない$/.test(t0)) return [{ s: 'neverLeave' }];
   if (/^このカードがバトルゾーン以外のゾーンにあれば、(クリーチャーをすべて破壊し、)?自分はゲームに負ける$/.test(t0)) return [{ s: 'loseIfLeave' }];
   if ((m = t0.match(/^(自分のクリーチャー|このクリーチャー)は(?:すべて)?、?すべてのバトルに勝つ$/)))
     return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : { t: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' } }, kws: ['すべてのバトルに勝つ'], when: 'always' }];

@@ -434,9 +434,16 @@ export function moveCard(
       fireSelf(s, L, iid, prevFace, destroyed ? ['destroyed', 'leave'] : ['leave']);
       // クロスギア・ドラグハート・オーラの「これを付けたクリーチャーが破壊された時」
       if (destroyed) for (const u of under) if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossDestroyed']);
-      if (destroyed) fireWatchers(s, L, c.owner, iid, 'otherOwnDestroyed', 'oppDestroyed');
+      if (destroyed) {
+        s.destroyedTurn = s.destroyedTurn?.turn === s.turn ? { turn: s.turn, n: s.destroyedTurn.n + 1 } : { turn: s.turn, n: 1 };
+        fireWatchers(s, L, c.owner, iid, 'otherOwnDestroyed', 'oppDestroyed');
+      }
     }
-    if (dest === 'grave' && from !== 'grave') fireSelf(s, L, iid, prevFace, ['toGrave']);
+    if (dest === 'grave' && from !== 'grave') {
+      fireSelf(s, L, iid, prevFace, ['toGrave']);
+      fireWatchers(s, L, c.owner, null, 'ownToGrave', null, iid);
+    }
+    if (dest === 'battle' && from === 'grave') fireWatchers(s, L, c.owner, null, 'ownGraveToBattle', null, iid);
     // 進化クリーチャーの下から墓地に置かれたカードの「このカードが墓地に置かれた時」
     for (const u of under) if (s.cards[u].wasUnderEvo) fireSelf(s, L, u, 0, ['toGrave']);
     if (dest === 'mana' && from !== 'mana') {
@@ -903,6 +910,27 @@ export function createGame(init: GameInit, L: Lookup): GameState {
       log(s, null, `${q(f!.name)} を封印${n0}つ付けてバトルゾーンに置いた`);
     }
   });
+  // 零龍の儀: ゲーム開始時、このカードと異なる4種類の零龍星雲をリンクせずにバトルゾーンに置き、相手はもう1枚引く
+  const zeroOwners: number[] = [];
+  s.players.forEach((pl, p) => {
+    const zero = pl.hyper.find((i) => /零龍の儀/.test(L(s.cards[i].cid)?.faces[0]?.type ?? ''));
+    if (zero == null) return;
+    const names = new Set<string>();
+    const stars = pl.hyper.filter((i) => {
+      const f = L(s.cards[i].cid)?.faces[0];
+      if (!f || !/零龍星雲/.test(f.type) || names.has(f.name)) return false;
+      names.add(f.name);
+      return true;
+    }).slice(0, 4);
+    for (const i of [zero, ...stars]) {
+      pl.hyper.splice(pl.hyper.indexOf(i), 1);
+      s.cards[i].zone = 'battle';
+      s.cards[i].faceUp = true;
+      pl.battle.push(i);
+    }
+    zeroOwners.push(p);
+    log(s, null, `${pl.name}: 《${L(s.cards[zero].cid)!.name}》と零龍星雲${stars.length}枚をバトルゾーンに置いた`);
+  });
   const n = init.mode === 'duepa' ? 6 : 5;
   s.players.forEach((pl, p) => {
     for (let i = 0; i < n; i++) {
@@ -912,7 +940,7 @@ export function createGame(init: GameInit, L: Lookup): GameState {
       s.cards[top].faceUp = false;
       pl.shield.push(top);
     }
-    drawCards(s, p, n);
+    drawCards(s, p, n + (zeroOwners.some((z) => z !== p) ? 1 : 0));
   });
   s.firstPlayer = Math.floor(rand(s) * s.players.length);
   s.active = s.firstPlayer;

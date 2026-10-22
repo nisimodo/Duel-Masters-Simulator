@@ -163,7 +163,7 @@ function toCard(r: RawCard, defs: Map<string, KwDef>): Card {
   for (const f of r.tw ? faces : faces.slice(0, 1)) f.civs.forEach((c) => civSet.add(c));
   const t = faces[0].type;
   let zone: DeckZone = 'main';
-  if (t.includes('サイキック') || t.includes('ドラグハート') || t.includes('デュエルメイト') || t.includes('デュエリスト')) zone = 'hyper';
+  if (t.includes('サイキック') || t.includes('ドラグハート') || t.includes('デュエルメイト') || t.includes('デュエリスト') || t.includes('零龍')) zone = 'hyper';
   else if (t.includes('GR')) zone = 'gr';
   return {
     id: r.id,

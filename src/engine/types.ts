@@ -241,6 +241,8 @@ export interface GameState {
   endTurnExecs?: Exec[];
   /** 「バトルの後で〜」(今のバトルが終わった後に実行) */
   afterBattleExecs?: Exec[];
+  /** このターンに破壊されたクリーチャーの数 */
+  destroyedTurn?: { turn: number; n: number };
   /** このターンだけの誘発型能力 */
   tempTriggers?: { player: number; src: number; turn: number; event: string; effect: string; optional: boolean }[];
   /** 「次の自分のターンのはじめに〜」(そのプレイヤーのターンのはじめに実行) */

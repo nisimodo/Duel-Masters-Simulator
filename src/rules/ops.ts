@@ -118,6 +118,10 @@ export type Cond =
   | { c: 'selfCardsGE'; n: number }
   /** そのターン中に他の「ファイナル革命」をまだ使っていない (満たせば使ったことにする) */
   | { c: 'finalRev' }
+  /** 手札が1枚もないプレイヤーがいる */
+  | { c: 'anyHandEmpty' }
+  /** このターン、他にN体以上クリーチャーが破壊されている */
+  | { c: 'destroyedThisTurn'; n: number }
   /** このカードは墓地に置かれる直前に進化クリーチャーの下にあった */
   | { c: 'wasUnderEvo' }
   /** 自分のマナゾーンのカードがすべてその文明 */
@@ -200,6 +204,8 @@ export type Op =
   | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle' }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
+  /** この零龍星雲を自分の《滅亡の起源 零無》にリンクする (4枚目で零龍卍誕) */
+  | { op: 'zeroLink' }
   /** バトルする it のかわりに、このクリーチャーがバトルする */
   | { op: 'battleInstead' }
   /** 攻撃しているクリーチャーを破壊する */

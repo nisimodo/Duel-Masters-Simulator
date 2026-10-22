@@ -210,6 +210,8 @@ function parseCond(c: string): Cond | null {
     if (sel) return { c: 'count', sel: { ...sel, zones: ['battle', 'mana'] }, cmp: '>=', n: +m[2] };
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
+  if (/^手札が1枚もないプレイヤーがい$/.test(c)) return { c: 'anyHandEmpty' };
+  if ((m = c.match(/^このターン中、他に(\d+)体以上破壊されてい$/))) return { c: 'destroyedThisTurn', n: +m[1] };
   if (/^進化クリーチャーの下から墓地に置かれてい$/.test(c)) return { c: 'wasUnderEvo' };
   if (/^(?:この(?:クリーチャー|タマシード)が)?タマシードから進化してい$/.test(c)) return { c: 'underHas', kind: 'tamaseed' };
   if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上あ$/)))
@@ -291,6 +293,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/^(このターン中、他に\d+体以上破壊されてい)たら、/, '$1れば、')
     .replace(/^自分の山札の上から、((?:その数|それ)と同じ枚数のカードを)、?/, '$1、自分の山札の上から')
     .replace(/^それが墓地に置かれる直前に進化クリーチャーの下にあった場合、/, '進化クリーチャーの下から墓地に置かれていれば、')
     .replace(/攻撃またはブロックできない$/, '攻撃もブロックもできない')
@@ -532,6 +535,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^この零龍星雲を自分の《[^》]+》にリンク(?:する|してもよい)$/.test(s)) return /てもよい$/.test(s) ? [{ op: 'optional', body: [{ op: 'zeroLink' }], prompt: s0 }] : [{ op: 'zeroLink' }];
   // 「〜を数える」「その数だけ〜」
   {
     const lc = s.match(/^その数以下の(.+?)を(?:バトルゾーンから)?選び、(.+)$/);

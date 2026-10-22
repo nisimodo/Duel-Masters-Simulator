@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { applyAction, breakCount, canAttackWith, createGame, kwOf, power } from './engine';
-import { programOf } from './interp';
+import { programOf, startExec } from './interp';
 import { spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
@@ -148,6 +148,19 @@ const db = buildDB(
     cr('ebase', 1, 1000, ['このカードが墓地に置かれた時、それが墓地に置かれる直前に進化クリーチャーの下にあった場合、カードを１枚引いてもよい。']),
     { id: 'dl', n: 'dl', img: '', f: [{ n: 'dl', t: 'デュエリスト', c: 'F', co: 0, p: null, r: [], x: ['デュエリスト：', 'テスタ (各ターンに１度、自分のマナゾーンにあるカードの枚数以下のコストで種族にテスタを持つデュエルメイト・カードを１枚、自分の超次元ゾーンからコストを支払わずに実行してもよい)'] }] },
     { id: 'dm', n: 'dm', img: '', f: [{ n: 'dm', t: 'デュエルメイト・クリーチャー', c: 'F', co: 3, p: '3000', r: ['テスタ'], x: [] }] },
+    {
+      id: 'zero',
+      n: 'zero',
+      img: '',
+      f: [
+        { n: 'zero', t: '零龍の儀', c: 'D', co: 0, p: null, r: [], x: ['ゲーム開始時、このカードと、異なる４種類の零龍星雲を、リンクせずにバトルゾーンに置く。', '零龍カードはバトルゾーンを離れない。'] },
+        { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: ['ワールド・ブレイカー', 'このクリーチャーが零龍卍誕した時、そのターン、相手のクリーチャーすべてのパワーを０にする。', 'このクリーチャーは、パワーが０以下の間バトルゾーンを離れず、すべてのバトルに勝つ。'] },
+      ],
+    },
+    { id: 'st1', n: 'st1', img: '', f: [{ n: 'st1', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
+    { id: 'st2', n: 'st2', img: '', f: [{ n: 'st2', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
+    { id: 'st3', n: 'st3', img: '', f: [{ n: 'st3', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
+    { id: 'st4', n: 'st4', img: '', f: [{ n: 'st4', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -592,6 +605,26 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'duelist', iid: dl, target: t });
     expect(s.cards[t].zone).toBe('battle');
     expect(applyAction(s, 0, { t: 'duelist', iid: dl, target: s.players[0].hyper[0] }, L).error).toBeTruthy();
+  });
+
+  it('零龍: placed at game start and 零龍卍誕 after 4 links', () => {
+    const g = createGame({ mode: 'duema', seed: 3, createdAt: 0, players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: Array(40).fill('vanilla'), hyper: p === 0 ? ['zero', 'st1', 'st2', 'st3', 'st4'] : [], gr: [], partner: null })) } as never, L);
+    let s = structuredClone(g);
+    const zero = s.players[0].battle.find((b) => s.cards[b].cid === 'zero')!;
+    expect(s.players[0].battle.length).toBe(5);
+    expect(s.players[1].hand.length).toBe(6);
+    s.active = 0;
+    s.pending = [];
+    s.turnStep = 'main';
+    for (const st of s.players[0].battle.filter((b) => b !== zero)) {
+      startExec(s, L, 0, st, programOf('この零龍星雲を自分の《zero》にリンクしてもよい').ops, 'st');
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+      }
+    }
+    expect(s.cards[zero].face).toBe(1);
+    expect(s.players[0].battle).toEqual([zero]);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {
