@@ -340,7 +340,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       // G・ゼロが使えるならコストを支払わずに
       const gz = playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], gzero: true }, fi) === 0;
       // マナ爆誕 (マナゾーンから) / J・O・E・B・A・D (普通に出せない時だけ軽くして出す)
-      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'vivid' | undefined;
+      let alt: 'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'vivid' | 'tapCast' | undefined;
       let taps: number[] | undefined;
       const st = f.statics ?? [];
       const mg = st.find((x) => x.s === 'mugen');
@@ -365,12 +365,83 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         alt = 'vivid';
       } else if (!gz && costOf(s, L, p, h, fi) > mana) {
         const d = st.find((x) => x.s === 'discountSummon');
+        const tc = st.find((x) => x.s === 'tapCast');
         if (d && d.s === 'discountSummon') alt = d.kind;
-        else if (st.some((x) => x.s === 'galaxy') && s.cards[h].zone === 'hand') alt = 'galaxy';
+        else if (tc && tc.s === 'tapCast') {
+          // タップして唱える: 攻撃に使わない条件に合うクリーチャーをタップ
+          const free = me.battle
+            .filter((b) => b !== h && !s.cards[b].tapped && matchesSel(s, L, b, tc.sel))
+            .sort((a, b) => Number(canAttackWith(s, L, a)) - Number(canAttackWith(s, L, b)) || threatOf(s, L, a) - threatOf(s, L, b));
+          if (free.length >= tc.n) {
+            alt = 'tapCast';
+            taps = free.slice(0, tc.n);
+          }
+        } else if (st.some((x) => x.s === 'galaxy') && s.cards[h].zone === 'hand') alt = 'galaxy';
       }
       const altCost = alt ? playCost(s, L, p, { t: 'play', iid: h, face: fi, pay: [], alt, taps }, fi) : null;
       if (alt && typeof altCost !== 'number') return;
       let cost = gz ? 0 : alt ? (altCost as number) : costOf(s, L, p, h, fi);
+      // マナが足りない時の軽減: ササゲール / ハイパーエナジー / 手札を捨てて軽減
+      let sasa: number[] | undefined;
+      let he: number[] | undefined;
+      let discards: number[] | undefined;
+      if (!gz && !alt && cost > mana && f.isCreature) {
+        const base = { t: 'play' as const, iid: h, face: fi, pay: [] as number[] };
+        if (st.some((x) => x.s === 'sasageru')) {
+          // ササゲール: ササゲールを持つ、コストの異なる弱いクリーチャーを破壊する
+          const seen = new Set<number>();
+          const pick = me.battle
+            .filter((b) => b !== h && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'))
+            .sort((a, b) => threatOf(s, L, a) - threatOf(s, L, b))
+            .filter((b) => {
+              const c0 = faceOf(s, L, b)?.cost ?? -1;
+              if (seen.has(c0)) return false;
+              seen.add(c0);
+              return true;
+            });
+          for (let k = 1; k <= pick.length; k++) {
+            const r = playCost(s, L, p, { ...base, sasa: pick.slice(0, k) }, fi);
+            if (typeof r === 'number' && r <= mana) {
+              sasa = pick.slice(0, k);
+              cost = r;
+              break;
+            }
+          }
+        }
+        if (!sasa && st.some((x) => x.s === 'hyperEnergy')) {
+          // ハイパーエナジー: 攻撃できない/弱い、コストの異なるクリーチャーをタップ
+          const seen = new Set<number>();
+          const pick = me.battle
+            .filter((b) => b !== h && !s.cards[b].tapped && faceOf(s, L, b)?.isCreature)
+            .sort((a, b) => Number(canAttackWith(s, L, a)) - Number(canAttackWith(s, L, b)) || threatOf(s, L, a) - threatOf(s, L, b))
+            .filter((b) => {
+              const c0 = faceOf(s, L, b)?.cost ?? -1;
+              if (seen.has(c0)) return false;
+              seen.add(c0);
+              return true;
+            });
+          for (let k = 1; k <= pick.length; k++) {
+            const r = playCost(s, L, p, { ...base, he: pick.slice(0, k) }, fi);
+            if (typeof r === 'number' && r <= mana) {
+              he = pick.slice(0, k);
+              cost = r;
+              break;
+            }
+          }
+        }
+        const dd = st.find((x) => x.s === 'discardDiscount');
+        if (!sasa && !he && dd && dd.s === 'discardDiscount') {
+          // 手札を捨てて軽減: コストの小さい手札から捨てる
+          const others = me.hand.filter((x) => x !== h).sort((a, b) => (L(s.cards[a].cid)?.faces[0]?.cost ?? 0) - (L(s.cards[b].cid)?.faces[0]?.cost ?? 0));
+          if (others.length >= dd.n) {
+            const r = playCost(s, L, p, { ...base, discards: others.slice(0, dd.n) }, fi);
+            if (typeof r === 'number' && r <= mana) {
+              discards = others.slice(0, dd.n);
+              cost = r;
+            }
+          }
+        }
+      }
       if (cost > mana) return;
       // バズレンダ: 余ったマナで追加で支払う
       const bz = st.find((x) => x.s === 'buzz');
@@ -431,7 +502,8 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
             value += 10;
           }
         }
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined, odrivePay }, value: value + buzz * 8 });
+        if (discards) value -= discards.length * 6;
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo, gzero: gz || undefined, alt, taps, buzz: buzz || undefined, odrivePay, sasa, he, discards }, value: value + buzz * 8 });
       } else if (/城$/.test(f.type)) {
         // 城: 要塞化できるシールドがあれば
         if (me.shield.some((sh) => !s.cards[sh].under.some((u) => s.cards[u].fortOf === sh))) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });
@@ -444,9 +516,19 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         if (me.battle.some((b) => faceOf(s, L, b)?.isCreature)) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });
       } else if (f.isSpell) {
         if (rv <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 6 + rv });
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, alt: alt === 'tapCast' ? 'tapCast' : undefined, taps: alt === 'tapCast' ? taps : undefined }, value: f.cost * 6 + rv });
       }
     });
+  }
+  // 輪廻∞: バトルゾーンにあるツインパクトの呪文側を唱える
+  for (const b of me.battle) {
+    const card = L(s.cards[b].cid);
+    if (!card || !(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'rinne')) continue;
+    const fi = card.faces.findIndex((f) => f.isSpell);
+    if (fi < 0 || costOf(s, L, p, b, fi) > mana) continue;
+    const rv = removalValue(card, fi);
+    if (rv <= 0) continue;
+    cands.push({ a: { t: 'rinne', iid: b }, value: card.faces[fi].cost * 6 + rv + 10 });
   }
   // メタカードの除去には大きな加点をしているので、除去が最優先になる
   return cands.sort((a, b) => b.value - a.value);
@@ -730,6 +812,12 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
       if (!hz || hz.s !== 'hyperize') continue;
       const taps = idle.filter((b) => b !== iid).slice(0, hz.n);
       if (taps.length === hz.n) return { t: 'hyperize', iid, taps };
+    }
+    // ダイナモ: 攻撃できるダイナモが2体以上いれば、弱いほうのパワーと能力を強いほうに加える
+    const dyn = me.battle.filter((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'dynamo') && canAttackWith(s, L, b) && !faceOf(s, L, b)!.kw.cantAttack);
+    if (dyn.length >= 2) {
+      const sorted = [...dyn].sort((a, b) => power(s, L, a) - power(s, L, b));
+      return { t: 'dynamo', iid: sorted[0], onto: sorted[sorted.length - 1] };
     }
     // デュエリスト: 実行できる一番コストの大きいデュエルメイトを実行する
     for (const d of me.partner) {
