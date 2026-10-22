@@ -641,6 +641,25 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
 }
 
 /** バトルゾーンにある他のカードの能力 (自分側 ownEv / 相手側 oppEv) */
+/** デュエリストの種族名 (「デュエリスト:」の次の行の最初の語) */
+export function duelistRace(L: Lookup, cid: string): string | null {
+  const f = L(cid)?.faces[0];
+  if (!f || !/デュエリスト/.test(f.type)) return null;
+  const k = f.text.findIndex((l) => /^デュエリスト[:：]\s*$/.test(normText(l).trim()));
+  const next = k >= 0 ? normText(f.text[k + 1] ?? '').trim() : '';
+  return next.split(/[\s(（]/)[0] || null;
+}
+
+/** デュエリストで実行できるカード: 種族を持つ、マナの枚数以下のコストのデュエルメイト・カード (超次元ゾーン) */
+export function duelistTargets(s: GameState, L: Lookup, p: number, duelist: number): number[] {
+  const race = duelistRace(L, s.cards[duelist].cid);
+  if (!race) return [];
+  return s.players[p].hyper.filter((h) => {
+    const f = L(s.cards[h].cid)?.faces[0];
+    return !!f && /デュエルメイト/.test(f.type) && f.races.some((r) => r.includes(race)) && f.cost <= s.players[p].mana.length;
+  });
+}
+
 /** 能力を誘発させる (interp から使う) */
 export function fireEvent(s: GameState, L: Lookup, iid: number, events: TrigEvent[]) {
   if (s.cards[iid]) fireSelf(s, L, iid, s.cards[iid].face, events);
@@ -850,6 +869,14 @@ export function createGame(init: GameInit, L: Lookup): GameState {
       const id = mk(ip.partner, p, 'partner');
       pl.partner.push(id);
       s.partnerIids.push(id);
+    }
+    // デュエリスト: ゲーム開始時、超次元ゾーンから表向きでデュエリストゾーン (パートナーゾーン) に置く
+    for (const i of [...pl.hyper]) {
+      if (!/デュエリスト/.test(L(s.cards[i].cid)?.faces[0]?.type ?? '')) continue;
+      pl.hyper.splice(pl.hyper.indexOf(i), 1);
+      s.cards[i].zone = 'partner';
+      s.cards[i].faceUp = true;
+      pl.partner.push(i);
     }
     shuffleArr(s, pl.deck);
     shuffleArr(s, pl.gr);
@@ -1754,6 +1781,19 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (kws.length) (o.grants ??= []).push({ kws, until: -1 });
       log(s, p, `ダイナモ: ${q(nameOf(s, L, a.iid))} のパワー${pw}と能力を ${q(nameOf(s, L, a.onto))} に加えた`);
       return null;
+    }
+    case 'duelist': {
+      const c = s.cards[a.iid];
+      const race = duelistRace(L, c.cid);
+      if (c.owner !== p || c.zone !== 'partner' || !race) return 'デュエリストの能力を使えません';
+      if (s.turnStep !== 'main' || s.attack || s.active !== p) return '今は使えません';
+      if (s.players[p].duelistTurn === s.turn) return 'デュエリストの能力は各ターンに1度だけです';
+      if (!duelistTargets(s, L, p, a.iid).includes(a.target)) return 'そのカードは実行できません';
+      const card = L(s.cards[a.target].cid)!;
+      const fi = Math.max(0, card.faces.findIndex((f) => f.isCreature || f.isSpell));
+      s.players[p].duelistTurn = s.turn;
+      log(s, p, `デュエリスト: ${q(card.faces[fi].name)} をコストを支払わずに実行`);
+      return playCard(s, p, { t: 'play', iid: a.target, face: fi, pay: [], free: true, force: true }, L);
     }
     case 'rinne': {
       const c = s.cards[a.iid];

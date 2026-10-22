@@ -113,6 +113,8 @@ export interface PlayerState {
   noLose?: { turn?: number; until?: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
+  /** デュエリストの能力を使ったターン */
+  duelistTurn?: number;
   /** 「ファイナル革命」を使ったターン */
   finalRevTurn?: number;
   /** このターンに唱えた呪文の数 */
@@ -311,6 +313,8 @@ export type Action =
     }
   | { t: 'hyperize'; iid: number; taps: number[] }
   | { t: 'tapAbility'; iid: number }
+  /** デュエリスト: 種族を持つデュエルメイト・カードを超次元ゾーンからコストを支払わずに実行する */
+  | { t: 'duelist'; iid: number; target: number }
   /** 輪廻∞: バトルゾーンのこのカードの呪文側を唱える */
   | { t: 'rinne'; iid: number; pay?: number[] }
   /** ダイナモ: iid をタップして onto にパワーと能力を加える */

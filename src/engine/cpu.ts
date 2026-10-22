@@ -19,6 +19,7 @@ import {
   crossCost,
   luresFor,
   mustAttackers,
+  duelistTargets,
   playCost,
   cardCivs,
   faceOf,
@@ -729,6 +730,14 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
       if (!hz || hz.s !== 'hyperize') continue;
       const taps = idle.filter((b) => b !== iid).slice(0, hz.n);
       if (taps.length === hz.n) return { t: 'hyperize', iid, taps };
+    }
+    // デュエリスト: 実行できる一番コストの大きいデュエルメイトを実行する
+    for (const d of me.partner) {
+      if (me.duelistTurn === s.turn) break;
+      const ts = duelistTargets(s, L, p, d);
+      if (!ts.length) continue;
+      const best = ts.reduce((a, b) => ((L(s.cards[b].cid)?.faces[0]?.cost ?? 0) > (L(s.cards[a].cid)?.faces[0]?.cost ?? 0) ? b : a));
+      return { t: 'duelist', iid: d, target: best };
     }
     for (const iid of me.battle) {
       const f = faceOf(s, L, iid);

@@ -146,6 +146,8 @@ const db = buildDB(
     },
     cr('hakuyon', 2, 2000, ['自分の「無月の門」能力を使った時、このクリーチャーを自分の墓地からバトルゾーンにタップして出してもよい。']),
     cr('ebase', 1, 1000, ['このカードが墓地に置かれた時、それが墓地に置かれる直前に進化クリーチャーの下にあった場合、カードを１枚引いてもよい。']),
+    { id: 'dl', n: 'dl', img: '', f: [{ n: 'dl', t: 'デュエリスト', c: 'F', co: 0, p: null, r: [], x: ['デュエリスト：', 'テスタ (各ターンに１度、自分のマナゾーンにあるカードの枚数以下のコストで種族にテスタを持つデュエルメイト・カードを１枚、自分の超次元ゾーンからコストを支払わずに実行してもよい)'] }] },
+    { id: 'dm', n: 'dm', img: '', f: [{ n: 'dm', t: 'デュエルメイト・クリーチャー', c: 'F', co: 3, p: '3000', r: ['テスタ'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -571,6 +573,25 @@ describe('named mechanics', () => {
     }
     expect(s.cards[base].zone).toBe('grave');
     expect(s.players[0].hand.length).toBe(hand + 1);
+  });
+
+  it('デュエリスト: placed at game start and executes a duel mate once per turn', () => {
+    const g = createGame({ mode: 'duema', seed: 3, createdAt: 0, players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: Array(40).fill('vanilla'), hyper: p === 0 ? ['dl', 'dm', 'dm'] : [], gr: [], partner: null })) } as never, L);
+    let s = structuredClone(g);
+    const dl = s.players[0].partner[0];
+    expect(s.cards[dl].zone).toBe('partner');
+    for (let i = 0; i < 3; i++) {
+      const m = s.players[0].deck.pop()!;
+      s.cards[m].zone = 'mana';
+      s.players[0].mana.push(m);
+    }
+    s.active = 0;
+    s.pending = [];
+    s.turnStep = 'main';
+    const t = s.players[0].hyper[0];
+    s = act(s, 0, { t: 'duelist', iid: dl, target: t });
+    expect(s.cards[t].zone).toBe('battle');
+    expect(applyAction(s, 0, { t: 'duelist', iid: dl, target: s.players[0].hyper[0] }, L).error).toBeTruthy();
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {

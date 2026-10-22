@@ -7,7 +7,7 @@ import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { attackTargets, autoPay, canAttackWith, crossCost, decider, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
+import { attackTargets, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { costOf } from '../engine/statics';
@@ -354,6 +354,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         } else if (c.zone === 'grave' || c.zone === 'hyper') items.push(...moveItems(iid, [c.zone as ZoneName]));
         break;
       case 'partner':
+        if (own && /デュエリスト/.test(card.faces[0].type)) {
+          const used = s.players[me].duelistTurn === s.turn;
+          const ts = duelistTargets(s, L, me, iid);
+          for (const t of ts) items.push({ label: `デュエリスト: 《${cardAt(t).faces[0].name}》を実行 (コスト${cardAt(t).faces[0].cost})`, disabled: !isMyTurn || used, onClick: () => act({ t: 'duelist', iid, target: t }) });
+          if (!ts.length) items.push({ label: 'デュエリスト: 実行できるデュエルメイトがありません', disabled: true, onClick: () => {} });
+          break;
+        }
         if (own && c.faceUp) {
           const f = card.faces.find((x) => x.isCreature) ?? card.faces[0];
           items.push({ label: `召喚 (コスト${f.cost})`, disabled: !isMyTurn, onClick: () => startPlay(iid, card.faces.indexOf(f)) });
@@ -552,7 +559,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             openMenu(e, '超GRゾーン', self ? [{ label: 'GR召喚', onClick: () => act({ t: 'grSummon' }) }, { label: '中身を見る', onClick: () => setViewer({ kind: 'gr', player: p }) }] : []),
           )}
         {pl.partner.map((i) =>
-          pile('パートナー', 1, s.cards[i].faceUp ? renderCard(i, { width: 40 }) : <CardBack sleeve={sleeve} width={40} />, undefined),
+          pile(/デュエリスト/.test(L(s.cards[i].cid)?.faces[0]?.type ?? '') ? 'デュエリスト' : 'パートナー', 1, s.cards[i].faceUp ? renderCard(i, { width: 40 }) : <CardBack sleeve={sleeve} width={40} />, undefined),
         )}
       </div>
     );
