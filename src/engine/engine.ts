@@ -157,7 +157,7 @@ export function moveCard(
   L: Lookup,
   iid: number,
   to: ZoneName,
-  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean } = {},
+  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean } = {},
 ): ZoneName {
   const c = s.cards[iid];
   const card = L(c.cid);
@@ -373,6 +373,7 @@ export function moveCard(
   }
   const pl = s.players[c.owner];
   resetCard(c);
+  c.summoned = to === 'battle' ? !!opts.summoned : undefined;
   c.under = [];
   c.zone = dest;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
@@ -601,6 +602,12 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
     if (s.turnTriggers === MAX_TURN_TRIGGERS + 1) log(s, null, '能力の誘発が多すぎるため、このターンはこれ以上自動で誘発しません (無限ループ防止)');
     return;
   }
+  // 「召喚以外の方法で出た時」「相手のターン中に」などの条件
+  const entering = subject ?? src;
+  if (spec.howEnter === 'notSummon' && s.cards[entering]?.summoned) return;
+  if (spec.howEnter === 'summon' && !s.cards[entering]?.summoned) return;
+  if (spec.turn === 'own' && s.active !== s.cards[src].owner) return;
+  if (spec.turn === 'opp' && s.active === s.cards[src].owner) return;
   if (spec.oncePerTurn) {
     const key = `${src}|${spec.text}`;
     if ((s.usedOnce ??= []).includes(key)) return;
@@ -2147,7 +2154,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (me2.manaSummon.left > 0) me2.manaSummon.left--;
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
     }
-    moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face) });
+    moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
     if (a.alt === 'abyss') {

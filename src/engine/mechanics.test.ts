@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { applyAction, breakCount, canAttackWith, createGame, kwOf, power } from './engine';
 import { programOf, startExec } from './interp';
+import { costOf } from './statics';
 import { spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
@@ -163,6 +164,14 @@ const db = buildDB(
     { id: 'st4', n: 'st4', img: '', f: [{ n: 'st4', t: '零龍星雲', c: 'D', co: 0, p: null, r: [], x: ['自分のターンの終わりに、この零龍星雲を自分の《zero》にリンクしてもよい。'] }, { n: '零龍', t: '零龍クリーチャー', c: 'D', co: 0, p: '0', r: [], x: [] }] },
     { id: 'ash', n: 'ash', img: '', f: [{ n: 'ash', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ブルー・コマンド・ドラゴン', '生徒会組'], x: ['各ターンに１度、自分のドラゴンが出た時、カードを１枚引いてもよい。'] }] },
     { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['アーマード・ドラゴン'], x: [] }] },
+    cr('bp', 1, 1000, ['相手のターン中に、相手が召喚以外の方法でクリーチャーを出した時、そのクリーチャーを破壊する。']),
+    cr('mach', 2, 3000, ['マッハファイター']),
+    cr('rc', 5, 9000, ['革命チェンジ：火のクリーチャー（自分の火のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）']),
+    { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
+    { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
+    cr('bakt', 1, 1000, ['自分の他のクリーチャーすべてに「ブロッカー」と「スピードアタッカー」を与える。']),
+    { id: 'gale', n: 'gale', img: '', f: [{ n: 'gale', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: ['自分の手札にある生徒会組カードすべてに「シンパシー：自分のドラゴン」を与える。'] }] },
+    { id: 'seito7', n: 'seito7', img: '', f: [{ n: 'seito7', t: 'クリーチャー', c: 'F', co: 7, p: '7000', r: ['生徒会組'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -650,6 +659,70 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'drg')!, face: 0, pay: freeMana(s, 0, 1) });
     resolveAll();
     expect(s.players[0].hand.length).toBe(h0 - 2 + 2);
+  });
+
+  it('召喚以外の方法で出た時: does not trigger on summon', () => {
+    let s = setup([
+      { p: 1, cid: 'bp', zone: 'battle' },
+      { p: 0, cid: 'sa', zone: 'hand' },
+      { p: 0, cid: 'drg', zone: 'hand' },
+    ]);
+    const resolveAll = () => {
+      for (let k = 0; k < 8 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+      }
+    };
+    const a = find(s, 0, 'hand', 'sa')!;
+    s = act(s, 0, { t: 'play', iid: a, face: 0, pay: freeMana(s, 0, 1) });
+    resolveAll();
+    expect(s.cards[a].zone).toBe('battle');
+    const b = find(s, 0, 'hand', 'drg')!;
+    s = act(s, 0, { t: 'move', iid: b, to: 'battle' });
+    resolveAll();
+    expect(s.cards[b].zone).toBe('grave');
+  });
+
+  it('マッハファイターでクリーチャーを攻撃する時も革命チェンジできる', () => {
+    let s = setup([
+      { p: 0, cid: 'mach', zone: 'battle' },
+      { p: 0, cid: 'rc', zone: 'hand' },
+      { p: 1, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const m = find(s, 0, 'battle', 'mach')!;
+    s.cards[m].sick = true;
+    s = act(s, 0, { t: 'attack', attacker: m, player: 1, card: find(s, 1, 'battle', 'vanilla')! });
+    expect(s.pending[0]?.kind).toBe('attackOpt');
+    const rc = find(s, 0, 'hand', 'rc')!;
+    const target = find(s, 1, 'battle', 'vanilla')!;
+    s = act(s, 0, { t: 'attackOpt', iid: rc });
+    for (let k = 0; k < 10 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[rc].zone).toBe('battle');
+    expect(s.cards[target].zone).toBe('grave');
+  });
+
+  it('他のクリーチャーに能力を与える: スピードアタッカー・ブロッカー・手札へのシンパシー', () => {
+    const s = setup([
+      { p: 0, cid: 'mega', zone: 'battle' },
+      { p: 0, cid: 'seito', zone: 'battle' },
+      { p: 0, cid: 'bakt', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+      { p: 0, cid: 'gale', zone: 'battle' },
+      { p: 0, cid: 'seito7', zone: 'hand' },
+    ]);
+    const seito = find(s, 0, 'battle', 'seito')!;
+    const van = find(s, 0, 'battle', 'vanilla')!;
+    s.cards[seito].sick = true;
+    s.cards[van].sick = true;
+    expect(canAttackWith(s, L, seito)).toBe(true);
+    expect(canAttackWith(s, L, van)).toBe(true);
+    expect(kwOf(s, L, van).blocker).toBe(true);
+    // 手札の生徒会組にシンパシー: 場のドラゴン (mega) 1体につき1少なく
+    const h = find(s, 0, 'hand', 'seito7')!;
+    expect(costOf(s, L, 0, h, 0)).toBe(6);
   });
 
   it('Jビッグ: uses the enter ability of another Jokers creature', () => {
