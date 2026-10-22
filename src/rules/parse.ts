@@ -298,6 +298,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(クリーチャー|呪文)でなければ、/, 'それが$1でなければ、')
     .replace(/^そうしたら(?=[^、])/, 'そうしたら、')
     .replace(/^数字を(?:ひとつ|1つ)言う$/, '数字を1つ選ぶ')
+    .replace(/全て/g, 'すべて')
+    .replace(/^このターン(?=(?:その|この|自分の|相手の)[^、]+?は)/, 'このターン、')
+    .replace(/^(このターン|そのターン)、自分はゲームに負けず、相手は勝てない$/, '$1、自分はゲームに負けず、相手はゲームに勝てない')
+    .replace(/パワーは[ーｰ](\d)/, 'パワーは-$1')
+    .replace(/^このターン、(その|この)クリーチャーは無限にパワーを失う$/, 'このターン、$1クリーチャーのパワーを-999999する')
+    .replace(/^それ以外であれば、/, 'それ以外なら、')
+    .replace(/^(?:自分の)?山札を下から(\d+)枚を残して/, '自分の山札を一番下の$1枚を残して')
+    .replace(/^(相手は)?カードを(\d+)枚、?(?:自分の|自身の)(マナゾーン|手札)から選び、(?:残り|それ以外)(?:のカード)?を/, '$1自身の$3からカードを$2枚選び、それ以外を')
     .replace(/^次の相手のターン、相手は呪文を唱える(?:ことが)?できない$/, '次の自分のターンのはじめまで、相手は呪文を唱えられない')
     .replace(/^相手は、?自身の手札から(\d+)枚選んで捨てる$/, '相手は自身の手札を$1枚選び、捨てる')
     .replace(/^自分の(手札|シールド)が相手より少ない場合、/, '相手の$1が自分のより多ければ、')
@@ -1172,7 +1180,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = tt && parseSel(tt[1], { zones: ['deck'] });
     if (tt && sel) return [{ op: 'useMarked', key: '能力', perLooked: sel }];
   }
-  if (/^ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  if (/^(?:この)?ターンの残りをとばす$/.test(s)) return [{ op: 'skipTurn' }];
+  if (/^相手は自身の手札を見せる$/.test(s)) return [];
   // このターン、次に召喚する〇〇のコストを最大N少なくする / マナゾーンから召喚できる / 相手プレイヤーを攻撃できる / バトルに勝った時アンタップ
   {
     const ns = s.match(/^このターン、次に召喚する(自分の)?(.+?)の(?:召喚)?コストを(?:最大)?(\d+)少なくする$/);
@@ -1844,6 +1853,11 @@ function refTarget(phrase: string): Target | null {
     if (sel) return { ref: 'sel', sel, count: { all: true }, chooser: 'self' };
   }
   if (IT.test(p) && p.replace(IT, '') === '') return { ref: 'it' };
+  // 「自分のアウトレイジ」など、種族だけの指定 (バトルゾーンのものすべて)
+  if (/^(自分|相手)の[^\d、]+$/.test(p)) {
+    const sel = parseSel(p);
+    if (sel && sel.zones.length === 1 && sel.zones[0] === 'battle' && (sel.races?.length || sel.civs?.length)) return { ref: 'sel', sel, count: { all: true }, chooser: 'self' };
+  }
   const m = p.match(/^(.+?)(すべて|全体)$/);
   if (m) {
     const sel = parseSel(m[1]);
