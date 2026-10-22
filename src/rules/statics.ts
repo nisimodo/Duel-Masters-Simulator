@@ -114,6 +114,8 @@ export type StaticSpec =
   | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
+  /** 召喚する時、手札から〇〇をN枚見せれば召喚コストがD少なくなる (見せられれば自動で見せる) */
+  | { s: 'revealDiscount'; sel: Sel; n: number; d: number; floor: number }
   /** 条件を満たさなければ、バトルゾーンにあるこのタマシードはクリーチャーとして扱わない */
   | { s: 'creatureOnlyIf'; cond: StaticCond }
   /** 誰も sel のクリーチャーを召喚できない */
@@ -359,6 +361,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札から(.+?)を(\d+)(?:枚|体)、?相手に見せてもよい。そう(?:した場合|したら)、このクリーチャーの召喚コストは(?:最大)?(\d+)少なくなる/)) && parseSel(m[1], { zones: ['hand'] }))
+    return [{ s: 'revealDiscount', sel: { ...parseSel(m[1], { zones: ['hand'] })!, zones: ['hand'] }, n: +m[2], d: +m[3], floor: floorOf(full) }];
   if (/^このクリーチャーは、?自分の手札から召喚できない$/.test(t0)) return [{ s: 'noSummon', fromHand: true }];
   if (/^自分のターン中、相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock', ownTurn: true }];
   if (/^相手のクリーチャーは、?(?:バトルゾーンに)?出たターン(?:に|の間)?、?攻撃できない$/.test(t0)) return [{ s: 'oppNewNoAttackAll' }];

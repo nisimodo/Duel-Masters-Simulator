@@ -293,6 +293,12 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   // 「このターン、次に召喚する〇〇のコストをN少なくする」
   const ns = s.players[p].nextSummon;
   if (ns && ns.turn === s.turn && f.isCreature && matchesSel(s, L, iid, { ...ns.sel, zones: [c.zone as never] })) cost = Math.max(1, cost - ns.n);
+  // 手札から〇〇を見せて軽減 (見せられるなら自動で見せる)
+  for (const sp of f.statics ?? []) {
+    if (sp.s !== 'revealDiscount') continue;
+    const n = s.players[p].hand.filter((h) => h !== iid && matchesSel(s, L, h, sp.sel)).length;
+    if (n >= sp.n) cost = Math.max(Math.min(cost, sp.floor), cost - sp.d);
+  }
   // 条件つきの「このクリーチャーの召喚コストをN少なくする」
   for (const sp of f.statics ?? []) {
     if (sp.s !== 'selfCost' || !condOk(s, L, { src: iid, owner: p, spec: sp }, sp.cond, iid)) continue;
