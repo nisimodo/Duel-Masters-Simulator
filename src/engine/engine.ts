@@ -177,7 +177,11 @@ export function moveCard(
   }
   // 置換効果 (エターナル・Ω / 破壊される時かわりに / エスケープ / セイバー)
   if (from === 'battle' && to !== 'battle' && !opts.silent && !opts.noReplace) {
-    const own = card?.faces[c.face]?.statics ?? [];
+    // クロスギアの「これをクロスしたクリーチャーが破壊される時、かわりに〜」も含める
+    const own = [
+      ...(card?.faces[c.face]?.statics ?? []),
+      ...c.under.flatMap((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.statics ?? []).filter((x) => x.s === 'replaceLeave' && x.cross)),
+    ];
     // 「離れる時、〜なら、かわりにとどまる」
     for (const sp of own) {
       if (sp.s !== 'stayIf') continue;

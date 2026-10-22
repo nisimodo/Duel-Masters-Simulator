@@ -530,7 +530,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
   if (/^かわりにこのクリーチャーにバトルさせる$/.test(s)) return [{ op: 'battleInstead' }];
-  if (/^このクリーチャーを(?:自分の)?墓地からバトルゾーンにタップして出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }, { op: 'tap', target: { ref: 'self' } }];
+  if (/^かわりに自分の他の.+?を\d+体破壊してもよい$/.test(s)) return []; // 置換効果は常在型能力で処理する
+  if (/^このクリーチャーを(?:自分の)?(?:手札または)?墓地からバトルゾーンにタップして出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }, { op: 'tap', target: { ref: 'self' } }];
   if (/^このターン、(?:自分の)?マナゾーンからクリーチャーを召喚してもよい$/.test(s)) return [{ op: 'manaSummon', n: 99 }];
   // ブレイクの置換 (常在型能力で処理する)
   if (/^相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:持ち主の)?墓地に置く$/.test(s)) return [];
