@@ -225,7 +225,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/封印がすべて(なくなった|外れた)時/.test(clause)) ev.add('unsealedAll');
     if (/この(クリーチャー|タマシード)が進化する時/.test(clause)) ev.add('evolvedOn');
     if (/自分の「無月の門」能力を使った時/.test(clause)) ev.add('mugetsuUsed');
-    if (/この(?:クリーチャー|ドラグハート)が(?:龍解|覚醒)した時/.test(clause)) ev.add('flipped');
+    if (/この(?:クリーチャー|ドラグハート)が(?:龍解|覚醒|禁断爆発|禁断解放)した時/.test(clause)) ev.add('flipped');
     if (/自分のシールドゾーンにカードが置かれた時/.test(clause)) ev.add('ownShieldAdded');
     if (/カードが自分のシールドゾーンを離れた時|自分のシールドが(?:シールドゾーンを)?離れた時/.test(clause)) ev.add('ownShieldLeft');
     if (/他のクリーチャーが破壊された時/.test(clause) && !own && !opp) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));

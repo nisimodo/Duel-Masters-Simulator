@@ -120,6 +120,8 @@ export type Cond =
   | { c: 'finalRev' }
   /** 手札が1枚もないプレイヤーがいる */
   | { c: 'anyHandEmpty' }
+  /** このカードに封印が1つもない */
+  | { c: 'noSeals' }
   /** このターン、他にN体以上クリーチャーが破壊されている */
   | { c: 'destroyedThisTurn'; n: number }
   /** このカードは墓地に置かれる直前に進化クリーチャーの下にあった */

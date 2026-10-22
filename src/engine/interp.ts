@@ -237,6 +237,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
     case 'wasUnderEvo':
       return !!s.cards[ex.src]?.wasUnderEvo;
+    case 'noSeals':
+      return !(s.cards[ex.src]?.under ?? []).some((u) => s.cards[u].sealOf === ex.src);
     case 'anyHandEmpty':
       return s.players.some((pl) => !pl.lost && pl.hand.length === 0);
     case 'destroyedThisTurn':

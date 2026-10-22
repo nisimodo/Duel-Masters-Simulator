@@ -211,6 +211,7 @@ function parseCond(c: string): Cond | null {
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
   if (/^手札が1枚もないプレイヤーがい$/.test(c)) return { c: 'anyHandEmpty' };
+  if (/^この(?:最終)?禁断(?:フィールド|クリーチャー)?に封印が1つもな(?:けれ|け)?$/.test(c)) return { c: 'noSeals' };
   if ((m = c.match(/^このターン(?:中)?、他に(\d+)体以上破壊されてい$/))) return { c: 'destroyedThisTurn', n: +m[1] };
   if (/^進化クリーチャーの下から墓地に置かれてい$/.test(c)) return { c: 'wasUnderEvo' };
   if (/^(?:この(?:クリーチャー|タマシード)が)?タマシードから進化してい$/.test(c)) return { c: 'underHas', kind: 'tamaseed' };
@@ -535,6 +536,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  if (/^裏返し、1体のクリーチャーとして合体させる$/.test(s)) return [{ op: 'flip', target: { ref: 'self' }, to: 'creature' }];
   if (/^この零龍星雲を自分の《[^》]+》にリンク(?:する|してもよい)$/.test(s)) return /てもよい$/.test(s) ? [{ op: 'optional', body: [{ op: 'zeroLink' }], prompt: s0 }] : [{ op: 'zeroLink' }];
   // 「〜を数える」「その数だけ〜」
   {

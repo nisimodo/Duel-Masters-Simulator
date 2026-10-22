@@ -365,6 +365,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?シールドをブレイクできない$/.test(t0) || /^ヌル・ブレイカー/.test(t0)) return [{ s: 'noBreak' }];
   if (/^G・ブレイカー/.test(t0)) return [{ s: 'gBreaker' }];
   if (/^このクリーチャーは、?召喚できない$/.test(t0)) return [{ s: 'noSummon' }];
+  // ゲーム開始時の配置はゲームの準備で行う
+  if (/^この(?:最終)?禁断フィールドは、ゲーム開始時、/.test(t0) || /^ゲーム開始時、このカードと、異なる\d+種類の零龍星雲を/.test(t0) || /^ゲーム開始時、相手はもう\d+枚カードを引く$/.test(t0)) return [{ s: 'note' }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札から(.+?)を(\d+)(?:枚|体)、?相手に見せてもよい。そう(?:した場合|したら)、このクリーチャーの召喚コストは(?:最大)?(\d+)少なくなる/)) && parseSel(m[1], { zones: ['hand'] }))
     return [{ s: 'revealDiscount', sel: { ...parseSel(m[1], { zones: ['hand'] })!, zones: ['hand'] }, n: +m[2], d: +m[3], floor: floorOf(full) }];
   if (/^このクリーチャーは、?自分の手札から召喚できない$/.test(t0)) return [{ s: 'noSummon', fromHand: true }];
