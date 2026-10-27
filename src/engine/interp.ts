@@ -108,6 +108,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.multicolor && civs.length < 2) return false;
   if (sel.monocolor && civs.length >= 2) return false;
   if (sel.faceDown != null && !!s.cards[iid].manaDown !== sel.faceDown) return false;
+  if (sel.shieldFaceUp && !(s.cards[iid].zone === 'shield' && s.cards[iid].faceUp)) return false;
   if (sel.civInMana) {
     const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
     if (!civs.every((x) => have.has(x))) return false;
@@ -149,7 +150,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }

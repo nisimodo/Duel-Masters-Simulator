@@ -178,6 +178,10 @@ export type StaticSpec =
   | { s: 'rinne'; bonus?: string }
   /** 相手のクリーチャーは出たターン、自分を攻撃できない */
   | { s: 'oppNewNoAttack' }
+  /** 相手のクリーチャーは自分を攻撃できない (条件つき) */
+  | { s: 'oppNoAttackMe'; cond?: StaticCond }
+  /** タップされていないクリーチャーを攻撃できる (条件つき) */
+  | { s: 'attackUntappedIf'; cond: StaticCond }
   /** 条件つきで、このクリーチャーの召喚コストを増減する */
   | { s: 'selfCost'; delta: number; cond?: StaticCond; floor: number }
   /** 〇ステルス: 相手のマナゾーンにその文明のカードがあればブロックされない */
@@ -288,9 +292,11 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手のシールドが(\d+)(?:つ|枚)以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
-  if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出たターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
+  if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出(?:た|した)ターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^自分の手札が(\d+)枚もない(?:時|なら)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] - 1 }, rest: m[2] };
-  if ((m = t.match(/^このクリーチャーがタップされて(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
+  if ((m = t.match(/^このクリーチャーがタップ(?:されて|して)(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
+  if ((m = t.match(/^自分のシールドゾーンに表向きのカードがあれば、(.+)$/))) return { cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, n: 1 }, rest: m[1] };
+  if ((m = t.match(/^バトルゾーンにある自分のクリーチャーがこのクリーチャーだけ(?:なら|であれば)、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手のターン(?:中)?に、?このクリーチャーがタップされて(?:いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped', oppTurn: true }, rest: m[1] };
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
@@ -320,7 +326,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
-    .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '');
+    .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '')
+    .replace(/アウトレイジ犬(\d+)匹につき/, 'アウトレイジ$1体につき');
   let m: RegExpMatchArray | null;
 
   // ---- キーワード系 ----
@@ -568,7 +575,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0) || /^この(カード|クロスギア|クリーチャー|呪文)は、?マナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'tapMana' }];
   if (/^このクリーチャーは、?タップしてバトルゾーンに出る$/.test(t0) || /^バトルゾーンに出す時、このクリーチャーはタップして置く$/.test(t0)) return [{ s: 'entersTapped' }];
-  if (/^このクリーチャーは、?(バトルゾーンに)?出たターン、?相手プレイヤーを攻撃できる$/.test(t0)) return [{ s: 'hastePlayer' }];
+  if (/^このクリーチャーは、?(バトルゾーンに)?出(た|した)ターン(?:の間)?、?相手プレイヤーを攻撃できる$/.test(t0)) return [{ s: 'hastePlayer' }];
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
   if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0) || /^このクリーチャーは、?バトル中破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
   if ((m = t0.match(/^誰も(.+?)を召喚できない$/)) && parseSel(m[1])) return [{ s: 'noSummonSel', sel: { ...parseSel(m[1])!, zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'hyper'] } }];
@@ -623,9 +630,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // ---- 条件付き 「鬼タイム:〜なら、」「自分の〇〇がN体以上あれば、」 ----
   const cp = parseCondPrefix(t0);
   if (!cp) return null;
-  const t = cp.rest;
+  const t = cp.cond ? cp.rest.replace(/^パワーを/, 'このクリーチャーのパワーを') : cp.rest;
   const cond = cp.cond;
   if (cond && /^相手のクリーチャーは(?:すべて)?、?可能(?:なら|であれば)攻撃する$/.test(t)) return [{ s: 'oppMustAttack', cond }];
+  if (cond && (/^自分は攻撃されない$/.test(t) || /^相手のクリーチャーは、?自分を攻撃できない$/.test(t))) return [{ s: 'oppNoAttackMe', cond }];
+  if (cond?.c === 'selfNew' && /^このクリーチャーは、?(?:タップされていない|アンタップされている|アンタップしている)クリーチャーを攻撃できる$/.test(t)) return [{ s: 'attackUntappedIf', cond }];
 
   // ---- パワー ----
   let when: StaticWhen = 'always';

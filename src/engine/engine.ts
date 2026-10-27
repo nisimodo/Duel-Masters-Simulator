@@ -1444,14 +1444,15 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const mine = ownStatics(s, L, iid);
   const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'));
   // 「相手のクリーチャーは出たターン、自分を攻撃できない」
-  const guarded = (o: number) => c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack');
+  const guarded = (o: number) =>
+    (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) || activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNoAttackMe' && staticCondOk(s, L, x));
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };
   if (mine.some((x) => x.s === 'cantAttackCreatures')) return { players, cards };
   const untappedSel = mine.flatMap((x) => (x.s === 'attackUntapped' && x.sel ? [x.sel] : []));
-  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped' && !x.sel) || (c.grants ?? []).some((g) => g.kws.includes('アンタップ攻撃'));
+  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => (x.s === 'attackUntapped' && !x.sel) || (x.s === 'attackUntappedIf' && staticCondOk(s, L, { src: iid, owner: c.owner, spec: x }))) || (c.grants ?? []).some((g) => g.kws.includes('アンタップ攻撃'));
   for (const o of opps)
     for (const t of s.players[o].battle) {
       const tf = faceOf(s, L, t);

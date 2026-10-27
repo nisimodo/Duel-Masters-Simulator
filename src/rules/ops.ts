@@ -43,6 +43,8 @@ export interface Sel {
   civShareMana?: boolean;
   /** 裏向き (true) / 表向き (false) のカードだけ */
   faceDown?: boolean;
+  /** 表向きのシールド */
+  shieldFaceUp?: boolean;
   mono?: boolean;
   races?: string[];
   /** この種族ではない */

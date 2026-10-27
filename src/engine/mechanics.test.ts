@@ -22,6 +22,7 @@ const db = buildDB(
     { id: 'slock', n: 'slock', img: '', f: [{ n: 'slock', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手は、次の自身のターンにクリーチャーを召喚できず、呪文を唱えることもできない。'] }] },
     cr('lightHunter', 1, 1000, ['このクリーチャーは、タップされていない光のクリーチャーを攻撃できる。']),
     cr('lightMon', 1, 1000, [], 'L'),
+    cr('tapGuard', 1, 1000, ['このクリーチャーがタップしていれば、自分は攻撃されない。']),
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
     cr('baku', 5, 5000, ['マナ爆誕3(このクリーチャーを自分のマナゾーンから、コスト3を支払って召喚してもよい)']),
@@ -307,6 +308,15 @@ describe('named mechanics', () => {
     const t = attackTargets(s, L, h).cards;
     expect(t).toContain(find(s, 1, 'battle', 'lightMon'));
     expect(t).not.toContain(find(s, 1, 'battle', 'vanilla'));
+  });
+
+  it('このクリーチャーがタップしていれば、自分は攻撃されない', () => {
+    const s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'tapGuard', zone: 'battle' }]);
+    const a = find(s, 0, 'battle', 'vanilla')!;
+    s.cards[a].sick = false;
+    expect(attackTargets(s, L, a).players).toContain(1);
+    s.cards[find(s, 1, 'battle', 'tapGuard')!].tapped = true;
+    expect(attackTargets(s, L, a).players).not.toContain(1);
   });
 
   it('マナ爆誕: summons from the mana zone', () => {
