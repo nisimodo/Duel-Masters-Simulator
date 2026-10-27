@@ -70,6 +70,7 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
         for (const spec of f?.statics ?? []) if (spec.s === 'sealStay') out.push({ src: iid, owner: p, spec });
         continue;
       }
+      if (abilitiesIgnored(s, L, iid)) continue;
       for (const spec of f?.statics ?? []) out.push({ src: iid, owner: p, spec });
       if (f?.groups || c.under.length || f?.races.some((r) => r.includes('サバイバー')))
         for (const g of effGroups(s, L, iid)) for (const spec of g.statics) out.push({ src: iid, owner: p, spec });
@@ -249,6 +250,13 @@ export function staticKws(s: GameState, L: Lookup, iid: number): string[] {
 /** 封印が付いているか */
 export function isSealed(s: GameState, iid: number): boolean {
   return (s.cards[iid]?.under ?? []).some((u) => s.cards[u].sealOf === iid);
+}
+
+/** 効果で能力を無視されているか (「相手のクリーチャーの能力すべてを無視する」「その数字と同じコストの相手のエレメントの能力を無視し」) */
+export function abilitiesIgnored(s: GameState, L: Lookup, iid: number): boolean {
+  const c = s.cards[iid];
+  if (!c || c.zone !== 'battle' || !s.ignoreAbil?.length) return false;
+  return s.ignoreAbil.some((x) => x.by !== c.owner && (x.turn == null || x.turn === s.turn) && (x.costEq == null || (L(c.cid)?.faces[c.face]?.cost ?? -1) === x.costEq));
 }
 
 /** G・リンクしているか (一番上のカード / 下のカードどちらでも) */

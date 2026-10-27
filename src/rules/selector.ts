@@ -76,6 +76,11 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'le' }));
     changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
     changed ||= take(/^(?:この|その)ターン(?:中)?に(?:バトルゾーンに)?出た/, () => (sel.enteredThisTurn = true));
+    changed ||= take(/^種族に([^、]+?)とある、?/, (m) => (sel.races = [...(sel.races ?? []), m[1]]));
+    changed ||= take(/^自分のシールドの数以下のコストを持つ/, () => (sel.costVs = { by: 'shield', cmp: 'le' }));
+    changed ||= take(/^(?:その|こうして)(?:見せた|捨てた|選んだ)(?:カード|手札|クリーチャー)と同じコストの/, () => (sel.costEqIt = true));
+    changed ||= take(/^(?:その|こうして)(?:見せた|捨てた|選んだ)(?:カード|手札|クリーチャー)と同じ文明を持つ、?/, () => (sel.civShareIt = true));
+    changed ||= take(/^その数より、?コストの小さい/, () => (sel.costLtCount = true));
     changed ||= take(/^自身のマナゾーンにあるカードの枚数以上のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'ge', ofOwner: true }));
     changed ||= take(/^〈種族〉の/, () => (sel.raceRef = true));
     changed ||= take(/^〈名前〉の/, () => (sel.nameRef = true));
@@ -93,7 +98,7 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
       });
     }
     changed ||= take(/^他の/, () => (sel.other = true));
-    changed ||= take(/^(?:名前に)?《([^》]+)》(?:とある(?:クリーチャー|カード))?以外の/, (m) => (sel.nameNot = m[1]));
+    changed ||= take(/^(?:名前に)?《([^》]+)》(?:とある(?:クリーチャー|カード))?(?:以外の|ではない、?)/, (m) => (sel.nameNot = m[1]));
     changed ||= take(/^名前に《([^》]+)》(とある|を持つ)/, (m) => (sel.nameHas = m[1]));
     changed ||= take(/^コスト(\d+)以下の/, (m) => (sel.costMax = +m[1]));
     changed ||= take(/^コスト(\d+)以上の/, (m) => (sel.costMin = +m[1]));

@@ -158,8 +158,8 @@ export function parseCond(c0: string): Cond | null {
   }
   if (/^このクリーチャーが自分の墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   // 「AがありBがあれば」「Aがいて、B」: 両方
-  if ((m = c.match(/^(.+?)(あり|いて)、(.+)$/))) {
-    const a = parseCond(m[1] + (m[2] === 'あり' ? 'あ' : 'い'));
+  if ((m = c.match(/^(.+?)(あり|いて|なく)、(.+)$/))) {
+    const a = parseCond(m[1] + (m[2] === 'あり' ? 'あ' : m[2] === 'なく' ? 'な' : 'い'));
     const b = a && parseCond(m[3]);
     if (a && b) return { c: 'and', a, b };
   }
@@ -323,6 +323,10 @@ export function parseCond(c0: string): Cond | null {
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
   if (/^それがすべてコストが同じクリーチャー(?:であ|で)?$/.test(c)) return { c: 'lookedSameCost' };
+  if (/^相手がそのターン中、?マナゾーンのカードをタップせずに、?クリーチャーを出すか呪文を唱えてい$/.test(c)) return { c: 'oppFreePlay' };
+  if (/^(?:その|この)クリーチャーがコストを支払わずに出てい$/.test(c)) return { c: 'itFreeEntered' };
+  if ((m = c.match(/^それがそのターンに相手が引く(\d+)枚目でな(?:け|い)?$/))) return { c: 'oppDrewGE', n: +m[1] + 1 };
+  if (/^自分のエレメントにすべての文明が揃ってい$/.test(c)) return { c: 'elemEveryCiv' };
   // 「自分のクリーチャーまたはタマシードの中に水と闇があ」
   if ((m = c.match(/^自分のクリーチャーまたはタマシードの中に((?:光|水|闇|火|自然)(?:と(?:光|水|闇|火|自然))*)があ$/))) {
     const CV = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const;
@@ -395,6 +399,15 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^(?:この|その)?ターンの終わりまで、/, 'このターン、')
+    .replace(/^相手は、?自身の(.+?)をすべて(?:自身の|持ち主の)?マナゾーンに置く$/, '相手の$1をすべて持ち主のマナゾーンに置く')
+    .replace(/^その中の(\d+)枚を/, 'その中から$1枚を')
+    .replace(/^その(\d+)枚の中から/, 'その中から')
+    .replace(/加え、シャッフルする$/, '加えてシャッフルする')
+    .replace(/^各相手の手札を(\d+)枚ずつ/, '相手の手札を$1枚')
+    .replace(/^その中から好きな数の(.+?)を出し、/, 'その中から$1を99枚まで選び、バトルゾーンに出し、')
+    .replace(/^(.*?その中から)(.+?)を好きな数出す$/, '$1$2を99枚まで選び、バトルゾーンに出す')
+    .replace(/^進化クリーチャーではない、/, '進化ではない')
+    .replace(/マナゾーンの(?:枚)?数以下のコスト/g, 'マナゾーンにあるカードの枚数以下のコスト')
     .replace(/^(.*?)さらにもう(\d+)枚、自分の山札の上からカードをマナゾーンに置く$/, '$1自分の山札の上から$2枚をマナゾーンに置く')
     .replace(/^相手の手札を見て(クリーチャー|呪文|カード)を(\d+)体選び、/, '相手の手札を見て$1を$2枚選び、')
     .replace(/、コストを支払わずに(自分の(?:手札|墓地|マナゾーン)(?:または(?:手札|墓地|マナゾーン))?から)(唱え|召喚し)/, '、$1コストを支払わずに$2')
@@ -914,6 +927,50 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「そのクリーチャーのこのターン最初の攻撃の終わりにアンタップする」
   if (/^(?:その|この)クリーチャー(?:の|は)、?このターン最初の攻撃の終わりにアンタップする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
   let mm: RegExpMatchArray | null;
+  // 「自分の火のエレメントの数以下のコストの〜」「自分のマナゾーンにあるツインパクトカードの枚数よりコストの小さい〜」: 数えてから選ぶ
+  if ((mm = s.match(/^(自分の(?:マナゾーン|墓地|手札)から)?自分の(.+?)の(?:数|枚数)(以下のコストの|以下のコストを持つ|より、?コストの小さい)(.+)$/))) {
+    const zm = mm[2].match(/^(マナゾーン|墓地|手札)にある(.+)$/);
+    const csel = zm ? parseSel(zm[2], { zones: [ZONE[zm[1]]] }) : parseSel('自分の' + mm[2]);
+    const rest = sentence((mm[1] ?? '') + (/より/.test(mm[3]) ? 'その数より、コストの小さい' : 'その数以下のコストを持つ') + mm[4], ctx);
+    if (csel && rest) return [{ op: 'countSet', sel: { ...csel, owner: 'self', ...(zm ? { zones: [ZONE[zm[1]]] } : {}) } }, ...rest];
+  }
+  if (/^これらのクリーチャーが出ることによって起こる効果はすべて無視する$/.test(s)) return [{ op: 'note', text: '出た時の効果は無視する (自動では無視されない)' }];
+  // 「「〜」と言ってもよい」: 言ったかどうかだけ
+  if ((mm = s.match(/^「([^」]+)」と言ってもよい$/))) return [{ op: 'optional', body: [{ op: 'note', text: `「${mm[1]}」` }], prompt: s0 }];
+  if (/^(?:この|その)ターン、相手のクリーチャーの能力(?:を)?すべて(?:を)?無視する$/.test(s)) return [{ op: 'ignoreAbilities', until: 'turn' }];
+  if (/^次の自分のターンのはじめまで、〈数字コスト〉の相手のエレメントの能力を無視し、相手は〈数字コスト〉の呪文を唱えられない$/.test(s))
+    return [{ op: 'ignoreAbilities', until: 'nextOwnTurn', costRef: true }, { op: 'lockSpells', until: 'nextOwnTurn', costRef: true }];
+  // 「そのクリーチャーのパワーは、自分の墓地にあるクリーチャー1体につき-1000される」
+  if ((mm = s.match(/^(?:(?:この|その)ターン、)?そのクリーチャーのパワーは、?自分の(墓地|マナゾーン)にある(.+?)1(?:体|枚)につき([+-]\d+)される$/))) {
+    const psel = parseSel(mm[2], { zones: [ZONE[mm[1]]] });
+    if (psel) return [{ op: 'countSet', sel: { ...psel, owner: 'self', zones: [ZONE[mm[1]]] } }, { op: 'repeatCount', body: [{ op: 'power', target: { ref: 'it' }, delta: +mm[3], until: 'turn' }] }];
+  }
+  // 「そのターン、そのアビスは相手プレイヤーを攻撃でき、そのターン中に攻撃したら、ターンの終わりに山札の下に置く」
+  if (/^(?:この|その)ターン、その[^、]+は相手プレイヤーを攻撃でき、そのターン中に攻撃したら、(?:その)?ターンの終わりに山札の(?:一番)?下に置く$/.test(s))
+    return [
+      { op: 'grant', target: { ref: 'it' }, kws: ['スピードアタッカー'], until: 'turn' },
+      { op: 'atTurnEnd', body: [{ op: 'if', cond: { c: 'itAttacked' }, body: [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }] }] },
+    ];
+  // 「そのカードの、出た時にトリガーする能力を、自分が1つ使ってもよい」
+  if (/^そのカードの、?出た時にトリガーする能力を、?(?:自分が)?(?:1つ|ひとつ)使ってもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
+  // 「相手は自身のパワーが一番小さいクリーチャーすべてに封印を1つずつ付ける」
+  if ((mm = s.match(/^相手は自身の(.+?)すべてに封印を(\d+)つずつ付ける$/))) {
+    const ssel = parseSel('相手の' + mm[1]);
+    if (ssel) return [{ op: 'seal', target: { ref: 'sel', sel: ssel, count: { all: true }, chooser: 'self' }, n: +mm[2] }];
+  }
+  // 「自分のコスト4以下のクリーチャーを手札と墓地から最大1体ずつ出してもよい」
+  if ((mm = s.match(/^自分の(.+?)を手札と墓地から最大(\d+)体(?:ずつ)?出(?:してもよい|す)$/))) {
+    const bsel = parseSel(mm[1], { zones: ['hand'] });
+    if (bsel)
+      return (['hand', 'grave'] as const).map((z) => ({
+        op: 'optional',
+        prompt: `${mm![1]}を${z === 'hand' ? '手札' : '墓地'}から出してもよい`,
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { ...bsel, owner: 'self', zones: [z] }, count: { n: +mm![2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `${z === 'hand' ? '手札' : '墓地'}から出すクリーチャーを選ぶ` },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ],
+      }) as Op);
+  }
   // 「そのカードの「このクリーチャーがバトルゾーンに出た時」で始まる能力を1つ使ってもよい」
   if ((mm = s.match(/^(?:その|そのカードの|そのクリーチャーの)「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を(?:1つ|ひとつ)使(う|ってもよい)$/)))
     return mm[1] === 'う' ? [{ op: 'useEnterOf' }] : [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
@@ -2593,6 +2650,12 @@ export function parseEffect(text: string): Program {
     bonus = { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', evolution: true }, cmp: '>=', n: 1 };
     body = body.replace(/爆進ダブル(\s*[(（][^)）]*[)）])?。?/g, '');
   }
+  const allBonus = normText(body).match(/(?:^|。)\s*([^。]+?)(?:れば|ならば|なら|であれば)、かわりにすべてを1回ずつ使ってもよい。?/);
+  const allCond = allBonus && parseCond(allBonus[1].replace(/\s+/g, ''));
+  if (allBonus && allCond) {
+    bonus = allCond;
+    body = normText(body).replace(allBonus[0], allBonus[0].startsWith('。') ? '。' : '');
+  }
   const both2 = normText(body).match(/(?:^|。)\s*([^。]+?)(?:れば|ならば|なら|であれば)、(?:かわりに)?(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
   const bothCond = both2 && parseCond(both2[1].replace(/\s+/g, ''));
   const both = !bothCond && normText(body).match(/(?:^|。)\s*(?:バトルゾーンに)?自分の(.+?)が(?:あれば|ある場合は)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
@@ -2606,7 +2669,8 @@ export function parseEffect(text: string): Program {
       body = normText(body).replace(both[0], both[0].startsWith('。') ? '。' : '');
     }
   }
-  body = normText(body).replace(/(次に(?:自分が)?召喚する[^。]+?少なくする)。(ただし、コストは0以下にはならない。)?そのクリーチャーが出た時、このターン、そのクリーチャーに「([^」]+)」を与える/g, '$1、出た時「$3」を与える。$2');
+  body = normText(body).replace(/そのクリーチャーをバトルゾーンに出した時、このターンの終わりまでそのクリーチャーは「([^」]+)」を得る/g, 'そのクリーチャーが出た時、このターン、そのクリーチャーに「$1」を与える');
+  body = normText(body).replace(/(次に(?:自分が)?召喚する[^。]+?少なく)(?:する|してもよい)。(ただし、コストは\d+(?:以下には|より少なく)ならない。)?そのクリーチャーが出た時、このターン、そのクリーチャーに「([^」]+)」を与える/g, '$1する、出た時「$3」を与える。$2');
   body = body.replace(/相手は(?:自分自身|自身)のシールドを(\d+)(?:枚|つ)選ぶ。(?:その後、)?このクリーチャーは、?そのシールドをブレイクする/g, 'このクリーチャーは相手のシールドを$1枚ブレイクする');
   body = body.replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
   const prog = parseEffectRaw(body);

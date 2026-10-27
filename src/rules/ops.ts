@@ -29,7 +29,7 @@ export interface Sel {
   /** サイキックではない */
   notPsychic?: boolean;
   /** コストが (自分のマナの枚数 / 手札の枚数) より小さい・以下 */
-  costVs?: { by: 'mana' | 'hand'; cmp: 'lt' | 'le' | 'ge'; ofOwner?: boolean };
+  costVs?: { by: 'mana' | 'hand' | 'shield'; cmp: 'lt' | 'le' | 'ge'; ofOwner?: boolean };
   /** この効果のカード自身 */
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
@@ -73,6 +73,12 @@ export interface Sel {
   powerLtIt?: boolean;
   /** it よりコストが小さい */
   costLtIt?: boolean;
+  /** it と同じコスト */
+  costEqIt?: boolean;
+  /** it と共通の文明を持つ */
+  civShareIt?: boolean;
+  /** コストが数えた数より小さい */
+  costLtCount?: boolean;
   /** このターンに出た (召喚酔いしている) */
   enteredThisTurn?: boolean;
   /** it のコスト以下 (「その選んだクリーチャーのコスト以下の」「こうして捨てた手札以下のコストを持つ」) */
@@ -170,6 +176,16 @@ export type Cond =
   | { c: 'costSum'; sel: Sel; n: number }
   /** S・トリガー・プラス: 相手のターン中で、そのターンに自分のシールドが2つ以上ブレイクされている ({x+} 能力) */
   | { c: 'stPlus' }
+  /** 相手がこのターン、マナゾーンのカードをタップせずにクリーチャーを出すか呪文を唱えた */
+  | { c: 'oppFreePlay' }
+  /** そのクリーチャーがマナを支払わずに出た */
+  | { c: 'itFreeEntered' }
+  /** そのクリーチャーがこのターンに攻撃した */
+  | { c: 'itAttacked' }
+  /** 相手がこのターンにN枚以上引いた */
+  | { c: 'oppDrewGE'; n: number }
+  /** 自分のバトルゾーンのカードに5文明すべてがある */
+  | { c: 'elemEveryCiv' }
   /** 見せた・見たカードがすべてクリーチャーで、コストが同じ */
   | { c: 'lookedSameCost' }
   /** このターンに自分が攻撃した回数 / 唱えた呪文の数 */
@@ -315,6 +331,8 @@ export type Op =
   | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
   /** このターンの後に自分のターンを追加する */
   | { op: 'extraTurn' }
+  /** 相手のバトルゾーンのカードの能力を無視する (costRef: 選んだ数字と同じコストだけ) */
+  | { op: 'ignoreAbilities'; until: 'turn' | 'nextOwnTurn'; costRef?: boolean }
   /** クロスギアをコストを支払わずにクロスする (onto: pick は自分のクリーチャーから自動で選ぶ) */
   | { op: 'crossFree'; gear: Target; onto: 'self' | 'it' | 'pick'; otherOnly?: boolean }
   /** パワーが一番小さい (max: 大きい) クリーチャーを破壊する */

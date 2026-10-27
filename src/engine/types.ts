@@ -55,6 +55,10 @@ export interface CardInst {
   fromBattle?: boolean;
   /** 「各ターンに一度」の置換効果を使ったターン */
   replTurn?: number;
+  /** マナを支払わずに (効果・コスト0で) バトルゾーンに出た */
+  enteredFree?: boolean;
+  /** 攻撃したターン */
+  attackedTurn?: number;
   /** このターンに「かわりに〜を支払ってとどまる」置換効果を使った回数 (互いに身代わりになり続けないように) */
   replUses?: { turn: number; n: number };
   /** エクストラEXライフの残りのシールド */
@@ -121,6 +125,10 @@ export interface PlayerState {
   spellLockUntil?: number;
   /** このプレイヤーのターンが来るまでクリーチャーを召喚できない (効果の使用者) */
   summonLockUntil?: number;
+  /** マナゾーンのカードをタップせずにクリーチャーを出したか呪文を唱えたターン */
+  freePlayTurn?: number;
+  /** このターンに引いた枚数 */
+  draws?: { turn: number; n: number };
   /** 召喚できないのはこのコスト以下のクリーチャーだけ */
   summonLockCost?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
@@ -279,6 +287,8 @@ export interface GameState {
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
+  /** 能力を無視する効果 (by 以外のプレイヤーのバトルゾーンのカード。until のプレイヤーのターンのはじめまで / turn のターンだけ / costEq のコストだけ) */
+  ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number }[];
   /** 最近のカードの移動 (画面のアニメーション用。n は通し番号) */
   moves?: { n: number; iid: number; owner: number; from: ZoneName | 'under' | 'gone'; to: ZoneName | 'under' | 'gone' }[];
   moveSeq?: number;

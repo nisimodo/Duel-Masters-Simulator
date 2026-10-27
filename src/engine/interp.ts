@@ -85,7 +85,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
     // 効果を使っているプレイヤー (手番のプレイヤー) のマナ・手札の枚数と比べる
     // 「自身のマナゾーンにあるカードの枚数以上」はカードの持ち主のマナと比べる
     const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : s.active];
-    const lim = sel.costVs.by === 'mana' ? ctl.mana.length : ctl.hand.length;
+    const lim = sel.costVs.by === 'mana' ? ctl.mana.length : sel.costVs.by === 'shield' ? ctl.shield.length : ctl.hand.length;
     const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
     if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : !(cost <= lim)) return false;
   }
@@ -176,6 +176,9 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.enteredThisTurn && !s.cards[iid].sick) continue;
+        if (sel.costEqIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) === maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
+        if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
@@ -244,6 +247,18 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const ids = ex.looked.length ? ex.looked : ex.it;
       const fs = ids.map((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]);
       return fs.length > 0 && fs.every((f) => f?.isCreature) && new Set(fs.map((f) => f!.cost)).size === 1;
+    }
+    case 'oppFreePlay':
+      return opps(s, ex.player).some((o) => s.players[o].freePlayTurn === s.turn);
+    case 'itFreeEntered':
+      return !!s.cards[ex.it[0] ?? -1]?.enteredFree;
+    case 'itAttacked':
+      return ex.it.some((i) => s.cards[i]?.attackedTurn === s.turn);
+    case 'oppDrewGE':
+      return opps(s, ex.player).some((o) => s.players[o].draws?.turn === s.turn && s.players[o].draws!.n >= c.n);
+    case 'elemEveryCiv': {
+      const civs = new Set(me.battle.flatMap((i) => L(s.cards[i].cid)?.civs ?? []));
+      return civs.size >= 5;
     }
     case 'stPlus': {
       const b = me.broken?.turn === s.turn ? me.broken.n : 0;
@@ -1287,6 +1302,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           pl.summonLockUntil = ex.player;
         }
         log(s, ex.player, `次の自分のターンのはじめまで、相手は${op.costMax != null ? `コスト${op.costMax}以下の` : ''}クリーチャーを召喚できない`);
+        break;
+      }
+      case 'ignoreAbilities': {
+        (s.ignoreAbil ??= []).push({ by: ex.player, ...(op.until === 'turn' ? { turn: s.turn } : { until: ex.player }), ...(op.costRef ? { costEq: s.chosenValue?.num ?? -1 } : {}) });
+        log(s, ex.player, `${op.until === 'turn' ? 'このターン' : '次の自分のターンのはじめまで'}、相手の${op.costRef ? `コスト${s.chosenValue?.num ?? '?'}の` : ''}カードの能力を無視する`);
         break;
       }
       case 'lockSpells': {

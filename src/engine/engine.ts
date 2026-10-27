@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { condHolds, matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { abilitiesIgnored, activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -51,7 +51,7 @@ export function log(s: GameState, p: number | null, m: string) {
 export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
   const f = faceOf(s, L, iid);
   // 封印が付いているクリーチャーは能力を持たない
-  if (s.cards[iid].zone === 'battle' && isSealed(s, iid)) return EMPTY_KW;
+  if (s.cards[iid].zone === 'battle' && (isSealed(s, iid) || abilitiesIgnored(s, L, iid))) return EMPTY_KW;
   const base: Keywords = f ? f.kw : EMPTY_KW;
   const g = s.cards[iid].grants;
   const extra = s.cards[iid].zone === 'battle' ? staticKws(s, L, iid) : [];
@@ -480,6 +480,11 @@ export function moveCard(
   c.under = [];
   c.zone = dest;
   noteMove(s, iid, from, dest);
+  if (dest === 'battle' && from !== 'battle') {
+    // 召喚 (コストを払ったかは playCard で決める) 以外で出たものは、マナを支払わずに出たもの
+    c.enteredFree = !opts.summoned;
+    if (c.enteredFree && card?.faces[opts.face ?? c.face]?.isCreature) s.players[c.owner].freePlayTurn = s.turn;
+  }
   c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
   if (opts.face != null) c.face = opts.face;
@@ -766,7 +771,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
 function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
-  if (s.cards[iid].zone === 'battle' && isSealed(s, iid) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
+  if (s.cards[iid].zone === 'battle' && (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
   for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
     const ev = spec.events.find((e) => events.includes(e));
     if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
@@ -858,7 +863,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
         }
       }
     for (const iid of s.players[p].battle) {
-      if (isSealed(s, iid)) continue;
+      if (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
       for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
@@ -960,6 +965,7 @@ export function drawCards(s: GameState, p: number, n: number) {
     c.faceUp = true;
     pl.hand.push(top);
     noteMove(s, top, 'deck', 'hand');
+    pl.draws = pl.draws?.turn === s.turn ? { turn: s.turn, n: pl.draws.n + 1 } : { turn: s.turn, n: 1 };
     drawn++;
     (pl.drawnPending ??= []).push(top);
     // ビビッドロー: 自分のターン中、攻撃の前にドローしたら表向きにする
@@ -1159,6 +1165,7 @@ function startTurn(s: GameState, L: Lookup) {
   s.usedOnce = [];
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
+  if (s.ignoreAbil?.length) s.ignoreAbil = s.ignoreAbil.filter((x) => x.until !== p && (x.turn == null || x.turn >= s.turn));
   for (const pl2 of s.players)
     if (pl2.summonLockUntil === p) {
       pl2.summonLockUntil = undefined;
@@ -1980,6 +1987,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       const targetPlayer = a.card != null ? s.cards[a.card].owner : a.player;
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
+      c.attackedTurn = s.turn;
       countAct(s, p, 'atk');
       const me0 = s.players[p];
       me0.attacks = me0.attacks?.turn === s.turn ? { turn: s.turn, n: me0.attacks.n + 1 } : { turn: s.turn, n: 1 };
@@ -2387,6 +2395,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
     }
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true });
+    if (!a.pay?.length) {
+      // マナゾーンのカードをタップせずに召喚した
+      c.enteredFree = true;
+      s.players[p].freePlayTurn = s.turn;
+    }
     if (nsGrants?.length && c.zone === 'battle') (c.grants ??= []).push({ kws: nsGrants, until: -1 });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
@@ -2485,7 +2498,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const cyclone = kwLine(/^サイクロン/) && me.lastPlay?.turn === s.turn && me.lastPlay.kind === 'creature';
     if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
     const crystalCharger = kwLine(/^水晶チャージャー/);
-    const toBottom = face.text.some((l) => /唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く/.test(normText(l)));
+    // 「この呪文を墓地から唱えてもよい。そうしたら、唱えた後〜山札の下」は墓地から唱えた時だけ
+    const toBottom = face.text.some((l) => /唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く/.test(normText(l)) && (zone0 === 'grave' || !/^この呪文を、?\s*(自分の)?墓地から唱えてもよい/.test(normText(l))));
     // デュエルメイト呪文: 唱えた後、墓地のかわりに自分の《デュエリスト》の下に置く
     const underName = face.text.map((l) => normText(l).match(/唱えた後、墓地(?:に置く)?の?かわりに自分の《([^》]+)》(?:1つ|１つ)?の下に置く/)).find(Boolean)?.[1];
     const underHost = underName != null ? [...me.partner, ...me.battle].find((x) => nameOf(s, L, x).includes(underName)) : undefined;
@@ -2510,6 +2524,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     } else moveCard(s, L, a.iid, cyclone ? 'hand' : charger ? 'mana' : 'grave', { tapped: charger && card.civs.length > 1 });
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     me.spellsCast = me.spellsCast?.turn === s.turn ? { turn: s.turn, n: me.spellsCast.n + 1 } : { turn: s.turn, n: 1 };
+    if (!a.pay?.length) me.freePlayTurn = s.turn;
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };

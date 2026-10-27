@@ -361,6 +361,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/^(W・)?シンパシー[:：](.+?)および/, '$1シンパシー:$2または')
     .replace(/^(?:バトルゾーンにある)?自分のクリーチャーがこのクリーチャーだけ(?:なら|であれば)、(?:このクリーチャーの)?パワーを/, 'バトルゾーンに自分の他のクリーチャーがなければ、このクリーチャーのパワーを')
     .replace(/^この(?:クリーチャー|呪文|カード)が(?:自分の)?シールドゾーンにあり、/, '')
+    .replace(/、自分のシールドゾーンから手札に加えるこの(?:クリーチャー|呪文|カード)に「S・トリガー」を与える$/, '、このクリーチャーに「S・トリガー」を与える')
     .replace(/コストを最大(\d+)少なく/, 'コストを$1少なく')
     .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
     .replace(/^革命\d+[:：―\-－ー]/, '')
@@ -418,7 +419,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 「相手の墓地にある呪文1枚につき、このクリーチャーの召喚コストを1少なくする」
   if (
     (m =
-      t0.match(/^(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき、?このクリーチャーの召喚コスト(?:を|は)(\d+)少なく(?:する|なる|してもよい)/) ??
+      t0.match(/^(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき、?この(?:クリーチャーの召喚|呪文を唱える)コスト(?:を|は)(\d+)少なく(?:する|なる|してもよい)/) ??
       t0.match(/^このクリーチャーを召喚するコストを、?(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき(\d+)少なく(?:する|してもよい)/))
   ) {
     const zone = m[3] === '墓地' ? 'grave' : m[3] === 'マナゾーン' ? 'mana' : 'battle';
@@ -437,6 +438,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^ハンティング$/.test(t0))
     return [{ s: 'power', target: { t: 'self' }, delta: 1000, when: 'battle', per: { sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ハンター'] }, each: 1 } }];
   if (/^このクリーチャーを、?(自分の)?マナゾーンから召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'mana' }];
+  // 「この呪文を、自分の墓地から唱えてもよい。そうしたら、唱えた後、墓地に置くかわりに自分の山札の一番下に置く」(山札の下へは呪文を出す処理で行う)
+  if (/^この呪文を、?(?:自分の)?(墓地|マナゾーン)から唱えてもよい(?:。そうしたら、唱えた後、墓地に置くかわりに(?:自分の)?山札の(?:一番)?下に置く)?$/.test(t0)) return [{ s: 'summonFrom', zone: /墓地/.test(t0) ? 'grave' : 'mana' }];
   if (/^このクリーチャーはタップして出て、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
   if (/^(各ターン、)?このクリーチャーの(最初の)?攻撃の終わりに、このクリーチャーをアンタップする$/.test(t0)) return [{ s: 'untapAfterAttack' }];
   if (/^このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する$/.test(t0)) return [{ s: 'destroyAfterAttack' }];
@@ -806,6 +809,17 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (cond && t !== t0) {
     const inner = parseStaticLine(t);
     if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart' || x.s === 'summonFrom') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
+  }
+  // 「〜あれば、このクリーチャーに「ブロッカー」を与え、破壊される時、墓地に置くかわりに手札に戻す」
+  {
+    const gm = t0.match(/^([^、]+?(?:あれば|なら))、このクリーチャーに「([^」]+)」を与え、破壊される時、(?:墓地に置く)?かわりに(手札に戻す|マナゾーンに置く)$/);
+    const pc = gm && parseCondPrefix(gm[1] + '、_');
+    const ec = gm && parseCond(gm[1].replace(/(?:であれば|ならば|なら|れば)$/, ''));
+    if (gm && pc?.cond && ec)
+      return [
+        { s: 'grant', target: { t: 'self' }, kws: [gm[2]], when: 'always', cond: pc.cond },
+        { s: 'replaceMove', subj: { t: 'self' }, on: 'destroy', act: 'redirect', zone: /手札/.test(gm[3]) ? 'hand' : 'mana', cond: ec },
+      ];
   }
   const rm = parseReplaceMove(t0);
   if (rm) return [rm];
