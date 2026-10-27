@@ -2530,7 +2530,9 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       if (a.t !== 'breakSel') return 'ブレイクするシールドを選んでください';
       const def = s.players[top.target];
       const sel = [...new Set(a.shields)].filter((x) => def.shield.includes(x));
-      if (sel.length !== top.count) return `シールドを${top.count}枚選んでください`;
+      // 選ぶ前に他の効果でシールドが減っていれば、残っている枚数まで
+      const need = Math.min(top.count, def.shield.length);
+      if (sel.length !== need) return `シールドを${need}枚選んでください`;
       s.pending.shift();
       breakShields(s, L, top.target, sel, p, s.attack?.attacker ?? null);
       return null;
