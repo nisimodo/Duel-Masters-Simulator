@@ -42,7 +42,7 @@ export type StaticCond =
   | { c: 'linked' };
 
 export type StaticSpec =
-  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond; vs?: Sel; perCiv?: boolean; perUnder?: boolean }
+  | { s: 'power'; target: StaticTarget; delta: number; when: StaticWhen; per?: { sel: Sel; each: number }; cond?: StaticCond; vs?: Sel; perCiv?: boolean | 'battle'; perUnder?: boolean }
   /** この条件を満たす時だけ召喚できる */
   | { s: 'summonOnlyIf'; cond: StaticCond }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
@@ -446,10 +446,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^相手はこのクリーチャーを選べない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
   if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?バトルゾーンを離れず、すべてのバトルに勝つ$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
-  if ((m = t0.match(/^自分のマナゾーンにある文明(\d+)つにつき、このクリーチャーのパワーを\+(\d+)する$/)))
+  if ((m = t0.match(/^自分のマナゾーンにある文明(\d+)つにつき、このクリーチャーのパワーを\+(\d+)する$/) ?? t0.match(/^このクリーチャーのパワーは、?自分のマナゾーンにある文明(ひとつ|1つ)につき\+(\d+)される$/)))
     return [{ s: 'power', target: { t: 'self' }, delta: +m[2], when: 'always', perCiv: true }];
-  if ((m = t0.match(/^このクリーチャーの下にあるカード(\d+)枚につき、このクリーチャーのパワーを\+(\d+)する$/)) ?? t0.match(/^このクリーチャーのパワーは、このクリーチャーの下にあるカード(\d+)枚につき\+(\d+)される$/))
-    return [{ s: 'power', target: { t: 'self' }, delta: +m![2], when: 'always', perUnder: true }];
+  if ((m = t0.match(/^このクリーチャーのパワーは、?(?:バトルゾーンにある)?自分の(?:カード|クリーチャー)の文明(ひとつ|1つ)につき\+(\d+)される$/)))
+    return [{ s: 'power', target: { t: 'self' }, delta: +m[2], when: 'always', perCiv: 'battle' }];
+  if ((m = t0.match(/^このクリーチャーの下にあるカード(\d+)枚につき、このクリーチャーのパワーを\+(\d+)する$/) ?? t0.match(/^このクリーチャーのパワーは、このクリーチャーの下にあるカード(\d+)枚につき\+(\d+)される$/)))
+    return [{ s: 'power', target: { t: 'self' }, delta: +m[2], when: 'always', perUnder: true }];
   if ((m = t0.match(/^このクリーチャーは、?自分の手札が(\d+)枚以下(?:の時)?(?:なら|しか)?召喚できる$/))) return [{ s: 'summonOnlyIf', cond: { c: 'handLE', n: +m[1] } }];
   if (/^呪文を唱えたターン(?:のみ|にしか)、?このクリーチャーを召喚(?:することが)?できる$/.test(t0)) return [{ s: 'summonOnlyIf', cond: { c: 'spellsThisTurn', n: 1 } }];
   if ((m = t0.match(/^輪廻∞[:：]このカードの呪文側を、?バトルゾーンに置いたまま唱えてもよい。?(?:そうした時、(.+))?$/))) return [{ s: 'rinne', bonus: m[1] }];

@@ -209,7 +209,7 @@ export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx 
     if (sp.cond && sp.cond.c !== 'powerAtLeast' && sp.cond.c !== 'powerAtMost' && !condOk(s, L, a, sp.cond, iid)) continue;
     if (sp.vs && (ctx.foe == null || !matchesSel(s, L, ctx.foe, { ...sp.vs, zones: ['battle'] }))) continue;
     if (sp.perCiv) {
-      const civs = new Set(s.players[a.owner].mana.flatMap((m) => L(s.cards[m].cid)?.civs ?? []));
+      const civs = new Set((sp.perCiv === 'battle' ? s.players[a.owner].battle : s.players[a.owner].mana).flatMap((m) => L(s.cards[m].cid)?.civs ?? []));
       d += civs.size * sp.delta;
       continue;
     }
