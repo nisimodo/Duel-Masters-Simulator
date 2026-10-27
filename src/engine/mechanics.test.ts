@@ -523,6 +523,16 @@ describe('named mechanics', () => {
     expect(power(s, L, v, false, { inBattle: true })).toBe(3000);
   });
 
+  it('次の相手のターンのはじめに〜', () => {
+    let s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    startExec(s, L, 0, v, programOf('次の相手のターンのはじめに、このクリーチャーを破壊する').ops, 'v');
+    expect(s.cards[v].zone).toBe('battle');
+    s = act(s, 0, { t: 'endTurn' });
+    expect(s.active).toBe(1);
+    expect(s.cards[v].zone).toBe('grave');
+  });
+
   it('効果でコストを支払わずにクロスする', () => {
     const s = setup([
       { p: 0, cid: 'gear', zone: 'battle' },

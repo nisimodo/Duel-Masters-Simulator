@@ -1143,8 +1143,8 @@ function startTurn(s: GameState, L: Lookup) {
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
-  const startEx = (s.startTurnExecs ?? []).filter((x) => x.player === p);
-  s.startTurnExecs = (s.startTurnExecs ?? []).filter((x) => x.player !== p);
+  const startEx = (s.startTurnExecs ?? []).filter((x) => (x.turnOf ?? x.player) === p);
+  s.startTurnExecs = (s.startTurnExecs ?? []).filter((x) => (x.turnOf ?? x.player) !== p);
   for (const ex of startEx) runExec(s, L, ex);
   for (const c of s.cards) {
     if (c.hyperUntil === p) {

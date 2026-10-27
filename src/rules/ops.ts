@@ -296,7 +296,7 @@ export type Op =
   /** 次の自分のターンのはじめまで、ハイパーモードを解放する */
   | { op: 'hyperMode'; target: Target }
   /** 次の自分のターンのはじめに body を実行する */
-  | { op: 'atNextTurnStart'; body: Op[] }
+  | { op: 'atNextTurnStart'; body: Op[]; opp?: boolean }
   /** ガチンコ・ジャッジ (勝てば did = true) */
   | { op: 'gachinko'; power?: boolean }
   /** 次の自分のターンのはじめにコストを支払う。支払えなければ負ける (逆転撃) */

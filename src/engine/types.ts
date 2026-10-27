@@ -193,6 +193,8 @@ export interface Exec {
   did: boolean;
   /** 表示用の名前 */
   name: string;
+  /** 「次の相手のターンのはじめに」: このプレイヤーのターンのはじめに実行する */
+  turnOf?: number;
   /** この効果が呪文なら唱えたプレイヤー */
   spellBy?: number;
   /** 選択待ちの対象 */

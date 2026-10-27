@@ -1479,7 +1479,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'atNextTurnStart': {
-        (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked] });
+        (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked], ...(op.opp ? { turnOf: mainOpp(s, ex.player) } : {}) });
         break;
       }
       case 'atTurnEnd': {
