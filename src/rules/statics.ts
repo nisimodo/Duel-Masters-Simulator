@@ -61,7 +61,7 @@ export type StaticSpec =
   /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
   | { s: 'discardDiscount'; n: number; d: number }
   /** 相手の〇〇は攻撃/ブロックできない */
-  | { s: 'oppRestrict'; sel: Sel; attack: boolean; block: boolean }
+  | { s: 'oppRestrict'; sel: Sel; attack: boolean; block: boolean; all?: boolean }
   /** 相手はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない */
   | { s: 'noFreePlay' }
   | { s: 'sasageru'; n: number }
@@ -117,7 +117,7 @@ export type StaticSpec =
   /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
   | { s: 'lure' }
   /** 相手は呪文を唱えることができない */
-  | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean }
+  | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean; all?: boolean }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
   /** 召喚する時、手札から〇〇をN枚見せれば召喚コストがD少なくなる (見せられれば自動で見せる) */
@@ -129,7 +129,7 @@ export type StaticSpec =
   /** すべてのクリーチャーは、可能であれば攻撃する */
   | { s: 'allMustAttack' }
   /** 自分は「S・トリガー」能力を使えない */
-  | { s: 'noSTrigger'; who?: 'opp' | 'all' }
+  | { s: 'noSTrigger'; who?: 'opp' | 'all'; civ?: Civ }
   /** 誰もターンを追加できない */
   | { s: 'noExtraTurn' }
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
@@ -193,7 +193,7 @@ export type StaticSpec =
   /** 相手のカードはマナゾーンにタップして置かれる */
   | { s: 'oppManaTapped' }
   /** 相手のクリーチャーはタップしてバトルゾーンに出る */
-  | { s: 'oppEntersTapped' }
+  | { s: 'oppEntersTapped'; sel?: Sel; all?: boolean }
   /** バトルに勝っても、バトルの後に破壊される */
   | { s: 'dieAfterBattle' }
   /** どの種族の進化クリーチャーも上に置ける */
@@ -394,6 +394,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sel = parseSel(m[1], { zones: ['mana'] });
     if (sel && m[2] === '1' && m[3] === '1') return [{ s: 'sympathy', sel: { ...sel, owner: 'self', zones: ['mana'] }, floor: floorOf(full), zone: 'mana' }];
   }
+  // 「パワー3000以上のクリーチャーは攻撃できない」: 誰のクリーチャーでも
+  if ((m = t0.match(/^((?!この|これ|自分|相手|その)[^、]*?クリーチャー)は(?:すべて)?、?(攻撃もブロックも|攻撃|ブロック)(?:することが)?できない$/)) && parseSel(m[1]))
+    return [{ s: 'oppRestrict', sel: parseSel(m[1])!, attack: /攻撃/.test(m[2]), block: /ブロック/.test(m[2]), all: parseSel(m[1])!.owner !== 'opp' }];
   if ((m = t0.match(/^相手の(.+?)は、?(攻撃・ブロック|攻撃もブロックも|攻撃|ブロック)(?:することが)?できない$/))) {
     const sel = parseSel(m[1]);
     if (sel) return [{ s: 'oppRestrict', sel, attack: /攻撃/.test(m[2]), block: /ブロック/.test(m[2]) }];
@@ -612,7 +615,15 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^すべてのクリーチャーは、?可能(?:であれば|なら)(?:毎ターン)?攻撃する$/.test(t0)) return [{ s: 'allMustAttack' }];
   if (/^このクリーチャーは、?可能なら毎ターン、?クリーチャーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^自分は「S・トリガー」能力を使えない$/.test(t0)) return [{ s: 'noSTrigger' }];
+  if ((m = t0.match(/^誰も(光|水|闇|火|自然)のカードの「S・トリガー」(?:能力)?を使えない$/))) return [{ s: 'noSTrigger', who: 'all', civ: CIV_OF[m[1]] }];
   if (/^(相手|誰も)は?「S・トリガー」(?:能力)?を使えない$/.test(t0)) return [{ s: 'noSTrigger', who: /^相手/.test(t0) ? 'opp' : 'all' }];
+  if ((m = t0.match(/^誰も、?(.+?呪文)を唱え(?:ることが|ることは|られ)?(?:でき)?ない$/)) && parseSel(m[1])) return [{ s: 'oppSpellLock', sel: { ...parseSel(m[1])!, kind: 'spell' }, all: true }];
+  if ((m = t0.match(/^誰も、?(.+?クリーチャー)を召喚したり、(.+?呪文)を唱えることは(?:でき)?ない$/)) && parseSel(m[1]) && parseSel(m[2]))
+    return [
+      { s: 'noSummonSel', sel: { ...parseSel(m[1])!, zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'hyper'] } },
+      { s: 'oppSpellLock', sel: { ...parseSel(m[2])!, kind: 'spell' }, all: true },
+    ];
+  if ((m = t0.match(/^((?:進化)?クリーチャー|[^、]+?クリーチャー)は、?タップされた状態でバトルゾーンに出る$/)) && !/^(相手|自分)/.test(m[1]) && parseSel(m[1])) return [{ s: 'oppEntersTapped', sel: parseSel(m[1])!, all: true }];
   if (/^誰もターンを追加できない$/.test(t0)) return [{ s: 'noExtraTurn' }];
   if (/^相手の呪文を唱えるコストは無限のマナを必要とする$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if (/^∞ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];

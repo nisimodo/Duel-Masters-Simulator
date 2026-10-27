@@ -393,7 +393,12 @@ export function moveCard(
   if (pos === 'top') arr.push(iid);
   else arr.unshift(iid);
   if (dest === 'mana' && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppManaTapped')) c.tapped = true;
-  if (dest === 'battle' && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppEntersTapped') && faceOf(s, L, iid)?.isCreature) c.tapped = true;
+  if (
+    dest === 'battle' &&
+    faceOf(s, L, iid)?.isCreature &&
+    activeStatics(s, L).some((x) => x.spec.s === 'oppEntersTapped' && (x.owner !== c.owner || !!x.spec.all) && (!x.spec.sel || matchesSel(s, L, iid, { ...x.spec.sel, owner: 'any' })))
+  )
+    c.tapped = true;
   if (dest === 'battle') {
     c.sick = true;
     if ((card?.faces[c.face]?.statics ?? []).some((x) => x.s === 'entersTapped')) c.tapped = true;
@@ -1425,7 +1430,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid) || notCreatureNow(s, L, iid)) return false;
-  if (activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppRestrict' && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
+  if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== c.owner || !!x.spec.all) && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const lim = s.players[c.owner].actLimit;
   if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
@@ -1527,7 +1532,7 @@ function blockStep(s: GameState, L: Lookup) {
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
-        if (activeStatics(s, L).some((x) => x.owner !== s.cards[b].owner && x.spec.s === 'oppRestrict' && x.spec.block && matchesSel(s, L, b, x.spec.sel, true))) return false;
+        if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== s.cards[b].owner || !!x.spec.all) && x.spec.block && matchesSel(s, L, b, x.spec.sel, true))) return false;
         const bl = s.players[s.cards[b].owner].actLimit;
         if (bl && bl.turn === s.turn && bl.blk >= bl.n) return false;
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
@@ -1669,7 +1674,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     }
     // 「〜なら、このクリーチャーに「S・トリガー」を与える」: シールドにある時に条件を見る
     const condTrig = (card?.faces[0]?.statics ?? []).some((x) => x.s === 'grant' && x.target.t === 'self' && x.kws.includes('S・トリガー') && staticCondOk(s, L, { src: sh, owner: target, spec: x }));
-    const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
+    const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (!x.spec.civ || cardCivs(L, s.cards[sh].cid).includes(x.spec.civ)) && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
     const strike = !!card?.faces.some((f) => f.kw.gStrike) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }
@@ -2309,7 +2314,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!a.force)
         return me.spellLockCostEq != null ? `コスト${me.spellLockCostEq}の呪文は唱えられません` : me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
-    if (!a.force && activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppSpellLock' && (!x.spec.ownTurn || s.active === x.owner) && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
+    if (!a.force && activeStatics(s, L).some((x) => x.spec.s === 'oppSpellLock' && (x.owner !== p || !!x.spec.all) && (!x.spec.ownTurn || s.active === x.owner) && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));
     const fi = card.faces.indexOf(face);
     log(s, p, `${q(name)} を唱えた${how}`);
