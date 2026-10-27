@@ -129,7 +129,7 @@ export type StaticSpec =
   /** すべてのクリーチャーは、可能であれば攻撃する */
   | { s: 'allMustAttack' }
   /** 自分は「S・トリガー」能力を使えない */
-  | { s: 'noSTrigger' }
+  | { s: 'noSTrigger'; who?: 'opp' | 'all' }
   /** 誰もターンを追加できない */
   | { s: 'noExtraTurn' }
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
@@ -249,7 +249,7 @@ function floorOf(t: string): number {
 }
 
 function target(phrase: string): StaticTarget | null {
-  const p = phrase.replace(/\s+/g, '').replace(/^バトルゾーンにある/, '');
+  const p = phrase.replace(/\s+/g, '').replace(/^バトルゾーンにある/, '').replace(/^すべての/, '');
   if (/^この(クリーチャー|タマシード|カード)$/.test(p)) return { t: 'self' };
   if (/^これを(クロスした|付けた|装備した)(クリーチャー)?$/.test(p)) return { t: 'cross' };
   const m = p.match(/^(.+?)(?:すべて|全体)?$/);
@@ -289,7 +289,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^バトルゾーンまたはマナゾーンに自分の(.+?)が合計(\d+)(?:枚|体|つ)以上あれば、(.+)$/)) && parseSel('自分の' + m[1])) {
     return { cond: { c: 'countAtLeast', sel: { ...parseSel('自分の' + m[1])!, zones: ['battle', 'mana'] }, n: +m[2] }, rest: m[3] };
   }
-  if ((m = t.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
+  if ((m = t.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら|である間)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
   if ((m = t.match(/^(?:ラビリンス[:：])?自分のシールド(?:の数)?が相手(?:のシールド)?より多ければ、(.+)$/))) return { cond: { c: 'shieldsMore' }, rest: m[1] };
   if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手のシールドが(\d+)(?:つ|枚)以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] + 1 }, rest: m[2] };
@@ -319,7 +319,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^(?:G・G・G[:：])?自分の手札が(\d+)枚以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^自分のシールドが(\d+)(?:つ|枚)以下(?:の時|なら|であれば)、(.+)$/))) return { cond: { c: 'shieldsLE', n: +m[1] }, rest: m[2] };
-  if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)があれば、(.+)$/)) && !/\d+(?:体|枚|つ)以上$/.test(m[1])) {
+  if ((m = t.match(/^(?:バトルゾーンに)?自分の([^、]+?)が(?:あれば|ある間)、(.+)$/)) && !/\d+(?:体|枚|つ)以上$/.test(m[1])) {
     const sel = parseSel('自分の' + m[1]);
     if (sel) return { cond: { c: 'countAtLeast', sel, n: 1 }, rest: m[2] };
   }
@@ -346,6 +346,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/^水晶武装\d*[:：]/, '')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '')
     .replace(/アウトレイジ犬(\d+)匹につき/, 'アウトレイジ$1体につき')
+    .replace(/のパワーはー(\d)/, 'のパワーは-$1')
+    .replace(/のパワーは(?:それぞれ|、)\+/, 'のパワーは+')
+    .replace(/^このクリーチャーのパワーは(自分の(?:墓地|マナゾーン)にある.+?\d+(?:体|枚)につき)\+(\d+)される$/, '$1、このクリーチャーのパワーを+$2する')
+    .replace(/^バトルゾーンにある(すべての|自分の)/, '$1')
+    .replace(/^(自分の[^、「]+?)はそれぞれ「/, '$1は「')
+    .replace(/^すべての(.+?)と(.+?)のパワーは/, 'すべての$1または$2のパワーは')
+    .replace(/^バトル中の(自分の[^、]*?クリーチャー)のパワーを\+/, 'バトル中、$1すべてのパワーを+')
     // 条件つきのS・トリガー: 「〜があり、このクリーチャーが自分のシールドゾーンにあれば」「自分のシールドゾーンにあるこのクリーチャーに」
     .replace(/(以上)?あり、この(?:クリーチャー|呪文|カード)が(?:自分の)?シールドゾーンにあれば、/, '$1あれば、')
     .replace(/、(?:自分の)?シールドゾーンにあるこの(?:クリーチャー|呪文|カード)に「S・トリガー」を与える$/, '、このクリーチャーに「S・トリガー」を与える')
@@ -602,9 +609,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?破壊されない$/.test(t0)) return [{ s: 'indestructible' }];
   if (/^バトル中、このクリーチャーは、?破壊されない$/.test(t0) || /^このクリーチャーは、?バトル中破壊されない$/.test(t0)) return [{ s: 'indestructible', inBattle: true }];
   if ((m = t0.match(/^誰も(.+?)を召喚できない$/)) && parseSel(m[1])) return [{ s: 'noSummonSel', sel: { ...parseSel(m[1])!, zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'hyper'] } }];
-  if (/^すべてのクリーチャーは、?可能であれば攻撃する$/.test(t0)) return [{ s: 'allMustAttack' }];
+  if (/^すべてのクリーチャーは、?可能(?:であれば|なら)(?:毎ターン)?攻撃する$/.test(t0)) return [{ s: 'allMustAttack' }];
   if (/^このクリーチャーは、?可能なら毎ターン、?クリーチャーを攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^自分は「S・トリガー」能力を使えない$/.test(t0)) return [{ s: 'noSTrigger' }];
+  if (/^(相手|誰も)は?「S・トリガー」(?:能力)?を使えない$/.test(t0)) return [{ s: 'noSTrigger', who: /^相手/.test(t0) ? 'opp' : 'all' }];
   if (/^誰もターンを追加できない$/.test(t0)) return [{ s: 'noExtraTurn' }];
   if (/^相手の呪文を唱えるコストは無限のマナを必要とする$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if (/^∞ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
@@ -637,6 +645,9 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^このクリーチャーは、?(?:タップされていない|アンタップしている|アンタップされている)(.+?クリーチャー)を攻撃できる$/)) && parseSel(m[1])) return [{ s: 'attackUntapped', sel: parseSel(m[1])! }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
+  if ((m = t0.match(/^(このクリーチャー|自分の.+?)は(?:すべて)?、?シールドをさらに(\d+)(?:枚|つ)ブレイクする$/)) && (m[1] === 'このクリーチャー' || parseSel(m[1])))
+    return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : { t: 'sel', sel: parseSel(m[1])! }, kws: [`ブレイク+${m[2]}`], when: 'always' }];
+  if (/^相手のターン中、相手がバトルゾーンにあるクリーチャーを選ぶ時、このクリーチャーは選ばれない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
   if (/^自分のクリーチャーは(?:すべて)?、?それよりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'ownUnblockableSmaller' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃する時(?:、)?ブロックされない$/.test(t0)) return [{ s: 'unblockableBy', vsCreature: true }];
   if ((m = t0.match(/^このクリーチャーは、?(.+?)に(攻撃(?:また|も)はブロック|攻撃|ブロック)されない$/)) && parseSel(m[1])) {
