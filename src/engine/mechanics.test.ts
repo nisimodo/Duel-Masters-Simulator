@@ -190,6 +190,8 @@ const db = buildDB(
     { id: 'seito7', n: 'seito7', img: '', f: [{ n: 'seito7', t: 'クリーチャー', c: 'F', co: 7, p: '7000', r: ['生徒会組'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
     { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
+    cr('alienLord', 1, 1000, ['エイリアンを自分の墓地から召喚してもよい。']),
+    { id: 'alien', n: 'alien', img: '', f: [{ n: 'alien', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['エイリアン'], x: [] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
   [],
@@ -1331,5 +1333,23 @@ describe('named mechanics', () => {
       { p: 0, cid: 'civc', zone: 'hand' },
     ]);
     expect(costOf(s2, L, 0, find(s2, 0, 'hand', 'civc')!, 0)).toBe(0);
+  });
+
+  it('「〇〇を自分の墓地から召喚してもよい」 lets the owner summon matching creatures from the grave', () => {
+    let s = setup([
+      { p: 0, cid: 'alien', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const al = find(s, 0, 'hand', 'alien')!;
+    const va = s.players[0].hand.find((i) => s.cards[i].cid === 'vanilla')!;
+    moveCard(s, L, al, 'grave');
+    moveCard(s, L, va, 'grave');
+    expect(applyAction(s, 0, { t: 'play', iid: al, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
+    const lord = s.players[0].deck.find((i) => s.cards[i].cid === 'vanilla')!;
+    s.cards[lord].cid = 'alienLord';
+    moveCard(s, L, lord, 'battle');
+    expect(applyAction(s, 0, { t: 'play', iid: va, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
+    s = act(s, 0, { t: 'play', iid: al, face: 0, pay: freeMana(s, 0, 1) });
+    expect(s.cards[al].zone).toBe('battle');
   });
 });

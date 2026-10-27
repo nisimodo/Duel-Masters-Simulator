@@ -275,6 +275,14 @@ export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: numbe
   return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell));
 }
 
+/** 手札以外 (墓地・マナゾーン・超次元ゾーン) から召喚・詠唱できるか (「このクリーチャーを墓地から召喚してもよい」「〇〇を自分の墓地から召喚してもよい」) */
+export function canPlayFromZone(s: GameState, L: Lookup, p: number, iid: number, face: Face): boolean {
+  const c = s.cards[iid];
+  if ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone && condOk(s, L, { src: iid, owner: p, spec: x }, x.cond, iid))) return true;
+  if (!face.isCreature || (c.zone !== 'grave' && c.zone !== 'mana')) return false;
+  return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'summonFromSel' && a.spec.zone === c.zone && matchesSel(s, L, iid, a.spec.sel));
+}
+
 /** カードを使うコスト (常在型能力による増減を含む。召喚時に選ぶ軽減は含まない) */
 export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx: number): number {
   const c = s.cards[iid];

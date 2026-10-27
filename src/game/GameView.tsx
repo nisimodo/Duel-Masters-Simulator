@@ -10,7 +10,7 @@ import { EVENT_LABEL } from '../lib/triggers';
 import { attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
-import { costOf } from '../engine/statics';
+import { canPlayFromZone, costOf } from '../engine/statics';
 import { useGameSync } from './useGameSync';
 import { GachaRoulette, type GachaSpin } from './GachaRoulette';
 import { NARROW, useMedia } from '../lib/useMedia';
@@ -234,9 +234,10 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       const fg = (f.statics ?? []).find((x) => x.s === 'fushigi');
       if (c.zone === 'grave' && fg && fg.s === 'fushigi') items.push({ label: `フシギバース (基本コスト${fg.n})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       if (c.zone === 'grave' && (f.statics ?? []).some((x) => x.s === 'abyss')) items.push({ label: `アビスラッシュ (墓地から召喚)`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
-      if (f.isCreature && c.zone === 'mana' && me >= 0 && manaSummonLeft(s, L, me, iid) > 0 && !(f.statics ?? []).some((x) => x.s === 'summonFrom'))
+      const fromZone = me >= 0 && (f.isCreature || f.isSpell) && canPlayFromZone(s, L, me, iid, f);
+      if (f.isCreature && c.zone === 'mana' && me >= 0 && manaSummonLeft(s, L, me, iid) > 0 && !fromZone)
         items.push({ label: `マナゾーンから召喚 (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
-      if ((f.isCreature || f.isSpell) && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone))
+      if (fromZone)
         items.push({ label: `${f.isSpell ? '唱える' : '召喚'} (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       const mb = (f.statics ?? []).find((x) => x.s === 'manaBakutan');
       if (c.zone === 'mana' && mb && mb.s === 'manaBakutan') items.push({ label: `マナ爆誕 (コスト${mb.cost})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });

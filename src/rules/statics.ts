@@ -54,7 +54,9 @@ export type StaticSpec =
   | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
   | { s: 'rainbowMana' }
-  | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper' }
+  | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper'; cond?: StaticCond }
+  /** 自分の〇〇を墓地・マナゾーンから召喚してもよい (バトルゾーンにある間) */
+  | { s: 'summonFromSel'; sel: Sel; zone: 'mana' | 'grave' }
   | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana'; each?: number }
   /** 出たターンに攻撃できないクリーチャー (全員) */
   | { s: 'newNoAttackSel'; sel: Sel }
@@ -263,11 +265,16 @@ function target(phrase: string): StaticTarget | null {
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
-  if ((m = t.match(/^バトルゾーンにある自分の他のクリーチャーが(\d+)体以下なら、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: +m[1] + 1 }, rest: m[2] };
+  if ((m = t.match(/^(?:バトルゾーンにある)?自分の他のクリーチャーが(\d+)体以下なら、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^自分の(墓地|マナゾーン|手札)に(.+?)が(\d+)(?:体|枚|つ)(?:以上|でも)あれば、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : m[1] === '手札' ? 'hand' : 'mana';
     const sel = parseSel(m[2], { zones: [z] });
     if (sel) return { cond: { c: 'countAtLeast', sel: { ...sel, owner: 'self', zones: [z], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, n: +m[3] }, rest: m[4] };
+  }
+  if ((m = t.match(/^相手の(墓地|マナゾーン|手札)に(.+?)が(\d+)(?:体|枚|つ)(?:以上|でも)あれば、(.+)$/))) {
+    const z = m[1] === '墓地' ? 'grave' : m[1] === '手札' ? 'hand' : 'mana';
+    const sel = parseSel(m[2], { zones: [z] });
+    if (sel) return { cond: { c: 'countAtLeast', sel: { ...sel, owner: 'opp', zones: [z], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, n: +m[3] }, rest: m[4] };
   }
   if ((m = t.match(/^自分の(墓地|マナゾーン)に(.+?)が(\d+)(?:体|枚|つ)以上なければ、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : 'mana';
@@ -339,8 +346,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/はすべて、(「)/, 'は$1')
     .replace(/すべてに、(「)/, 'すべてに$1')
     .replace(/^(これをクロスしたクリーチャー|このクリーチャー)は、(「)/, '$1は$2')
-    .replace(/^G・ゼロ[-－ー]/, 'G・ゼロ:')
+    .replace(/^G・ゼロ[-－ー―]/, 'G・ゼロ:')
     .replace(/^シビルカウント\d+[:：]/, '')
+    .replace(/シールドをもう(\d+)(枚|つ)ブレイクする$/, 'シールドをさらに$1$2ブレイクする')
+    .replace(/^(W・)?シンパシー[:：](.+?)および/, '$1シンパシー:$2または')
+    .replace(/^(?:バトルゾーンにある)?自分のクリーチャーがこのクリーチャーだけ(?:なら|であれば)、(?:このクリーチャーの)?パワーを/, 'バトルゾーンに自分の他のクリーチャーがなければ、このクリーチャーのパワーを')
     .replace(/^この(?:クリーチャー|呪文|カード)が(?:自分の)?シールドゾーンにあり、/, '')
     .replace(/コストを最大(\d+)少なく/, 'コストを$1少なく')
     .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
@@ -505,7 +515,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^城[-ー―:：?]?自分のシールドを(ひとつ|1つ|\d+つ)選び、このカードを付けて要塞化する/))) return [{ s: 'castle', n: /\d/.test(m[1]) ? +m[1].replace('つ', '') : 1 }];
   if (/^このクリーチャーをアンタップして、相手クリーチャーの攻撃先をこのクリーチャー(または自分のタップしているクリーチャー)?に変更してもよい$/.test(t0)) return [{ s: 'untapBlocker' }];
   if (/^(相手のターン中[に、]|相手の呪文の効果または(?:相手の)?クリーチャーの能力によって、)このクリーチャーが(自分の)?手札から捨てられる時、墓地に置くかわりに(自分の)?バトルゾーンに(?:出(してもよい|す)|置く)$/.test(t0)) return [{ s: 'discardToBattle' }];
-  if ((m = t0.match(/^このクリーチャーが?は?、?リンクしている(?:間|時)、(?:このクリーチャーは)?シールドをさらに(\d+)枚ブレイクする$/)))
+  if ((m = t0.match(/^このクリーチャーが?は?、?リンクして(?:いる(?:間|時)|いれば)、(?:このクリーチャーは)?シールドをさらに(\d+)枚ブレイクする$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: [`ブレイク+${m[1]}`], when: 'always', cond: { c: 'linked' } }];
   if (/^ダイナモ$/.test(t0)) return [{ s: 'dynamo' }];
   if (/^デッキ進化[-ー―:：]/.test(t0)) return [{ s: 'deckEvo' }];
@@ -601,11 +611,15 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^(.+?)は、?出たターンに?攻撃できない$/)) && !/^(相手|自分)の/.test(m[1]) && parseSel(m[1])) return [{ s: 'newNoAttackSel', sel: parseSel(m[1])! }];
   if ((m = t0.match(/^ササゲール(\d+)/))) return [{ s: 'sasageru', n: +m[1] }];
   if (/^ハイパーエナジー/.test(t0)) return [{ s: 'hyperEnergy' }];
-  if ((m = t0.match(/^G・ゼロ[:：]このターン、自分が呪文を(\d+)枚以上唱えていれば/))) return [{ s: 'gzero', cond: { c: 'spellsThisTurn', n: +m[1] } }];
+  if ((m = t0.match(/^G・ゼロ[:：]このターン(?:中)?(?:に)?、?(?:自分が|自分の)?呪文を(?:(\d+)枚以上)?唱えていれば/))) return [{ s: 'gzero', cond: { c: 'spellsThisTurn', n: m[1] ? +m[1] : 1 } }];
   if ((m = t0.match(/^G・ゼロ[:：](?:バトルゾーンに)?(自分の)?(.+?)が(?:(\d+)(?:体|枚|つ)(?:以上|でも))?あれば/))) {
     const sel0 = parseSel((m[1] ?? '') + m[2]);
     const sel = sel0 && { ...sel0, owner: m[1] ? sel0.owner : ('any' as const) };
     if (sel) return [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[3] ? +m[3] : 1 } }];
+  }
+  if ((m = t0.match(/^G・ゼロ[:：](.+?)、このクリーチャーをコストを支払わずに召喚してもよい$/))) {
+    const r = parseCondPrefix(m[1] + '、_');
+    if (r?.cond && r.rest === '_') return [{ s: 'gzero', cond: r.cond }];
     return null;
   }
   if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0) || /^この(カード|クロスギア|クリーチャー|呪文)は、?マナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'tapMana' }];
@@ -650,7 +664,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];
-  if ((m = t0.match(/^このクリーチャーを自分の(マナゾーン|墓地|超次元ゾーン)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : m[1] === '超次元ゾーン' ? 'hyper' : 'mana' }];
+  if ((m = t0.match(/^このクリーチャー(?:を|は)、?(?:自分の)?(マナゾーン|墓地|超次元ゾーン)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : m[1] === '超次元ゾーン' ? 'hyper' : 'mana' }];
+  if ((m = t0.replace(/^自分の(墓地|マナゾーン)から(.+?)を召喚してもよい$/, '$2を自分の$1から召喚してもよい').match(/^([^、]+?)を、?自分の(墓地|マナゾーン)から召喚してもよい$/)) && !/^この|\d/.test(m[1])) {
+    const zone = m[2] === '墓地' ? 'grave' : 'mana';
+    const sel = parseSel(m[1].replace(/と(進化ではない|進化)/g, 'または$1').replace(/^進化ではない(.+?)または進化ではない/, '進化ではない$1または'), { zones: [zone] });
+    if (sel) return [{ s: 'summonFromSel', sel: { ...sel, owner: 'self', zones: [zone], kind: 'creature' }, zone }];
+  }
 
   // ---- 攻撃・ブロック・選択 ----
   if (/^このクリーチャーは攻撃されない$/.test(t0)) return [{ s: 'noAttacked' }];
@@ -658,8 +677,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^このクリーチャーは、?(?:タップされていない|アンタップしている|アンタップされている)(.+?クリーチャー)を攻撃できる$/)) && parseSel(m[1])) return [{ s: 'attackUntapped', sel: parseSel(m[1])! }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
-  if ((m = t0.match(/^(このクリーチャー|自分の.+?)は(?:すべて)?、?シールドをさらに(\d+)(?:枚|つ)ブレイクする$/)) && (m[1] === 'このクリーチャー' || parseSel(m[1])))
-    return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : { t: 'sel', sel: parseSel(m[1])! }, kws: [`ブレイク+${m[2]}`], when: 'always' }];
+  if ((m = t0.match(/^(このクリーチャー|これをクロスしたクリーチャー|自分の.+?)は(?:すべて)?、?シールドをさらに(?:もう)?(\d+)(?:枚|つ)ブレイクする$/)) && (/^(この|これを)/.test(m[1]) || parseSel(m[1])))
+    return [{ s: 'grant', target: m[1] === 'このクリーチャー' ? { t: 'self' } : m[1] === 'これをクロスしたクリーチャー' ? { t: 'cross' } : { t: 'sel', sel: parseSel(m[1])! }, kws: [`ブレイク+${m[2]}`], when: 'always' }];
+  // 「このクリーチャーのパワーは+Nされ、〜」「これをクロスしたクリーチャーは「〜」を得、〜」: 2つに分ける
+  if ((m = t0.match(/^(このクリーチャー|これをクロスしたクリーチャー)(?:のパワーは([+-]\d+)され|は((?:「[^」]+」(?:と|、)?)+)を得)、(.+)$/))) {
+    const a = parseStaticLine(m[2] ? `${m[1]}のパワーは${m[2]}される` : `${m[1]}は${m[3]}を得る`);
+    const b = parseStaticLine(`${m[1]}は${m[4]}`);
+    if (a && b) return [...a, ...b];
+  }
   if (/^相手のターン中、相手がバトルゾーンにあるクリーチャーを選ぶ時、このクリーチャーは選ばれない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
   if (/^自分のクリーチャーは(?:すべて)?、?それよりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'ownUnblockableSmaller' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃する時(?:、)?ブロックされない$/.test(t0)) return [{ s: 'unblockableBy', vsCreature: true }];
@@ -672,7 +697,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if ((m = t0.match(/^(.+?)は、?このクリーチャーを攻撃(?:することが)?できない$/)) && parseSel(m[1])) return [{ s: 'noAttackedBy', sel: parseSel(m[1])! }];
   if (/^このクリーチャーは、?(このクリーチャー|これ)よりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'unblockableBy', smallerThanSelf: true }];
-  if (/^このクリーチャーは、?(呪文によって)?相手に選ばれない$/.test(t0) || /^(呪文の効果(によって|で))?(バトルゾーンにある自分のクリーチャーを相手が|相手がバトルゾーンにあるクリーチャーを|相手がクリーチャーを)選ぶ時、このクリーチャーを?は?選(ぶことはできない|ばれない|べない)$/.test(t0))
+  if (/^このクリーチャーは、?(呪文によって)?相手に選ばれない$/.test(t0) || /^(呪文の効果(によって|で))?((?:バトルゾーンにある)?自分のクリーチャーを相手が|相手がバトルゾーンにあるクリーチャーを|相手がクリーチャーを)選ぶ時、このクリーチャーを?は?選(ぶことはできない|ばれない|べない)$/.test(t0))
     return [{ s: 'untargetable', bySpellOnly: /呪文/.test(t0) }];
   if (/^このクリーチャーはブロックされず、相手に選ばれない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
 
@@ -759,7 +784,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 条件つき: 条件を外した残りを解析し、条件に対応した能力 (パワー・能力の付与) なら条件を付ける
   if (cond && t !== t0) {
     const inner = parseStaticLine(t);
-    if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
+    if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart' || x.s === 'summonFrom') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
   }
   return null;
 }

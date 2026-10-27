@@ -30,7 +30,7 @@ import {
   type Lookup,
 } from './engine';
 import { matchesCond } from './cond';
-import { activeStatics, costOf } from './statics';
+import { activeStatics, canPlayFromZone, costOf } from './statics';
 import { mainOpp, matchesSel, programOf } from './interp';
 import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
@@ -323,12 +323,12 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
     L(s.cards[i].cid)?.faces.some(
       (f) =>
         f.isCreature &&
+        (canPlayFromZone(s, L, p, i, f) ||
         (f.statics ?? []).some(
           (x) =>
-            (x.s === 'summonFrom' && x.zone === s.cards[i].zone) ||
             (x.s === 'manaBakutan' && s.cards[i].zone === 'mana') ||
             ((x.s === 'mugen' || x.s === 'fushigi' || x.s === 'abyss') && s.cards[i].zone === 'grave'),
-        ),
+        )),
     ),
   );
   for (const h of [...me.hand, ...me.partner.filter((i) => s.cards[i].faceUp), ...fromOtherZones]) {

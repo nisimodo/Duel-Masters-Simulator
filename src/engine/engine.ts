@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { activeStatics, staticCondOk, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -2114,7 +2114,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const fromOk =
     c.zone === 'hand' ||
     c.zone === 'partner' ||
-    ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
+    canPlayFromZone(s, L, p, a.iid, face) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
     (face.isCreature && c.zone === 'mana' && manaSummonLeft(s, L, p, a.iid) > 0) ||
     (a.alt === 'mugen' && c.zone === 'grave') ||
