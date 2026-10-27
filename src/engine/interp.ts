@@ -4,7 +4,9 @@ import { CIV_NAME, type Card, type Face } from '../lib/cards';
 import type { Cond, Count, Dest, Op, Sel, Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
+  attachCross,
   attackTargets,
+  faceOf,
   battle,
   breakShields,
   cardCivs,
@@ -607,6 +609,23 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of ids) {
           log(s, ex.player, `${q(nameOf(s, L, i))} を破壊`);
           moveCard(s, L, i, 'grave');
+        }
+        break;
+      }
+      case 'crossFree': {
+        for (const g of resolveRef(s, ex, op.gear) ?? []) {
+          const gc = s.cards[g];
+          if ((gc.zone !== 'battle' && gc.zone !== 'under') || !/クロスギア/.test(faceOf(s, L, g)?.type ?? '')) continue;
+          let onto: number | undefined;
+          if (op.onto === 'self') onto = ex.src;
+          else if (op.onto === 'it') onto = ex.it.find((i) => i !== g && s.cards[i].zone === 'battle');
+          else {
+            // 自分のクリーチャーのうちパワーが一番大きいもの
+            const cands = s.players[gc.owner].battle.filter((b) => b !== g && (!op.otherOnly || b !== ex.src) && faceOf(s, L, b)?.isCreature);
+            onto = cands.sort((a, b) => power(s, L, b) - power(s, L, a))[0];
+          }
+          if (onto == null || s.cards[onto].zone !== 'battle' || gc.parent === onto || !faceOf(s, L, onto)?.isCreature) continue;
+          attachCross(s, L, g, onto);
         }
         break;
       }

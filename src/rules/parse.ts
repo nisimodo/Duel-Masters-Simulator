@@ -583,6 +583,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/好きな数の(.+?)を選び、/, '$1を99枚まで選び、')
     .replace(/^その中から好きな数の(.+?)を(?!.*選)(?=(?:自分の|持ち主の)?(?:手札|墓地|マナゾーン|山札|バトルゾーン))/, 'その中から$1を99枚まで選び、')
     .replace(/^相手クリーチャー/, '相手のクリーチャー')
+    .replace(/^(その中から[^、]*クロスギアを\d+)つ(?=出し、)/, '$1枚')
     .replace(/(山札の(?:一番)?下に)、?好きな順序で(?=置)/, '$1')
     .replace(/^その中から、(?=[^、]+をすべて)/, 'その中から')
     .replace(/^(その中から(?:[^、]+を)?\d+枚(?:を|選び、)(?:自分の)?(?:手札に加え|マナゾーンに置き)、)残り(?:の\d+枚)?を/, '$1残りを')
@@ -1796,7 +1797,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
 
   // 連用形で続く複文 「カードを1枚引き、自分の手札を1枚捨てる」 (区切りの候補を前から順に試す)
-  const COMP = /(?:引き|置き|戻し|加え|出し|破壊し|捨て|唱え|タップし|アンタップし|シャッフルし|見せ|表向きにし|シールド化し|与え|ブレイクし|見て)$/;
+  const COMP = /(?:引き|置き|戻し|加え|出し|破壊し|捨て|唱え|タップし|アンタップし|シャッフルし|見せ|表向きにし|シールド化し|与え|ブレイクし|見て|裏返し)$/;
   for (let i = s.indexOf('、'); i >= 0; i = s.indexOf('、', i + 1)) {
     const c1 = s.slice(0, i);
     const c2 = s.slice(i + 1);
@@ -1812,7 +1813,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       .replace(/唱え$/, '唱える')
       .replace(/見せ$/, '見せる')
       .replace(/見て$/, '見る')
-      .replace(/(破壊|タップ|アンタップ|シャッフル|表向きに|シールド化|ブレイク)し$/, '$1する');
+      .replace(/(破壊|タップ|アンタップ|シャッフル|表向きに|シールド化|ブレイク)し$/, '$1する')
+      .replace(/裏返し$/, '裏返す');
     const a = sentence(first, ctx);
     const b = a && sentence(c2, ctx);
     if (a && b) return [...a, ...b];
@@ -1895,6 +1897,32 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((m = s.match(/^(?:その)?(?:攻撃|バトル)の後、(.+)$/))) {
     const body = sentence(m[1], ctx);
     if (body) return [{ op: 'afterAttack', body }];
+  }
+
+  // ---- クロスギアをコストを支払わずにクロスする ----
+  {
+    const cx =
+      s.match(/^(?:(このクロスギア|このカード|そのクロスギア|それ)を、?)?(?:コストを支払わずに、?)?(このクリーチャー|そのクリーチャー|その進化クリーチャー|その選んだクリーチャー|自分の(他の)?クリーチャー(?:1体)?)に、?(?:コストを支払わずに)?クロス(する|してもよい)$/) ??
+      null;
+    if (cx) {
+      const onto = cx[2] === 'このクリーチャー' ? 'self' : /^自分の/.test(cx[2]) ? 'pick' : 'it';
+      // 「このクリーチャーを〜側に裏返し、そのクリーチャーにクロスしてもよい」: 書かれていなければ、相手が「その」ならこのカード
+      const gear: Target = cx[1] === 'このクロスギア' || cx[1] === 'このカード' || (!cx[1] && onto === 'it') ? { ref: 'self' } : { ref: 'it' };
+      if (!(gear.ref === 'it' && onto === 'it') && !(gear.ref === 'self' && onto === 'self')) {
+        const op: Op = { op: 'crossFree', gear, onto, ...(cx[3] ? { otherOnly: true } : {}) };
+        return cx[4] === 'してもよい' ? [{ op: 'optional', body: [op], prompt: s0 }] : [op];
+      }
+    }
+    // 「バトルゾーンにある自分のクロスギアをN枚、コストを支払わずにこのクリーチャーにクロスしてもよい」
+    const cg = s.match(/^(?:バトルゾーンにある)?(自分の[^、]*クロスギア)を(\d+)枚、?(?:コストを支払わずに、?)?このクリーチャーにクロス(する|してもよい)$/);
+    const cgSel = cg && parseSel(cg[1]);
+    if (cg && cgSel) {
+      const body: Op[] = [
+        { op: 'choose', target: { ref: 'sel', sel: { ...cgSel, owner: 'self', zones: ['battle'] }, count: { n: +cg[2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `${cg[1]}を${cg[2]}枚まで選ぶ` },
+        { op: 'crossFree', gear: { ref: 'it' }, onto: 'self' },
+      ];
+      return cg[3] === 'してもよい' ? [{ op: 'optional', body, prompt: s0 }] : body;
+    }
   }
 
   // ---- このクリーチャーの下にあるカード ----

@@ -164,6 +164,10 @@ function applyReplaceMove(s: GameState, L: Lookup, iid: number, to: ZoneName, op
       if (b !== iid || !sp.subj.incSelf ? matchesSel(s, L, iid, sp.subj.sel) : true) found.push({ src: b, spec: sp });
     }
   }
+  // 「〜がこのクリーチャーとのバトルで破壊される時」: バトル相手の能力
+  const foe = s.inBattleNow ? s.battleFoe : undefined;
+  if (foe != null && s.cards[foe]?.zone === 'battle')
+    for (const sp of specsOf(foe)) if (sp.subj.t === 'foe' && (!sp.subj.oppOnly || s.cards[foe].owner !== c.owner)) found.push({ src: foe, spec: sp });
   for (const { src, spec } of found) {
     if (spec.on === 'destroy' && to !== 'grave') continue;
     if (spec.oppTurn && s.active === c.owner) continue;
@@ -213,7 +217,8 @@ function applyReplaceMove(s: GameState, L: Lookup, iid: number, to: ZoneName, op
       REPLACING.delete(src);
     }
     // 身代わり (このクリーチャー自身が離れた) でも、主語のクリーチャーはとどまる
-    return s.cards[iid].zone === 'battle' ? 'battle' : s.cards[iid].zone;
+    const zNow = s.cards[iid].zone;
+    return zNow === 'under' || zNow === 'gone' || zNow === 'partner' ? 'grave' : zNow;
   }
   return null;
 }
@@ -653,6 +658,17 @@ export function removeSeal(s: GameState, L: Lookup, host: number) {
 }
 
 /** クロスギアをクロスするコスト (「〜にクロスする時、コストを少なく」を含む) */
+/** クロスギアをクリーチャーにクロスする (コストは払い済み) */
+export function attachCross(s: GameState, L: Lookup, gear: number, onto: number) {
+  const g = s.cards[gear];
+  if (g.zone === 'under' && g.parent != null) s.cards[g.parent].under = s.cards[g.parent].under.filter((u) => u !== gear);
+  else s.players[g.owner].battle = s.players[g.owner].battle.filter((b) => b !== gear);
+  g.zone = 'under';
+  g.parent = onto;
+  s.cards[onto].under.push(gear);
+  log(s, g.owner, `${q(nameOf(s, L, gear))} を ${q(nameOf(s, L, onto))} にクロスした`);
+}
+
 export function crossCost(s: GameState, L: Lookup, gear: number, onto: number): number {
   const gf = faceOf(s, L, gear);
   let cost = gf?.cost ?? 0;
@@ -1675,13 +1691,16 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
   s.inBattleNow = true;
   if (killD) {
     log(s, null, `${q(nd)} は破壊された`);
+    s.battleFoe = att;
     moveCard(s, L, def, 'grave');
   }
   if (killA) {
     log(s, null, `${q(na)} は破壊された`);
+    s.battleFoe = def;
     moveCard(s, L, att, 'grave');
   }
   s.inBattleNow = false;
+  s.battleFoe = undefined;
   if (killD && !killA) fireWatchers(s, L, s.cards[att].owner, att, 'ownWinBattle', null, att);
   if (killA && !killD) fireWatchers(s, L, s.cards[def].owner, def, 'ownWinBattle', null, def);
   for (const w of [killD && !killA ? att : null, killA && !killD ? def : null]) {
@@ -1978,12 +1997,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (new Set(a.pay).size !== a.pay.length || a.pay.length !== cost) return `コスト${cost}分のマナを選んでください`;
       if (cost > 0 && !payCovers(L, s, a.pay, gf.civs)) return '文明が足りません';
       for (const m of a.pay) s.cards[m].tapped = true;
-      if (g.zone === 'under' && g.parent != null) s.cards[g.parent].under = s.cards[g.parent].under.filter((u) => u !== a.iid);
-      else s.players[p].battle = s.players[p].battle.filter((b) => b !== a.iid);
-      g.zone = 'under';
-      g.parent = a.onto;
-      onto.under.push(a.iid);
-      log(s, p, `${q(gf.name)} を ${q(nameOf(s, L, a.onto))} にクロスした`);
+      attachCross(s, L, a.iid, a.onto);
       return null;
     }
     case 'dynamo': {

@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, attackTargets, breakCount, breakShields, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { applyAction, attackTargets, battle, breakCount, breakShields, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
@@ -192,6 +192,7 @@ const db = buildDB(
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
     { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
     cr('alienLord', 1, 1000, ['エイリアンを自分の墓地から召喚してもよい。']),
+    cr('rmFoe', 1, 5000, ['相手のクリーチャーがこのクリーチャーとのバトルによって破壊される時、そのクリーチャーを墓地に置くかわりに持ち主のマナゾーンに置く。']),
     cr('rmHand', 1, 1000, ['このクリーチャーが破壊される時、バトルゾーンに自分のパワー6000以上のクリーチャーがあれば、このクリーチャーを墓地に置くかわりに手札に戻す。']),
     cr('rmStay', 1, 1000, ['自分の光のタップしているクリーチャーが破壊される時、墓地に置かれるかわりにバトルゾーンにとどまる。']),
     cr('rmSub', 1, 1000, ['自分の進化クリーチャーが破壊される時、かわりにこのクリーチャーを自分のマナゾーンに置く。']),
@@ -483,6 +484,18 @@ describe('named mechanics', () => {
     expect(power(s, L, v)).toBe(4000);
     s = act(s, 0, { t: 'move', iid: v, to: 'grave' });
     expect(s.cards[g].zone).toBe('battle');
+  });
+
+  it('効果でコストを支払わずにクロスする', () => {
+    const s = setup([
+      { p: 0, cid: 'gear', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const g = find(s, 0, 'battle', 'gear')!;
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    startExec(s, L, 0, g, programOf('このクロスギアをコストを支払わずに自分のクリーチャーにクロスする').ops, 'gear');
+    expect(s.cards[g].parent).toBe(v);
+    expect(power(s, L, v)).toBe(4000);
   });
 
   it('覚醒 / 解除: flips up at turn start and flips back instead of leaving', () => {
@@ -1341,6 +1354,13 @@ describe('named mechanics', () => {
     ]);
     expect(moveCard(s, L, find(s, 0, 'battle', 'lightMon')!, 'grave')).toBe('battle');
     expect(moveCard(s, L, find(s, 0, 'battle', 'waterMon')!, 'grave')).toBe('grave');
+    s = setup([
+      { p: 0, cid: 'rmFoe', zone: 'battle' },
+      { p: 1, cid: 'vanilla', zone: 'battle' },
+    ]);
+    const foeV = s.players[1].battle.find((i) => s.cards[i].cid === 'vanilla')!;
+    battle(s, L, find(s, 0, 'battle', 'rmFoe')!, foeV);
+    expect(s.cards[foeV].zone).toBe('mana');
     s = setup([{ p: 0, cid: 'rmOnce', zone: 'battle' }]);
     const o = find(s, 0, 'battle', 'rmOnce')!;
     const sh = s.players[0].shield.length;

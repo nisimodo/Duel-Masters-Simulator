@@ -305,6 +305,8 @@ export type Op =
   | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
   /** このターンの後に自分のターンを追加する */
   | { op: 'extraTurn' }
+  /** クロスギアをコストを支払わずにクロスする (onto: pick は自分のクリーチャーから自動で選ぶ) */
+  | { op: 'crossFree'; gear: Target; onto: 'self' | 'it' | 'pick'; otherOnly?: boolean }
   /** パワーが一番小さい (max: 大きい) クリーチャーを破壊する */
   | { op: 'destroyExtreme'; owner: 'self' | 'opp'; max: boolean; n: number }
   /** 山札の上からN枚を、選んだ自分のシールドの下に重ねる */

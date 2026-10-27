@@ -9,7 +9,7 @@ import { normText, stripReminder } from './text';
 /** 誰に効くか (発生源のカードから見て) */
 export type StaticTarget = { t: 'self' } | { t: 'cross' } | { t: 'sel'; sel: Sel };
 
-export type ReplaceSubj = { t: 'self' } | { t: 'host' } | { t: 'sel'; sel: Sel; incSelf?: boolean };
+export type ReplaceSubj = { t: 'self' } | { t: 'host' } | { t: 'sel'; sel: Sel; incSelf?: boolean } | { t: 'foe'; oppOnly?: boolean };
 export type ReplaceZone = 'hand' | 'mana' | 'deckTop' | 'deckBottom' | 'deckShuffle' | 'shield' | 'underSrc';
 
 /** 効いている条件 */
@@ -808,7 +808,7 @@ function replaceZoneOf(v0: string): ReplaceZone | null {
     .replace(/置いてもよい$/, '置く')
     .replace(/シャッフルしてもよい$/, 'シャッフルする')
     .replace(/^(?:(?:この|その)(?:クリーチャー|ゴッド|カード)を)/, '')
-    .replace(/^(?:自分の|持ち主の)/, '');
+    .replace(/^(?:自分の|持ち主の|自身の)/, '');
   if (/^手札に(?:戻す|加える)(?:かマナゾーンに置く)?$/.test(v)) return 'hand';
   if (/^(?:タップして)?(?:自分の|持ち主の)?マナゾーンに置く$/.test(v)) return 'mana';
   if (/^山札の(?:一番)?上に置く$/.test(v)) return 'deckTop';
@@ -827,6 +827,13 @@ function parseReplaceMove(t1: string): StaticSpec | null {
   // 「〜してもよい。そうした場合、このクリーチャーは墓地に置かれるかわりにバトルゾーンにとどまる」
   t = t.replace(/^(.+?時、)(.+?てもよい)。(?:そうした場合|そうしたら|その場合)、(?:この|その)クリーチャーは(?:墓地に置かれる|バトルゾーンを離れる|離れる)かわりに(?:バトルゾーンに)?とどまる$/, '$1かわりに$2');
   if (/。/.test(t)) return null;
+  // 「相手のクリーチャーがこのクリーチャーとのバトルで破壊される時、そのクリーチャーを墓地に置くかわりに〜」
+  const fm = t.match(/^(相手の)?クリーチャーが、?このクリーチャーと(?:の)?バトル(?:で|によって|して|に負けて)破壊される時、(?:相手は)?(.+)$/);
+  if (fm) {
+    const z = fm[2].match(/^(?:そのクリーチャーを)?(?:自身の|持ち主の)?墓地に置くかわりに、?(.+)$/);
+    const zone = z && replaceZoneOf(z[1]);
+    return zone && zone !== 'underSrc' ? { s: 'replaceMove', subj: { t: 'foe', ...(fm[1] ? { oppOnly: true } : {}) }, on: 'destroy', act: 'redirect', zone } : null;
+  }
   const m = t.match(/^(相手のターン中に|相手の呪文によって)?(.+?)が(破壊される|バトルゾーンを離れる|離れる|バトルゾーンから自分の墓地に置かれる)(?:時|とき)、(.+)$/);
   if (!m) return null;
   let subj: ReplaceSubj | null = null;

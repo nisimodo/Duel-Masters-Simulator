@@ -271,6 +271,8 @@ export interface GameState {
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
+  /** バトルで破壊されるクリーチャーのバトル相手 (置換効果用) */
+  battleFoe?: number;
   /** 「ゲーム中に一度」を使ったカード */
   onceGame?: number[];
   /** このターンにシールドをブレイクしたクリーチャー (ターボラッシュ用) */
