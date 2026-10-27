@@ -101,6 +101,7 @@ export function power(s: GameState, L: Lookup, iid: number, attacking = false, c
   for (const u of c.under) if (s.cards[u].linkedTo === iid) p += L(s.cards[u].cid)?.faces[s.cards[u].face]?.power ?? 0;
   // 「次の自分のターンのはじめまでパワー+N」は一時的な能力として持っている
   for (const g of c.grants ?? []) for (const k of g.kws) if (/^パワー[+-]\d+$/.test(k)) p += +k.slice(3);
+  if (ctx.inBattle) for (const g of c.grants ?? []) for (const k of g.kws) if (/^バトル中パワー[+-]\d+$/.test(k)) p += +k.slice(7);
   if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
   if (c.zone === 'battle') p += staticPower(s, L, iid, { ...ctx, attacking: attacking || ctx.attacking });
   return p;
@@ -301,7 +302,7 @@ export function moveCard(
       return 'battle';
     }
     // 破壊されない
-    if (to === 'grave' && (own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow)) || (c.grants ?? []).some((g) => g.kws.includes('破壊されない')))) {
+    if (to === 'grave' && (own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow)) || (c.grants ?? []).some((g) => g.kws.includes('破壊されない') || (s.inBattleNow && g.kws.includes('バトル中破壊されない'))))) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊されない`);
       return 'battle';
     }

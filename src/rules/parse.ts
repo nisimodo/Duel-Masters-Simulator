@@ -1915,6 +1915,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterAttack', body }];
   }
 
+  // ---- バトル中だけのパワー修正・破壊されない ----
+  if (/バトル中/.test(s)) {
+    const bp = s.match(/^((?:この|その)ターン|次の自分のターンのはじめまで)、(?:バトル中、)?(.+?)の、?(?:バトル中の)?パワーを、?(?:バトル中)?\s*([+-]\d+)する$/);
+    const bt = bp && refTarget(bp[2]);
+    if (bp && bt) return [{ op: 'grant', target: bt, kws: [`バトル中パワー${bp[3]}`], until: /^次/.test(bp[1]) ? 'nextOwnTurn' : 'turn' }];
+    const bi = s.match(/^(?:((?:この|その)ターン|次の自分のターンのはじめまで)、)?(.+?)は(?:このターン、)?バトル中、?破壊されない$/);
+    const bit = bi && refTarget(bi[2]);
+    if (bi && bit) return [{ op: 'grant', target: bit, kws: ['バトル中破壊されない'], until: bi[1] && /^次/.test(bi[1]) ? 'nextOwnTurn' : 'turn' }];
+  }
+
   // ---- 一時的な置換 「このターン、自分のクリーチャーが破壊される時、墓地に置くかわりにマナゾーンに置く」 ----
   {
     const tr = s.match(/^(この|その)ターン(?:中)?、|^(?:次の自分|自分の次)のターンのはじめまで、/);

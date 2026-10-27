@@ -515,6 +515,14 @@ describe('named mechanics', () => {
     expect(moveCard(s, L, v, 'grave')).toBe('mana');
   });
 
+  it('バトル中だけのパワー修正', () => {
+    const s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    startExec(s, L, 0, v, programOf('このターン、自分のクリーチャーすべてのパワーをバトル中+2000する').ops, 'v');
+    expect(power(s, L, v)).toBe(1000);
+    expect(power(s, L, v, false, { inBattle: true })).toBe(3000);
+  });
+
   it('効果でコストを支払わずにクロスする', () => {
     const s = setup([
       { p: 0, cid: 'gear', zone: 'battle' },
