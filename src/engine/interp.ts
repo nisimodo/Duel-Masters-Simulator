@@ -83,10 +83,11 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.notColorless && !civs.length) return false;
   if (sel.costVs) {
     // 効果を使っているプレイヤー (手番のプレイヤー) のマナ・手札の枚数と比べる
-    const ctl = s.players[s.active];
+    // 「自身のマナゾーンにあるカードの枚数以上」はカードの持ち主のマナと比べる
+    const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : s.active];
     const lim = sel.costVs.by === 'mana' ? ctl.mana.length : ctl.hand.length;
     const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
-    if (sel.costVs.cmp === 'lt' ? !(cost < lim) : !(cost <= lim)) return false;
+    if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : !(cost <= lim)) return false;
   }
   if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
   if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
@@ -174,6 +175,8 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.enteredThisTurn && !s.cards[iid].sick) continue;
+        if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
@@ -237,6 +240,15 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
     case 'not':
       return !evalCond(s, L, ex, c.a);
+    case 'lookedSameCost': {
+      const ids = ex.looked.length ? ex.looked : ex.it;
+      const fs = ids.map((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]);
+      return fs.length > 0 && fs.every((f) => f?.isCreature) && new Set(fs.map((f) => f!.cost)).size === 1;
+    }
+    case 'stPlus': {
+      const b = me.broken?.turn === s.turn ? me.broken.n : 0;
+      return s.active !== ex.player && b >= 2;
+    }
     case 'turnCount': {
       const t = c.what === 'attacks' ? me.attacks : me.spellsCast;
       const v = t?.turn === s.turn ? t.n : 0;
@@ -514,7 +526,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
     const op = ex.ops[0];
     switch (op.op) {
       case 'draw': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        // 「その持ち主は、カードを1枚引く」: 選んだカードの持ち主
+        const owner = op.who === 'itOwner' ? s.cards[ex.it[0] ?? -1]?.owner : undefined;
+        if (op.who === 'itOwner' && owner == null) break;
+        const who = owner ?? (op.who === 'self' ? ex.player : mainOpp(s, ex.player));
         const d = drawCards(s, who, op.n);
         log(s, who, `${s.players[who].name}: カードを${d}枚引いた`);
         break;
@@ -1045,6 +1060,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           // 「そのクリーチャーに含まれるカード」: 下に重なったカードも数える
           const i = ex.it[0];
           ex.count = i != null && s.cards[i].zone === 'battle' ? 1 + s.cards[i].under.length : 0;
+        } else if (op.players) {
+          ex.count = s.players.filter((pl) => !pl.lost).length;
         } else if (op.underSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? s.cards[ex.src].under.length : 0;
         } else if (op.civsOf) {
@@ -1263,8 +1280,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'lockSummon': {
-        for (const o of opps(s, ex.player)) s.players[o].summonLockUntil = ex.player;
-        log(s, ex.player, '次の自分のターンのはじめまで、相手はクリーチャーを召喚できない');
+        for (const o of opps(s, ex.player)) {
+          const pl = s.players[o];
+          // すでにすべて召喚できないなら、コストの制限で緩めない
+          pl.summonLockCost = pl.summonLockUntil != null && pl.summonLockCost == null ? undefined : op.costMax != null ? Math.max(op.costMax, pl.summonLockCost ?? 0) : undefined;
+          pl.summonLockUntil = ex.player;
+        }
+        log(s, ex.player, `次の自分のターンのはじめまで、相手は${op.costMax != null ? `コスト${op.costMax}以下の` : ''}クリーチャーを召喚できない`);
         break;
       }
       case 'lockSpells': {

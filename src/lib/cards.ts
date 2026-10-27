@@ -223,7 +223,10 @@ export const normName = (s: string) =>
     .replace(/[“”"″]/g, '"')
     .replace(/[’‘']/g, "'")
     .replace(/[≪《]/g, '')
-    .replace(/[≫》]/g, '');
+    .replace(/[≫》]/g, '')
+    // 「〜」と「～」、「-」と「ー」の表記ゆれ (「～Jの旅路～」「ー熱血の物語ー」)
+    .replace(/[〜~]/g, '~')
+    .replace(/[‐‑−–—―-]/g, 'ー');
 
 let dbPromise: Promise<CardDB> | null = null;
 

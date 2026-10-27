@@ -176,10 +176,12 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     // 汎用の置換効果 (「〜が破壊される時、かわりに〜」) は常在型能力として処理
     if (/かわりに/.test(line) && (parseStaticLine(raw) ?? []).some((x) => x.s === 'replaceMove')) continue;
-    const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
+    // S・トリガー・プラスで与えられる {x+} 能力は、効果の側に印を残す (条件は効果を解釈する時に付ける)
+    const stPlus = /^\{x\+\}/.test(line);
+    const m = line.replace(/^\{x\+\}\s*/, '').match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
     let clause = m[1] + m[2];
-    let effect = m[3];
+    let effect = (stPlus ? '{x+}' : '') + m[3];
     // 「このクリーチャーが出た時、またはこのクリーチャーが攻撃する時、〜」
     for (let k = 0; k < 4 && /^(または|あるいは)/.test(effect); k++) {
       const more = effect.match(/^((?:または|あるいは).{1,80}?(?:時|はじめに|終わりに))、(.+)$/s);

@@ -120,6 +120,42 @@ function DeckReport({ db, st, p, name }: { db: CardDB; st: SimStats; p: 0 | 1; n
   );
 }
 
+const ISSUE_LABEL = { manual: '自動で処理できない効果 (CPUは一部だけ実行)', error: '内部エラー', stuck: '進行不能', unfinished: '決着しなかった試合' } as const;
+
+/** うまく処理できなかったこと (カードの不具合の手がかり) */
+function IssueReport({ db, st }: { db: CardDB; st: SimStats }) {
+  const list = Object.values(st.issues).sort((a, b) => b.games - a.games);
+  return (
+    <div className="panel col">
+      <b>うまく処理できなかった効果 ({list.length}件)</b>
+      {!list.length ? (
+        <div className="small ok">✓ すべての効果を自動で処理できました</div>
+      ) : (
+        <table className="testplay-table small">
+          <thead>
+            <tr>
+              <th>種類</th>
+              <th>カード</th>
+              <th>内容</th>
+              <th>起きた試合</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.slice(0, 30).map((i, k) => (
+              <tr key={k}>
+                <td className={i.kind === 'manual' ? 'muted' : 'warn'}>{ISSUE_LABEL[i.kind]}</td>
+                <td>{i.cid ? `《${db.byId.get(i.cid)?.name ?? i.cid}》` : '-'}</td>
+                <td style={{ textAlign: 'left', whiteSpace: 'normal' }}>{i.text}</td>
+                <td>{i.games}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function TestPlay() {
   const { user, db } = useApp();
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -264,6 +300,7 @@ export default function TestPlay() {
             <DeckReport db={db} st={stats} p={0} name={names[0]} />
             <DeckReport db={db} st={stats} p={1} name={names[1]} />
           </div>
+          <IssueReport db={db} st={stats} />
         </>
       )}
     </div>

@@ -75,6 +75,8 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^自分のマナゾーンにあるカードの枚数より、?コストが小さい/, () => (sel.costVs = { by: 'mana', cmp: 'lt' }));
     changed ||= take(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'le' }));
     changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
+    changed ||= take(/^(?:この|その)ターン(?:中)?に(?:バトルゾーンに)?出た/, () => (sel.enteredThisTurn = true));
+    changed ||= take(/^自身のマナゾーンにあるカードの枚数以上のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'ge', ofOwner: true }));
     changed ||= take(/^〈種族〉の/, () => (sel.raceRef = true));
     changed ||= take(/^〈名前〉の/, () => (sel.nameRef = true));
     changed ||= take(/^(?:その数以下のコストを持つ|コストがその数以下の|その数以下のコストの)/, () => (sel.costLeCount = true));
@@ -122,6 +124,10 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^、?(?:パワーが一番小さい|最もパワーの小さい|一番パワーの小さい)/, () => (sel.extreme = 'minPower'));
     changed ||= take(/^、?(?:パワーが一番大きい|一番パワーの大きい)/, () => (sel.extreme = 'maxPower'));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
+    changed ||= take(
+      /^(?:その選んだクリーチャー|そのクリーチャー|そのカード|それ|その[゠-ヿー・]+)のコスト以下の|^(?:その選んだクリーチャー|そのクリーチャー|そのカード|それ|その[゠-ヿー・]+|こうして(?:墓地に置いた|捨てた|手札に加えた|マナゾーンに置いた)(?:カード|手札|クリーチャー))(?:の)?以下のコストを持つ/,
+      () => (sel.costLeIt = true),
+    );
     changed ||= take(/^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストが小さい|^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストの小さい/, () => (sel.costLtIt = true));
     changed ||= take(/^(?:それ|そのクリーチャー)よりコストが(\d+)(?:だけ)?大きい/, (m) => (sel.costItPlus = +m[1]));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {

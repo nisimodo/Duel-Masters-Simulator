@@ -55,6 +55,8 @@ export interface CardInst {
   fromBattle?: boolean;
   /** 「各ターンに一度」の置換効果を使ったターン */
   replTurn?: number;
+  /** このターンに「かわりに〜を支払ってとどまる」置換効果を使った回数 (互いに身代わりになり続けないように) */
+  replUses?: { turn: number; n: number };
   /** エクストラEXライフの残りのシールド */
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
@@ -119,6 +121,8 @@ export interface PlayerState {
   spellLockUntil?: number;
   /** このプレイヤーのターンが来るまでクリーチャーを召喚できない (効果の使用者) */
   summonLockUntil?: number;
+  /** 召喚できないのはこのコスト以下のクリーチャーだけ */
+  summonLockCost?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */

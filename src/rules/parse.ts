@@ -63,6 +63,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
     .replace(/^(選び、|選んで、?)/, '')
     .replace(/^(それを|それらを|そのクリーチャーを|そのカードを)/, '')
     .replace(/^好きな順(序)?で、?/, '')
+    .replace(/^それぞれ/, '')
     .replace(/^シャッフルし、/, '')
     .replace(/^バトルゾーンから、?(?=(?:持ち主の|自分の|相手の)?(?:マナゾーン|墓地|山札|手札|シールド))/, '');
   const m = (re: RegExp) => re.test(v);
@@ -321,6 +322,13 @@ export function parseCond(c0: string): Cond | null {
     if (sel) return { c: 'count', sel: { ...sel, zones: ['battle', 'mana'] }, cmp: '>=', n: +m[2] };
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
+  if (/^それがすべてコストが同じクリーチャー(?:であ|で)?$/.test(c)) return { c: 'lookedSameCost' };
+  // 「自分のクリーチャーまたはタマシードの中に水と闇があ」
+  if ((m = c.match(/^自分のクリーチャーまたはタマシードの中に((?:光|水|闇|火|自然)(?:と(?:光|水|闇|火|自然))*)があ$/))) {
+    const CV = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const;
+    const conds: Cond[] = m[1].split('と').map((w) => ({ c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [CV[w as '光']] }, cmp: '>=', n: 1 }));
+    return conds.reduce((a, b) => ({ c: 'and', a, b }));
+  }
   if (/^手札が1枚もないプレイヤーがい$/.test(c)) return { c: 'anyHandEmpty' };
   if (/^自分のマナゾーンにすべての文明が揃ってい$/.test(c)) return { c: 'manaEveryCiv' };
   if ((m = c.match(/^バトルゾーンに(「[^」]+」を持つクリーチャー|[^自相][^、]*?クリーチャー)があ$/))) {
@@ -387,6 +395,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^(?:この|その)?ターンの終わりまで、/, 'このターン、')
+    .replace(/^(.*?)さらにもう(\d+)枚、自分の山札の上からカードをマナゾーンに置く$/, '$1自分の山札の上から$2枚をマナゾーンに置く')
+    .replace(/^相手の手札を見て(クリーチャー|呪文|カード)を(\d+)体選び、/, '相手の手札を見て$1を$2枚選び、')
+    .replace(/、コストを支払わずに(自分の(?:手札|墓地|マナゾーン)(?:または(?:手札|墓地|マナゾーン))?から)(唱え|召喚し)/, '、$1コストを支払わずに$2')
     .replace(/^自分は/, '')
     .replace(/ひとつ/g, '1つ')
     .replace(/ふたつ/g, '2つ')
@@ -586,6 +597,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/好きな数の(.+?)を選び、/, '$1を99枚まで選び、')
     .replace(/^その中から好きな数の(.+?)を(?!.*選)(?=(?:自分の|持ち主の)?(?:手札|墓地|マナゾーン|山札|バトルゾーン))/, 'その中から$1を99枚まで選び、')
     .replace(/^相手クリーチャー/, '相手のクリーチャー')
+    .replace(/^一番パワーが(大きい|小さい)(相手|自分)の/, '$2のパワーが一番$1')
+    .replace(/^自身の山札の上から/, '自分の山札の上から')
+    .replace(/^こうして([^、]+?)を(?:バトルゾーンに)?出したなら、/, 'それが$1なら、')
+    .replace(/^(\d+)枚捨てる$/, '自分の手札を$1枚捨てる')
+    .replace(/^これより(?=パワーが|コストが)/, 'このクリーチャーより')
+    .replace(/^相手とガチンコ・ジャッジをする$/, '相手とガチンコ・ジャッジする')
+    .replace(/マナゾーンの枚数以下のコスト/g, 'マナゾーンにあるカードの枚数以下のコスト')
+    .replace(/^自分のクリーチャーを1体と、相手のクリーチャーを1体、バトルゾーンから選(?:んでもよい|ぶ)$/, '自分と相手のクリーチャーを1体ずつ選ぶ')
+    .replace(/^(そうしたら、)?次の自分のターンのはじめまで、自分はゲームに負けない$/, '$1次の自分のターンのはじめまで、自分はゲームに負けず、相手はゲームに勝てない')
+    .replace(/^((?:この|その)ターン、)相手はクリーチャーで攻撃(?:することが)?できない$/, '$1相手のクリーチャーは攻撃できない')
     .replace(/選んだ相手の?クリーチャー/g, '選んだクリーチャー')
     .replace(/^(?:この|その)?ターンの終わりまで、/, 'このターン、')
     .replace(/^(.+?)は、?(?:この|その)ターンの終わりまで、?(「[^」]+」(?:と「[^」]+」)*を得る)$/, 'このターン、$1は$2')
@@ -884,6 +905,56 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   if (/^残り(?:のカード)?をシャッフルして(?:自分の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }];
   if (/^その持ち主は選ばれたカードを好きな順序で山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
+  // 「その持ち主は、それを山札の下に置き、カードを1枚引く」
+  if (/^相手は自身のマナゾーン(?:にある|の)カードを(\d+)枚までしかアンタップできない$/.test(s)) return [{ op: 'manaUntapLimit', n: +s.match(/(\d+)枚/)![1] }];
+  if (/^(?:好きな順序で)?(?:自分の)?山札の(?:一番)?下に(?:置く|戻す)$/.test(s) && ctx.looked) return [{ op: 'move', target: { ref: 'looked' }, to: 'deckBottom' }];
+  // ガチロボ: 「それがすべてコストが同じクリーチャーであれば、バトルゾーンに出す」
+  if (/^それがすべてコストが同じクリーチャーであれば、(?:すべて)?バトルゾーンに出す$/.test(s))
+    return [{ op: 'if', cond: { c: 'lookedSameCost' }, body: [{ op: 'play', target: { ref: 'looked' }, mode: 'put' }] }];
+  // 「そのクリーチャーのこのターン最初の攻撃の終わりにアンタップする」
+  if (/^(?:その|この)クリーチャー(?:の|は)、?このターン最初の攻撃の終わりにアンタップする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
+  let mm: RegExpMatchArray | null;
+  // 「そのカードの「このクリーチャーがバトルゾーンに出た時」で始まる能力を1つ使ってもよい」
+  if ((mm = s.match(/^(?:その|そのカードの|そのクリーチャーの)「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を(?:1つ|ひとつ)使(う|ってもよい)$/)))
+    return mm[1] === 'う' ? [{ op: 'useEnterOf' }] : [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
+  // 「このターン、そのクリーチャーをマナゾーンから召喚してもよい」(どのクリーチャーにも使えるものとして扱う)
+  if (/^このターン、そのクリーチャーを(?:自分の)?マナゾーンから召喚してもよい$/.test(s)) return [{ op: 'manaSummon', n: 1 }];
+  // お清めシャラップ 「カードを1枚以上、いずれかのプレイヤーの墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする」
+  if (/^カードを1枚以上、いずれかのプレイヤーの墓地から選んでもよい$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['grave'], kind: 'card' }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'いずれかのプレイヤーの墓地からカードを選ぶ' }];
+  if (/^(?:そのプレイヤーは、?|相手は)?(?:それら|それ)を(?:自身|自分|持ち主)の山札に加えてシャッフルする$/.test(s) && /それら/.test(s))
+    return [{ op: 'move', target: { ref: 'it' }, to: 'deckTop' }, { op: 'shuffle' }, { op: 'shuffle', who: 'opp' }];
+  // 「このゲームに参加しているプレイヤー1人につき、カードを1枚引く」
+  if ((mm = s.match(/^このゲームに参加しているプレイヤー1人につき、カードを(\d+)枚引く$/))) return [{ op: 'countSet', players: true }, { op: 'repeatCount', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // 「自分の山札の上から2枚を墓地に置き、その後、そのうちのどちらか1枚を手札に戻してもよい」
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚を墓地に置き、その後、そのうちの(?:どちらか|いずれか)?(\d+)枚を(?:自分の)?手札に戻(す|してもよい)$/))) {
+    const pick: Op[] = [{ op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['grave'], kind: 'card' }, count: { n: +mm[2], upTo: false } }, purpose: 'benefit', prompt: `${mm[2]}枚を手札に戻す` }, { op: 'move', target: { ref: 'it' }, to: 'hand' }];
+    return [{ op: 'top', n: +mm[1], to: 'grave', who: 'self' }, ...(mm[3] === 'す' ? pick : [{ op: 'optional', body: pick, prompt: s0 } as Op])];
+  }
+  // オリオティス・ジャッジ 「各プレイヤーは、自身のマナゾーンにあるカードの枚数以上のコストを持つクリーチャーをすべて、好きな順序で自身の山札の一番下に置く」
+  if (/^各プレイヤーは、?自身のマナゾーンにあるカードの枚数以上のコストを持つクリーチャーをすべて、?(?:好きな順序で)?自身の山札の(?:一番)?下に置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', costVs: { by: 'mana', cmp: 'ge', ofOwner: true } }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+    ];
+  const ow = s.match(/^その持ち主は、?それを(?:自身の)?山札の(?:一番)?下に置き、(?:その後、)?カードを(\d+)枚引く$/);
+  if (ow) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }, { op: 'draw', n: +ow[1], who: 'itOwner' }];
+  // 「そのうちの1枚を手札に加え、1枚をマナゾーンに置き、残りの1枚を墓地に置く」
+  {
+    const D: Record<string, Dest> = { 手札に加え: 'hand', マナゾーンに置き: 'mana', 墓地に置き: 'grave', 手札に加える: 'hand', マナゾーンに置く: 'mana', 墓地に置く: 'grave' };
+    const t3 = s.match(/^(?:そのうちの|その中から)(\d+)枚を(?:自分の)?(手札に加え|マナゾーンに置き|墓地に置き)、(\d+)枚を(?:自分の)?(手札に加え|マナゾーンに置き|墓地に置き)、残り(?:の\d+枚)?を(?:自分の)?(手札に加える|マナゾーンに置く|墓地に置く)$/);
+    if (t3) {
+      const deckSel: Sel = { owner: 'any', zones: ['deck'], kind: 'card' };
+      return [
+        { op: 'choose', target: { ref: 'looked', sel: deckSel, count: { n: +t3[1], upTo: false } }, purpose: 'benefit', prompt: `${t3[1]}枚を${t3[2].replace(/置き$/, '置く').replace(/加え$/, '加える')}` },
+        { op: 'move', target: { ref: 'it' }, to: D[t3[2]] },
+        { op: 'choose', target: { ref: 'looked', sel: deckSel, count: { n: +t3[3], upTo: false } }, purpose: 'benefit', prompt: `${t3[3]}枚を${t3[4].replace(/置き$/, '置く').replace(/加え$/, '加える')}` },
+        { op: 'move', target: { ref: 'it' }, to: D[t3[4]] },
+        { op: 'choose', target: { ref: 'looked', sel: deckSel, count: { all: true } }, purpose: 'neutral', prompt: '残り' },
+        { op: 'move', target: { ref: 'it' }, to: D[t3[5]] },
+      ];
+    }
+  }
   if (/^(?:そのあと|その後、?)?(?:それ|これ|シールド)を(?:好きな順番で)?元(?:の場所)?に戻す$/.test(s)) return [];
   if (/^\d+(?:体|枚)しかない場合は、.+$/.test(s)) return [];
   if (/^そのカードを手札に加えるか、タップしてマナゾーンに置く$/.test(s))
@@ -1025,6 +1096,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (ops2) return ops2;
   }
   {
+    if (/^このターン(?:中)?に一度、自分がゲームに負ける時、かわりに負けない$/.test(s)) return [{ op: 'noLose', until: 'turn' }];
     const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
     if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
     if (/^(?:そのカード|それ)を自分の手札またはマナゾーンに(?:加える|置く)$/.test(s))
@@ -1690,7 +1762,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の|(〈数字コスト〉の))?呪文を唱えられない$/);
     const ls = s.match(/^(?:次の相手のターン|次の自分のターンのはじめまで)、相手はクリーチャーを召喚できず、呪文を唱えることも(?:でき|し)ない$/);
     if (ls) return [{ op: 'lockSummon' }, { op: 'lockSpells', until: 'nextOwnTurn' }];
-    if (/^(?:次の相手のターン|次の自分のターンのはじめまで)、相手はクリーチャーを召喚できない$/.test(s)) return [{ op: 'lockSummon' }];
+    const lsm = s.match(/^(?:次の相手のターン(?:の終わりまで)?|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の)?クリーチャーを召喚できない$/);
+    if (lsm) return [{ op: 'lockSummon', ...(lsm[1] ? { costMax: +lsm[1] } : {}) }];
     if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined, costRef: lk[3] ? true : undefined }];
     // 「相手は〈数字コスト〉の呪文を唱えられず、〈数字コスト〉の相手のクリーチャーは攻撃もブロックもできない」
     const lk2 = s.match(/^次の自分のターンのはじめまで、相手は〈数字コスト〉の呪文を唱えられず、(?:同じコストを持つ|〈数字コスト〉の)相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
@@ -2503,6 +2576,16 @@ function fixPurposes(ops: Op[]) {
 
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
+  // S・トリガー・プラスで与えられる {x+} 能力: 条件を満たした時だけ
+  if (/(?:^|\n|。)\s*\{x\+\}/.test(text)) {
+    const parts = text.split(/\n|(?<=。)(?=\s*\{x\+\})/).filter((x) => x.trim());
+    const progs = parts.map((l) => {
+      const m = l.match(/^\s*\{x\+\}([\s\S]*)$/);
+      const p = parseEffect(m ? m[1] : l);
+      return m && p.ops.length ? { ...p, ops: [{ op: 'if', cond: { c: 'stPlus' }, body: p.ops } as Op] } : p;
+    });
+    return { ops: progs.flatMap((p) => p.ops), complete: progs.every((p) => p.complete), unparsed: progs.flatMap((p) => p.unparsed) };
+  }
   // 爆進ダブル / 「バトルゾーンに自分の〇〇があれば、両方を選んでもよい」
   let bonus: Cond | undefined;
   let body = text;
@@ -2510,7 +2593,7 @@ export function parseEffect(text: string): Program {
     bonus = { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', evolution: true }, cmp: '>=', n: 1 };
     body = body.replace(/爆進ダブル(\s*[(（][^)）]*[)）])?。?/g, '');
   }
-  const both2 = normText(body).match(/(?:^|。)\s*([^。]+?)(?:れば|ならば|なら|であれば)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
+  const both2 = normText(body).match(/(?:^|。)\s*([^。]+?)(?:れば|ならば|なら|であれば)、(?:かわりに)?(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
   const bothCond = both2 && parseCond(both2[1].replace(/\s+/g, ''));
   const both = !bothCond && normText(body).match(/(?:^|。)\s*(?:バトルゾーンに)?自分の(.+?)が(?:あれば|ある場合は)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
   if (both2 && bothCond) {

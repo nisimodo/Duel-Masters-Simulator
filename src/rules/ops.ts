@@ -29,7 +29,7 @@ export interface Sel {
   /** サイキックではない */
   notPsychic?: boolean;
   /** コストが (自分のマナの枚数 / 手札の枚数) より小さい・以下 */
-  costVs?: { by: 'mana' | 'hand'; cmp: 'lt' | 'le' };
+  costVs?: { by: 'mana' | 'hand'; cmp: 'lt' | 'le' | 'ge'; ofOwner?: boolean };
   /** この効果のカード自身 */
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
@@ -73,6 +73,10 @@ export interface Sel {
   powerLtIt?: boolean;
   /** it よりコストが小さい */
   costLtIt?: boolean;
+  /** このターンに出た (召喚酔いしている) */
+  enteredThisTurn?: boolean;
+  /** it のコスト以下 (「その選んだクリーチャーのコスト以下の」「こうして捨てた手札以下のコストを持つ」) */
+  costLeIt?: boolean;
   /** コストが it のコスト + N */
   costItPlus?: number;
   /** コストが数えた数以下 */
@@ -164,11 +168,15 @@ export type Cond =
   | { c: 'wasInBattle' }
   /** 選んだカードのコストの合計がN以上 */
   | { c: 'costSum'; sel: Sel; n: number }
+  /** S・トリガー・プラス: 相手のターン中で、そのターンに自分のシールドが2つ以上ブレイクされている ({x+} 能力) */
+  | { c: 'stPlus' }
+  /** 見せた・見たカードがすべてクリーチャーで、コストが同じ */
+  | { c: 'lookedSameCost' }
   /** このターンに自分が攻撃した回数 / 唱えた呪文の数 */
   | { c: 'turnCount'; what: 'attacks' | 'spells'; cmp: '>=' | '<=' | '=='; n: number }
 
 export type Op =
-  | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' }
+  | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' | 'itOwner' }
   /** 山札の上から N 枚を移動する / 見る / 表向きにする */
   | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp'; nth?: boolean }
   /** 自分の山札をすべて見る (サーチ) */
@@ -228,7 +236,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean }
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -286,7 +294,7 @@ export type Op =
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number; costRef?: boolean }
-  | { op: 'lockSummon' }
+  | { op: 'lockSummon'; costMax?: number }
   /** it の枚数 + plus 枚引く */
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */

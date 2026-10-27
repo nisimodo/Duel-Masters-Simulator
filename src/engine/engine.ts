@@ -213,6 +213,10 @@ function applyReplaceMove(s: GameState, L: Lookup, iid: number, to: ZoneName, op
     const prog = programOf(spec.effect!);
     const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
     if (!prog.complete || !canPay(s, L, sc.owner, iid, ops)) continue;
+    // 「かわりに他のクリーチャーを破壊してもよい」どうしが身代わりになり続けないよう、同じカードの置換は1ターンに2回まで
+    const uses = sc.replUses?.turn === s.turn ? sc.replUses.n : 0;
+    if (uses >= 2) continue;
+    sc.replUses = { turn: s.turn, n: uses + 1 };
     if (spec.oncePerTurn) sc.replTurn = s.turn;
     log(s, c.owner, `${q(name)} は離れるかわりに「${spec.effect}」`);
     REPLACING.add(iid);
@@ -333,6 +337,10 @@ export function moveCard(
       const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
       // 置換の中で同じカードがまた置換しないように (互いに身代わりになる無限ループ防止)
       if (!prog.complete || REPLACING.has(iid) || !canPay(s, L, c.owner, iid, ops)) continue;
+      // 「かわりに他のクリーチャーを破壊してもよい」どうしが身代わりになり続けないよう、同じカードの置換は1ターンに2回まで
+      const uses = c.replUses?.turn === s.turn ? c.replUses.n : 0;
+      if (uses >= 2) continue;
+      c.replUses = { turn: s.turn, n: uses + 1 };
       log(s, c.owner, `${q(card!.faces[c.face].name)} は離れるかわりに「${rl.effect}」`);
       REPLACING.add(iid);
       try {
@@ -1151,7 +1159,11 @@ function startTurn(s: GameState, L: Lookup) {
   s.usedOnce = [];
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
-  for (const pl2 of s.players) if (pl2.summonLockUntil === p) pl2.summonLockUntil = undefined;
+  for (const pl2 of s.players)
+    if (pl2.summonLockUntil === p) {
+      pl2.summonLockUntil = undefined;
+      pl2.summonLockCost = undefined;
+    }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
@@ -2312,7 +2324,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
-  if (face.isCreature && !a.force && s.players[p].summonLockUntil != null) return '効果により、クリーチャーを召喚できません';
+  if (face.isCreature && !a.force && s.players[p].summonLockUntil != null && (s.players[p].summonLockCost == null || (face.cost ?? 0) <= s.players[p].summonLockCost)) return '効果により、クリーチャーを召喚できません';
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');

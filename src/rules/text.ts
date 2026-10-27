@@ -89,7 +89,7 @@ export function mergeModal(lines: string[]): string[] {
       out.push(again[1] + rep);
       continue;
     }
-    if (/^[▼▶►・]/.test(t) && out.length && /次のうちいずれか|選ぶ/.test(stripReminder(out[out.length - 1]))) out[out.length - 1] += '▼' + t.replace(/^[▼▶►・]/, '');
+    if (/^[▼▶►・→]/.test(t) && out.length && /次のうちいずれか|選ぶ/.test(stripReminder(out[out.length - 1]))) out[out.length - 1] += '▼' + t.replace(/^[▼▶►・→]\s*/, '');
     else out.push(l);
   }
   return out;
