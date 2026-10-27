@@ -95,6 +95,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^タップする$/)) return [{ op: 'tap', target }];
   if (m(/^タップまたはアンタップする$/)) return [{ op: 'toggleTap', target }];
   if (m(/^このクリーチャーとバトルさせる$/)) return [{ op: 'battle', a: { ref: 'self' }, b: target }];
+  if (m(/^(?:裏向きのまま)?このクリーチャーの下に(?:置く|置いてもよい)$/) && target.ref === 'it') return [{ op: 'stackUnder', what: 'it' }];
   if (m(/^(《[^》]+》のほう|フォートレス側|ウエポン側)に裏返す$/)) return [{ op: 'flip', target }];
   if (m(/^アンタップする$/)) return [{ op: 'untap', target }];
   if (m(/^(自分の)?(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
@@ -130,13 +131,79 @@ function purposeOf(sel: Sel, verb: string): Purpose {
 
 // ---------- 条件 ----------
 
-export function parseCond(c: string): Cond | null {
+export function parseCond(c0: string): Cond | null {
   let m: RegExpMatchArray | null;
+  let c = c0
+    .replace(/(\d+)(体|枚|つ)でもあ$/, '$1$2以上あ')
+    .replace(/^(バトルゾーンに自分の《[^》]+》が\d+(?:体|枚))あ$/, '$1以上あ')
+    .replace(/^(名前に《[^》]+》とあるカード|[^、]+?・カード)(が\d+枚以上|が)自分の(墓地|マナゾーン)に(あ|な(?:け|い)?)$/, '自分の$3に$1$2$4');
+  if ((m = c.match(new RegExp(`^シールドが${N}つもないプレイヤーがい$`)))) return { c: 'anyShieldsLess', n: +m[1] };
+  if (/^バトルゾーンにある自分のクリーチャーの数が自分のシールドの数より多け$/.test(c)) return { c: 'creaturesGEShields', strict: true };
+  if (/^相手のマナゾーンにあるカードが自分のより多け$/.test(c)) return { c: 'oppMore', zone: 'mana' };
+  if (/^バトルゾーンにある相手のクリーチャーの数が自分(?:のクリーチャーの数)?より多け$/.test(c)) return { c: 'oppMore', zone: 'battle' };
+  if (/^それがそのターンはじめての攻撃でな(?:け|い)?$/.test(c)) return { c: 'not', a: { c: 'firstAttack' } };
+  if ((m = c.match(new RegExp(`^相手の手札が${N}枚以上あ$`)))) return { c: 'handCount', who: 'opp', cmp: '>=', n: +m[1] };
+  if ((m = c.match(new RegExp(`^バトルゾーンに(?:ある)?クリーチャーが${N}体(以上あ|以下)$`)))) return { c: 'count', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, cmp: m[2] === '以下' ? '<=' : '>=', n: +m[1] };
+  if ((m = c.match(new RegExp(`^バトルゾーンにあるクリーチャーが${N}体以下$`)))) return { c: 'count', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, cmp: '<=', n: +m[1] };
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?相手の(.+?)が(?:バトルゾーンに)?(?:${N}${COUNT_UNIT}も)?な(?:け|い)?$`)))) {
+    const sel = parseSel('相手の' + m[1]);
+    if (sel) return { c: 'count', sel, cmp: '<=', n: m[2] ? +m[2] - 1 : 0 };
+  }
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?相手の(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
+    const sel = parseSel('相手の' + m[1]);
+    if (sel) return { c: 'count', sel, cmp: '>=', n: +m[2] };
+  }
+  if ((m = c.match(new RegExp(`^相手の(墓地|マナゾーン|手札)に(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
+    const sel = parseSel(m[2], { zones: [ZONE[m[1]]] });
+    if (sel) return { c: 'count', sel: { ...sel, owner: 'opp', zones: [ZONE[m[1]]], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, cmp: '>=', n: +m[3] };
+  }
+  // 「バトルゾーンに自分の《A》と《B》があ」
+  if ((m = c.match(/^(?:バトルゾーンに)?自分の(《[^》]+》|[^、と]+?)と(《[^》]+》|[^、と]+?)があ$/))) {
+    const a = parseCond(`バトルゾーンに自分の${m[1]}があ`);
+    const b = parseCond(`バトルゾーンに自分の${m[2]}があ`);
+    if (a && b) return { c: 'and', a, b };
+  }
+  if ((m = c.match(/^それがコスト(\d+)(以上|以下)$/)) || (m = c.match(/^コスト(\d+)(以上|以下)$/)))
+    return { c: 'itMatches', sel: { owner: 'any', zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'], kind: 'card', ...(m[2] === '以上' ? { costMin: +m[1] } : { costMax: +m[1] }) } };
   if ((m = c.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あ$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +m[1] };
   if (/^(?:バトルゾーンにある)?自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
+  if (/^自分のクリーチャーの数が自分のシールドの数以上$/.test(c)) return { c: 'creaturesGEShields' };
+  if (/^その直前にバトルゾーンにあ$/.test(c)) return { c: 'wasInBattle' };
+  if (/^自分のクリーチャーの数が相手(?:の|のクリーチャー)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
+  if (/^自分のシールドが相手(?:のシールド)?よりも?少な(?:けれ|け|い)?$/.test(c)) return { c: 'shieldsCmp', cmp: 'oppMore' };
+  if (/^自分のシールドが相手(?:のシールド)?よりも?多(?:けれ|け|い)?$/.test(c)) return { c: 'shieldsCmp', cmp: 'selfMore' };
+  if ((m = c.match(new RegExp(`^自分の手札が${N}枚もな(?:け|い)$`)))) return { c: 'handCount', who: 'self', cmp: '<=', n: +m[1] - 1 };
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンにある)?自分の(?:すべての)?(クリーチャー|ドラグハート)のコストの合計が${N}以上(?:であ|で)?$`))))
+    return { c: 'costSum', sel: { owner: 'self', zones: ['battle'], kind: m[1] === 'クリーチャー' ? 'creature' : 'dragheart' }, n: +m[2] };
+  // 「自分のマナゾーンに火文明があ」「闇と火文明があ」
+  if ((m = c.match(/^自分のマナゾーンに((?:光|水|闇|火|自然)(?:と(?:光|水|闇|火|自然))*)文明があ$/))) {
+    const cs = m[1].split('と').map((w) => parseCond(`自分のマナゾーンに${w}のカードがあ`));
+    if (cs.every(Boolean)) return cs.reduce((a, b) => ({ c: 'and', a: a!, b: b! }))!;
+  }
+  // 「自分の超次元ゾーンにカードがN枚以上あ」「〜に火のクリーチャーがな」
+  if ((m = c.match(new RegExp(`^自分の超次元ゾーンに(.+?)が(?:${N}${COUNT_UNIT}以上)?(あ|な(?:け|い)?)$`)))) {
+    const sel = parseSel(m[1], { zones: ['hyper'] });
+    if (sel) {
+      const s2 = { ...sel, owner: 'self' as const, zones: ['hyper' as const], kind: /カード$/.test(m[1]) ? ('card' as const) : sel.kind };
+      return m[3] === 'あ' ? { c: 'count', sel: s2, cmp: '>=', n: m[2] ? +m[2] : 1 } : { c: 'count', sel: s2, cmp: '<=', n: 0 };
+    }
+  }
+  // 「自分のドラゴンが他にN体もな」「自分の《X》がバトルゾーンにN体もな」
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(.+?)が(他に|バトルゾーンに)?${N}${COUNT_UNIT}もな(?:け|い)?$`)))) {
+    const sel = parseSel('自分の' + m[1]);
+    if (sel) return { c: 'count', sel: { ...sel, other: m[2] === '他に' || sel.other }, cmp: '<=', n: +m[3] - 1 };
+  }
+  // 「自分の〇〇または〇〇が合計N体以上あ」「〜なけ」
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(マナゾーンに)?(.+?)が合計${N}${COUNT_UNIT}以上(あ|な(?:け|い)?)$`)))) {
+    const sel = parseSel(m[1] ? m[2] : '自分の' + m[2], m[1] ? { zones: ['mana'] } : undefined);
+    if (sel) {
+      const s2 = m[1] ? { ...sel, owner: 'self' as const, zones: ['mana' as const] } : sel;
+      return m[4] === 'あ' ? { c: 'count', sel: s2, cmp: '>=', n: +m[3] } : { c: 'count', sel: s2, cmp: '<=', n: +m[3] - 1 };
+    }
+  }
   // シビルカウント 「自分の光のクリーチャーまたは光のタマシードが合計N つ以上あ」
-  if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上あ$/)))
-    return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] }, cmp: '>=', n: +m[2] };
+  if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上(あ|な(?:け|い)?)$/)))
+    return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] }, cmp: m[3] === 'あ' ? '>=' : '<=', n: m[3] === 'あ' ? +m[2] : +m[2] - 1 };
   // 「自分の光のクリーチャーと火のクリーチャーがそれぞれ1体以上あ」「自分の光と火のサイキック・クリーチャーがそれぞれ…」
   if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(マナゾーンに)?(.+?)と(.+?)がそれぞれ${N}(?:体|枚|つ)以上あ$`)))) {
     const noun = m[3].match(/^(?:光|水|闇|火|自然)(の.+)$/)?.[1] ?? '';
@@ -311,6 +378,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(龍?マナ武装|レインボーナス|水晶武装|ファイナル革命)\d*[:：]/, '')
     .replace(/^鬼タイム\s*[:：]\s*(?=自分と相手のシールド)/, '')
     .replace(/^シビルカウント\s*\d+\s*[:：]\s*/, '')
+    .replace(/^革命\d+[―ー\-－:：]/, '')
+    .replace(/^(?:こうして)?(?:見せた|表向きにした|捨てた|加えた)(?:カード|手札)が(?=[^、]+?(?:なら|であれば|でなければ)、)/, 'それが')
+    .replace(/^([゠-ヿー・]{2,})でなければ、/, 'それが$1でなければ、')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
     .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
     .replace(/^相手の手札を見て(?!、)/, '相手の手札を見て、')
@@ -543,7 +613,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/好きな順番で/g, '好きな順序で')
     .replace(/マナゾーンにタップして置く$/, 'タップしてマナゾーンに置く')
     .replace(/^(.+?)は、?このターンの終わりまで((?:「[^」]+」(?:と|、)?)+)を得る$/, 'このターン、$1は$2を得る')
-    .replace(/^(?!そうし|その後|このターン、クリーチャーを)(.+?)を(\d+)(枚|体)、自分の(墓地|手札|マナゾーン)から(.+)$/, '自分の$4から$1を$2$3$5')
+    .replace(/^(?!そうし|その後|このターン、クリーチャーを)([^、]+?)を(\d+)(枚|体)、自分の(墓地|手札|マナゾーン)から(.+)$/, '自分の$4から$1を$2$3$5')
     .replace(/^(?!そうし|その後)(.+?(?:クリーチャー|カード))(\d+)(体|枚)を(?!選)(.+)$/, '$1を$2$3、$4')
     .replace(/^自分の手札にある(?=.+を\d+(枚|体)、)/, '自分の手札から');
   if (!s) return [];
@@ -2329,7 +2399,7 @@ function parseEffectRaw(text: string): Program {
 
   for (const s of t.split('。').map((x) => x.trim()).filter(Boolean)) {
     // 「それ以外なら〜」 は直前の「〜なら」の else
-    const el = s.replace(/\s+/g, '').match(/^(?:それ以外(?:なら|の場合)|そうでなければ)、?(.+)$/);
+    const el = s.replace(/\s+/g, '').match(/^(?:それ以外(?:のカード)?(?:なら|の場合|であれば)|そうでなければ|なければ)、?(.+)$/);
     let last = ops[ops.length - 1];
     if (last?.op === 'optional' && last.body[last.body.length - 1]?.op === 'if') last = last.body[last.body.length - 1];
     if (el && last?.op === 'if' && !last.else) {

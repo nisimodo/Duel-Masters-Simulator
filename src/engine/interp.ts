@@ -237,6 +237,14 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     }
     case 'totalShieldsLE':
       return me.shield.length + opp.shield.length <= c.n;
+    case 'wasInBattle':
+      return !!s.cards[ex.src]?.fromBattle;
+    case 'creaturesGEShields':
+      return candidates(s, L, ex, { owner: 'self', zones: ['battle'], kind: 'creature' }).length >= me.shield.length + (c.strict ? 1 : 0);
+    case 'anyShieldsLess':
+      return s.players.some((pl) => !pl.lost && pl.shield.length < c.n);
+    case 'costSum':
+      return candidates(s, L, ex, c.sel).reduce((t, i) => t + (L(s.cards[i].cid)?.faces[s.cards[i].face]?.cost ?? 0), 0) >= c.n;
     case 'oppMore':
       return c.self ? me[c.zone].length > opp[c.zone].length : opp[c.zone].length > me[c.zone].length;
     case 'wasUnderEvo':
@@ -945,12 +953,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'stackUnder': {
         const self = s.cards[ex.src];
-        const other = ex.it.find((i) => s.cards[i].zone !== 'gone' && i !== ex.src);
-        if (other == null || !self) break;
+        const others = ex.it.filter((i) => s.cards[i].zone !== 'gone' && i !== ex.src);
+        if (!others.length || !self) break;
+        for (const other of op.what === 'it' ? others : others.slice(0, 1)) {
         const [top, bottom] = op.what === 'it' ? [ex.src, other] : [other, ex.src];
         const tc = s.cards[top];
         const bc = s.cards[bottom];
-        if (tc.zone !== 'battle') break;
+        if (tc.zone !== 'battle') continue;
         // 元の場所から取り除いて下に置く
         if (bc.zone === 'under' && bc.parent != null) s.cards[bc.parent].under = s.cards[bc.parent].under.filter((u) => u !== bottom);
         else if (bc.zone !== 'gone') {
@@ -961,6 +970,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         bc.parent = top;
         tc.under.push(bottom);
         log(s, ex.player, `${q(nameOf(s, L, bottom))} を ${q(nameOf(s, L, top))} の下に置いた`);
+        }
         break;
       }
       case 'faceDown':

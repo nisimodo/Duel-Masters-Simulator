@@ -383,6 +383,7 @@ export function moveCard(
   c.summoned = to === 'battle' ? !!opts.summoned : undefined;
   c.under = [];
   c.zone = dest;
+  c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
   if (opts.face != null) c.face = opts.face;
   c.tapped = !!opts.tapped;

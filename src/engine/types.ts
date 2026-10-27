@@ -51,6 +51,8 @@ export interface CardInst {
   summoned?: boolean;
   /** 墓地に置かれる直前に進化クリーチャーの下にあった */
   wasUnderEvo?: boolean;
+  /** 直前のゾーン移動がバトルゾーンからだった (「その直前にバトルゾーンにあれば」) */
+  fromBattle?: boolean;
   /** エクストラEXライフの残りのシールド */
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */

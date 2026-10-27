@@ -152,6 +152,14 @@ export type Cond =
   | { c: 'linked'; neg?: boolean }
   /** このクリーチャーが表向きで自分のシールドゾーンにある */
   | { c: 'selfFaceUpShield' }
+  /** バトルゾーンにある自分のクリーチャーの数が自分のシールドの数以上 */
+  | { c: 'creaturesGEShields'; strict?: boolean }
+  /** シールドがN枚未満のプレイヤーがいる */
+  | { c: 'anyShieldsLess'; n: number }
+  /** このカードは直前までバトルゾーンにあった */
+  | { c: 'wasInBattle' }
+  /** 選んだカードのコストの合計がN以上 */
+  | { c: 'costSum'; sel: Sel; n: number }
 
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' }
