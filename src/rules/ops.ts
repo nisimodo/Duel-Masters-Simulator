@@ -134,6 +134,8 @@ export type Cond =
   | { c: 'wasUnderEvo' }
   /** 自分のマナゾーンのカードがすべてその文明 */
   | { c: 'manaAllCiv'; civ: Civ }
+  /** 自分のマナゾーンにすべての文明が揃っている */
+  | { c: 'manaEveryCiv' }
   /** 両方を満たす */
   | { c: 'and'; a: Cond; b: Cond }
   | { c: 'or'; a: Cond; b: Cond }

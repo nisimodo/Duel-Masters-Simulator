@@ -254,6 +254,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return (s.cards[ex.src]?.under ?? []).some((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '').includes('タマシード'));
     case 'selfCardsGE':
       return 1 + (s.cards[ex.src]?.under.length ?? 0) >= c.n;
+    case 'manaEveryCiv': {
+      const have = new Set(me.mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
+      return (['L', 'W', 'D', 'F', 'N'] as const).every((x) => have.has(x));
+    }
     case 'manaAllCiv':
       return me.mana.length > 0 && me.mana.every((m) => {
         const cv = L(s.cards[m].cid)?.civs ?? [];
