@@ -191,7 +191,7 @@ export type Op =
   /** ドギラゴン・ガチャ / ドキンダム・ガチャを回して、その能力を使う */
   | { op: 'gacha'; kind: 'dogiragon' | 'dokindam'; times: number }
   /** このターン、次に召喚する〇〇のコストをN少なくする */
-  | { op: 'nextSummonDiscount'; sel: Sel; n: number }
+  | { op: 'nextSummonDiscount'; sel: Sel; n: number; grants?: string[] }
   /** このターン、クリーチャーをN体マナゾーンから召喚できる */
   | { op: 'manaSummon'; n: number }
   /** it の「出た時」の能力を使う (prefix で始まる能力は除く) */

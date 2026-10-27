@@ -328,6 +328,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/をコストが大きいほうに裏返す$/, 'をコストの大きいほうに裏返す')
+    .replace(/^(この|その)ターン、そのドラゴンのパワーは/, '$1ターン、そのクリーチャーのパワーは')
+    .replace(/^(自分の[^、]+?)と同じ枚数のカードを、?自分の山札の上から(?:マナゾーンにタップして|タップしてマナゾーンに)置(く|いてもよい)$/, '$1 1枚につき、自分の山札の上から1枚目をタップしてマナゾーンに置$2')
     .replace(/^(.+?(?:であれば|なら))、自分の墓地に置く$/, '$1、このクリーチャーを自分の墓地に置く')
     .replace(/^相手がそうしなければ、/, 'そうしなかった場合、')
     .replace(/^(?:その後、)?(?:破壊した|捨てた)(クリーチャー|カード)(\d)(体|枚)につき、?(\d+)枚カードを引(く|いてもよい)$/, 'こうして破壊した$1$2$3につき、カードを$4枚引$5')
@@ -970,6 +973,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^相手は(?:自身|自分)の山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'opp' }];
   // 唱えた後、墓地に置くかわりに山札の下 (呪文を出す処理で行う)
   if (/^(この呪文を(自分の手札から)?)?唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く$/.test(s)) return [];
+  if (/^(この呪文を)?唱えた後、(自分の)?墓地に置くかわりに(自分の)?山札に加えてシャッフルする$/.test(s)) return [];
+  if (/^この呪文を唱えた後、墓地のかわりに自分の《[^》]+》1つの下に置く$/.test(s)) return [];
+  {
+    const us = s.match(/^(.+?)をすべてアンタップし、このターン、?それらに「([^」]+)」を与える$/);
+    const a = us && sentence(`${us[1]}をすべてアンタップする`, ctx);
+    if (a?.length) return [...a, { op: 'grant', target: { ref: 'it' }, kws: [us![2]], until: 'turn' }];
+  }
   // コストを支払うかわりにタップして唱える (常在型能力で処理)
   if (/^コストを支払うかわりに、/.test(s)) return [];
   // シールドをさらにN枚ブレイクする
@@ -1273,9 +1283,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^相手は自身の手札を見せる$/.test(s)) return [];
   // このターン、次に召喚する〇〇のコストを最大N少なくする / マナゾーンから召喚できる / 相手プレイヤーを攻撃できる / バトルに勝った時アンタップ
   {
-    const ns = s.match(/^このターン、次に召喚する(自分の)?(.+?)の(?:召喚)?コストを(?:最大)?(\d+)少なくする$/);
+    const ns = s.match(/^このターン、次に(?:自分が)?召喚する(自分の)?(.+?)の(?:召喚)?コストを(?:最大)?(\d+)少なくする(?:、出た時「(.+)」を与える)?$/);
     const sel = ns && parseSel(ns[2], { zones: ['hand'] });
-    if (ns && sel) return [{ op: 'nextSummonDiscount', sel: { ...sel, kind: 'creature', zones: ['hand', 'mana', 'grave'] }, n: +ns[3] }];
+    if (ns && sel) return [{ op: 'nextSummonDiscount', sel: { ...sel, kind: 'creature', zones: ['hand', 'mana', 'grave'] }, n: +ns[3], ...(ns[4] ? { grants: ns[4].split('」と「') } : {}) }];
     const ms = s.match(/^このターン、クリーチャーを(\d+)体、自分のマナゾーンから召喚(?:する|してもよい)$/);
     if (ms) return [{ op: 'manaSummon', n: +ms[1] }];
     const ap = s.match(/^このターン、(この|その)クリーチャーは相手プレイヤーを攻撃できる$/);
@@ -2032,7 +2042,8 @@ export function parseEffect(text: string): Program {
       body = normText(body).replace(both[0], both[0].startsWith('。') ? '。' : '');
     }
   }
-  body = normText(body).replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
+  body = normText(body).replace(/(次に(?:自分が)?召喚する[^。]+?少なくする)。(ただし、コストは0以下にはならない。)?そのクリーチャーが出た時、このターン、そのクリーチャーに「([^」]+)」を与える/g, '$1、出た時「$3」を与える。$2');
+  body = body.replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
   const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);
   for (const o of prog.ops)

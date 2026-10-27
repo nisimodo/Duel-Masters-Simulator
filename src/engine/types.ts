@@ -101,7 +101,7 @@ export interface PlayerState {
   peek: number[];
   charged: boolean;
   /** このターン、次に召喚するクリーチャーのコスト軽減 */
-  nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number };
+  nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number; grants?: string[] };
   /** このターン、マナゾーンから召喚できる残りの数 */
   manaSummon?: { turn: number; left: number; staticUsed?: number };
   /** このターン最後に使ったカードの種類 (サイクロン用) */

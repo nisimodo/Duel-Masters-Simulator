@@ -2229,6 +2229,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.buzz = a.buzz;
     // 「次に召喚する〇〇」の軽減・「マナゾーンから召喚」の回数を使う
     const me2 = s.players[p];
+    // 「そのクリーチャーが出た時、このターン、そのクリーチャーに「〜」を与える」
+    const nsGrants = !a.free && me2.nextSummon?.turn === s.turn ? me2.nextSummon.grants : undefined;
     if (!a.free && me2.nextSummon?.turn === s.turn) me2.nextSummon = undefined;
     if (c.zone === 'mana' && a.alt !== 'mana' && manaSummonLeft(s, L, p) > 0) {
       if (me2.manaSummon?.turn !== s.turn) me2.manaSummon = { turn: s.turn, left: 0 };
@@ -2236,6 +2238,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
     }
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true });
+    if (nsGrants?.length && c.zone === 'battle') (c.grants ??= []).push({ kws: nsGrants, until: -1 });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
     if (a.alt === 'abyss') {
@@ -2337,7 +2340,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     // デュエルメイト呪文: 唱えた後、墓地のかわりに自分の《デュエリスト》の下に置く
     const underName = face.text.map((l) => normText(l).match(/唱えた後、墓地(?:に置く)?の?かわりに自分の《([^》]+)》(?:1つ|１つ)?の下に置く/)).find(Boolean)?.[1];
     const underHost = underName != null ? [...me.partner, ...me.battle].find((x) => nameOf(s, L, x).includes(underName)) : undefined;
-    if (underHost != null && !cyclone) {
+    const toShuffle = face.text.some((l) => /唱えた後、(?:自分の)?墓地に置くかわりに(?:自分の)?山札に加えてシャッフルする/.test(normText(l)));
+    if (toShuffle && !cyclone) {
+      moveCard(s, L, a.iid, 'deck', { pos: 'top' });
+      shuffleArr(s, me.deck);
+      log(s, p, '唱えた後、山札に加えてシャッフル');
+    } else if (underHost != null && !cyclone) {
       detach(s, a.iid);
       c.zone = 'under';
       c.parent = underHost;

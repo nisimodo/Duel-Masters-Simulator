@@ -1371,7 +1371,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'nextSummonDiscount': {
-        s.players[ex.player].nextSummon = { turn: s.turn, sel: op.sel, n: op.n };
+        s.players[ex.player].nextSummon = { turn: s.turn, sel: op.sel, n: op.n, grants: op.grants };
         log(s, ex.player, `このターン、次に召喚するクリーチャーのコストを${op.n}少なくする`);
         break;
       }

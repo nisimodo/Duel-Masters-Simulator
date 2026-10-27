@@ -18,6 +18,7 @@ const db = buildDB(
   [
     cr('vanilla', 1, 1000, []),
     cr('ulim', 1, 1000, ['相手のターンのはじめに、相手は自身のマナゾーンのカードを２枚までしかアンタップできない。']),
+    { id: 'scrch', n: 'scrch', img: '', f: [{ n: 'scrch', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['このターン、次に自分が召喚するクリーチャーのコストを１少なくする。ただし、コストは０以下にはならない。そのクリーチャーが出た時、このターン、そのクリーチャーに「スピードアタッカー」を与える。', 'この呪文を唱えた後、墓地に置くかわりに山札に加えてシャッフルする。'] }] },
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
     cr('baku', 5, 5000, ['マナ爆誕3(このクリーチャーを自分のマナゾーンから、コスト3を支払って召喚してもよい)']),
@@ -269,6 +270,18 @@ describe('named mechanics', () => {
     const d = find(s, 0, 'battle', 'dante')!;
     moveCard(s, L, d, 'grave');
     expect(s.players[0].deck.at(-1)).toBe(d);
+  });
+
+  it('次に召喚するクリーチャーに「スピードアタッカー」 / 唱えた後山札に加えてシャッフル', () => {
+    let s = setup([{ p: 0, cid: 'scrch', zone: 'hand' }, { p: 0, cid: 'bad', zone: 'hand' }], 5);
+    const sp = find(s, 0, 'hand', 'scrch')!;
+    s = act(s, 0, { t: 'play', iid: sp, face: 0, pay: freeMana(s, 0, 1) });
+    while (s.pending.length) s = act(s, 0, { t: 'resolve' } as never);
+    expect(s.cards[sp].zone).toBe('deck');
+    const b = find(s, 0, 'hand', 'bad')!;
+    s = act(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 3) });
+    expect(s.cards[b].zone).toBe('battle');
+    expect(canAttackWith(s, L, b)).toBe(true);
   });
 
   it('マナ爆誕: summons from the mana zone', () => {
