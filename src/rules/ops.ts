@@ -162,6 +162,8 @@ export type Cond =
   | { c: 'wasInBattle' }
   /** 選んだカードのコストの合計がN以上 */
   | { c: 'costSum'; sel: Sel; n: number }
+  /** このターンに自分が攻撃した回数 / 唱えた呪文の数 */
+  | { c: 'turnCount'; what: 'attacks' | 'spells'; cmp: '>=' | '<=' | '=='; n: number }
 
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' }

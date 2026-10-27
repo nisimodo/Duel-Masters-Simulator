@@ -230,6 +230,11 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
     case 'not':
       return !evalCond(s, L, ex, c.a);
+    case 'turnCount': {
+      const t = c.what === 'attacks' ? me.attacks : me.spellsCast;
+      const v = t?.turn === s.turn ? t.n : 0;
+      return c.cmp === '>=' ? v >= c.n : c.cmp === '<=' ? v <= c.n : v === c.n;
+    }
     case 'firstAttack':
       return !!s.attack && me.attacks?.turn === s.turn && me.attacks.n === 1;
     case 'brokenGE': {
