@@ -832,6 +832,10 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
     for (const iid of me.battle) {
       const ta = tapAbilityOf(s, L, iid);
       if (!ta || s.cards[iid].tapped || (s.cards[iid].sick && !kwOf(s, L, iid).speedAttacker)) continue;
+      // いっしょにタップするマナが足りなければ使えない
+      if (ta.tapMana && me.mana.filter((m) => !s.cards[m].tapped).length < ta.tapMana) continue;
+      // 可能なら攻撃しなければならないクリーチャーは攻撃に回す
+      if (mustAttackers(s, L, p).includes(iid)) continue;
       // 処理できる効果で、攻撃しても相手のシールドを割れない程度のクリーチャーなら使う
       if (!programOf(ta.text).complete) continue;
       if (power(s, L, iid, true) >= 6000 && s.players[mainOpp(s, p)].shield.length <= 2) continue;
