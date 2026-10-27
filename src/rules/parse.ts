@@ -1536,6 +1536,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       const body = sentence(te[1], ctx);
       if (body) return [{ op: 'atTurnEnd', body }];
     }
+    // 「〜を+Nし、ターンの終わりにアンタップする」「〜を与え、このターンの終わりに破壊する」: 前半の対象をターンの終わりに
+    const tt = s.match(/^(.+?)、(?:この|その)?ターンの終わりに(アンタップ(?:する|される)|破壊する)$/);
+    const head = tt && sentence(tt[1].replace(/され$/, 'される').replace(/([+-]\d+)し$/, '$1する').replace(/与え$/, '与える').replace(/を得$/, 'を得る'), ctx);
+    const last = head?.[head.length - 1] as { target?: Target } | undefined;
+    if (tt && head && last?.target) return [...head, { op: 'atTurnEnd', body: [/^アンタップ/.test(tt[2]) ? { op: 'untap', target: last.target } : { op: 'destroy', target: last.target }] }];
   }
   // N体につきN枚引く
   {
