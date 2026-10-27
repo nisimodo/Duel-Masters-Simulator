@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context';
 import { deleteDeck, subscribeDecks } from '../data/api';
 import { mainSize, validateDeck, type Deck } from '../lib/deck';
-import { CardImg } from '../components/CardView';
+import { DeckThumb } from '../components/CardView';
 
 export default function DeckList() {
   const { user, db } = useApp();
@@ -28,11 +28,9 @@ export default function DeckList() {
         {decks != null && !list.length && <div className="muted">デッキがありません</div>}
         {list.map((d) => {
           const issues = validateDeck(db, d);
-          const coverId = d.partner || Object.keys(d.main)[0];
-          const cover = coverId ? db.byId.get(coverId) : undefined;
           return (
             <div key={d.id} className="member">
-              {cover && <CardImg card={cover} width={40} />}
+              <DeckThumb db={db} deck={d} width={40} />
               <div className="col grow" style={{ gap: 0 }}>
                 <Link to={`/decks/${d.id}`}>
                   <b>{d.name}</b>

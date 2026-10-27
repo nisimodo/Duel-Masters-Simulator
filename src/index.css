@@ -858,3 +858,35 @@ button,
   max-width: 360px;
   min-height: 2.6em;
 }
+.deck-thumb-empty {
+  border-radius: 4px;
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+.deck-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.deck-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.deck-pick-row.selected {
+  border-color: var(--accent);
+}
+.deck-pick-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

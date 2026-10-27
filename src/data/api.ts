@@ -9,7 +9,7 @@ const encMap = (m: Record<string, number> = {}) => Object.fromEntries(Object.ent
 const decMap = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [decKey(k), v]));
 
 export function encodeDeck(d: Deck) {
-  return { ...d, main: encMap(d.main), hyper: encMap(d.hyper), gr: encMap(d.gr), partner: d.partner ?? null };
+  return { ...d, main: encMap(d.main), hyper: encMap(d.hyper), gr: encMap(d.gr), partner: d.partner ?? null, thumb: d.thumb ?? null };
 }
 export function decodeDeck(id: string, d: Partial<Deck> | null): Deck {
   return {
@@ -20,6 +20,7 @@ export function decodeDeck(id: string, d: Partial<Deck> | null): Deck {
     hyper: decMap(d?.hyper),
     gr: decMap(d?.gr),
     partner: d?.partner ?? null,
+    thumb: d?.thumb ?? null,
     updatedAt: d?.updatedAt ?? 0,
   };
 }

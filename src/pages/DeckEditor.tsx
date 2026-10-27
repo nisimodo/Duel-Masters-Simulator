@@ -9,6 +9,7 @@ import {
   countOf,
   DECK_SIZE,
   deckSizeBonus,
+  deckThumb,
   DEFAULT_RULES,
   emptyDeck,
   mainSize,
@@ -333,9 +334,36 @@ export default function DeckEditor() {
           )}
         </div>
 
+        {deck.type === 'duema' && (
+          <div className="panel col" style={{ gap: 4 }}>
+            <b>サムネイル</b>
+            {(() => {
+              const tid = deckThumb(deck);
+              const tc = tid ? db.byId.get(tid) : undefined;
+              return tc ? (
+                <div className="row">
+                  <CardImg card={tc} width={60} onHover={setHover} />
+                  <span className="grow">
+                    {tc.name}
+                    {!deck.thumb || deck.thumb !== tid ? <span className="small muted"> (自動)</span> : null}
+                  </span>
+                  {deck.thumb && (
+                    <button className="small" onClick={() => update((d) => (d.thumb = null))}>
+                      自動に戻す
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <span className="small muted">カードを入れると表示されます</span>
+              );
+            })()}
+            <span className="small muted">デッキ内の「★」ボタンで、サムネイルにするカードを選べます</span>
+          </div>
+        )}
+
         {deck.type === 'duepa' && (
           <div className="panel col" style={{ gap: 4 }}>
-            <b>パートナー</b>
+            <b>パートナー (サムネイルになります)</b>
             {deck.partner && db.byId.get(deck.partner) ? (
               <div className="row">
                 <CardImg card={db.byId.get(deck.partner)!} width={60} onHover={setHover} />
@@ -372,6 +400,15 @@ export default function DeckEditor() {
                         P
                       </button>
                     )}
+                    {deck.type === 'duema' && (
+                      <button
+                        className={`small${deckThumb(deck) === cid && deck.thumb === cid ? ' primary' : ''}`}
+                        title="デッキのサムネイルにする"
+                        onClick={() => update((d) => (d.thumb = cid))}
+                      >
+                        ★
+                      </button>
+                    )}
                     <button className="small" onClick={() => remove(card, z)}>
                       −
                     </button>
@@ -404,6 +441,7 @@ export default function DeckEditor() {
               ＋ デッキに追加 ({totalOf(detail.id)}枚)
             </button>
             {deck.type === 'duepa' && mainFace(detail).isCreature && <button onClick={() => setPartner(detail)}>パートナーに設定</button>}
+            {deck.type === 'duema' && totalOf(detail.id) > 0 && <button onClick={() => update((d) => (d.thumb = detail.id))}>サムネイルにする</button>}
           </div>
         </Modal>
       )}

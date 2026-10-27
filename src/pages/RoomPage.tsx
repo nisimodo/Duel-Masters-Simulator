@@ -16,6 +16,7 @@ import {
   type Room,
 } from '../data/api';
 import GameView from '../game/GameView';
+import { DeckThumb } from '../components/CardView';
 import { expandDeck, presetToDeck, randomDeck, validateDeck, type Deck } from '../lib/deck';
 import type { CardDB } from '../lib/cards';
 import type { GameInit } from '../engine/types';
@@ -55,14 +56,14 @@ async function backToLobby(room: Room) {
 function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
   const [sel, setSel] = useState('');
   const options = useMemo(() => {
-    const list: { id: string; label: string; deck: () => Deck; ok: boolean }[] = [];
+    const list: { id: string; label: string; deck: () => Deck; ok: boolean; preview?: Deck }[] = [];
     for (const d of myDecks.filter((x) => x.type === room.rules.mode)) {
-      list.push({ id: d.id, label: d.name, deck: () => d, ok: validateDeck(db, d, room.rules).length === 0 });
+      list.push({ id: d.id, label: d.name, deck: () => d, ok: validateDeck(db, d, room.rules).length === 0, preview: d });
     }
     if (room.rules.mode === 'duema')
       for (const p of db.presets) {
         const { deck } = presetToDeck(db, p.id);
-        list.push({ id: p.id, label: `[プリセット] ${p.name}`, deck: () => deck, ok: validateDeck(db, deck, room.rules).length === 0 });
+        list.push({ id: p.id, label: `[プリセット] ${p.name}`, deck: () => deck, ok: validateDeck(db, deck, room.rules).length === 0, preview: deck });
       }
     list.push({ id: 'random', label: '[ランダム生成]', deck: () => randomDeck(db, room.rules.mode, room.rules), ok: true });
     return list;
@@ -70,20 +71,25 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
   const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
   const chosen = options.find((o) => o.id === sel);
   return (
-    <div className="row">
-      <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ maxWidth: '100%' }}>
-        <option value="">CPUのデッキを選択…</option>
+    <div className="col" style={{ gap: 6 }}>
+      <span className="small muted">CPUのデッキを選択</span>
+      <div className="deck-pick">
         {options.map((o) => (
-          <option key={o.id} value={o.id} disabled={!o.ok}>
-            {o.label}
-            {o.ok ? '' : ' (レギュレーション違反)'}
-          </option>
+          <button key={o.id} className={`deck-pick-row${sel === o.id ? ' selected' : ''}`} disabled={!o.ok} onClick={() => setSel(sel === o.id ? '' : o.id)}>
+            {o.preview ? <DeckThumb db={db} deck={o.preview} width={28} /> : <div className="deck-thumb-empty" style={{ width: 28, height: 39 }} />}
+            <span className="grow">
+              {o.label}
+              {!o.ok && <span className="small warn"> (レギュレーション違反)</span>}
+            </span>
+          </button>
         ))}
-      </select>
-      <button disabled={!chosen || full} onClick={() => chosen && addCpu(room, uid, chosen.deck()).then(() => setSel(''))}>
-        CPUを追加
-      </button>
-      {full && <span className="small muted">満員です</span>}
+      </div>
+      <div className="row">
+        <button disabled={!chosen || full} onClick={() => chosen && addCpu(room, uid, chosen.deck()).then(() => setSel(''))}>
+          CPUを追加
+        </button>
+        {full && <span className="small muted">満員です</span>}
+      </div>
     </div>
   );
 }
@@ -182,6 +188,7 @@ export default function RoomPage() {
               <span className={`dot${m.online ? ' on' : ''}`} />
               <b>{m.name}</b>
               {uid === room.hostUid && <span className="badge">ホスト</span>}
+              {m.deck && <DeckThumb db={db} deck={m.deck} width={28} />}
               <span className="grow small muted">{m.deck ? m.deck.name : 'デッキ未選択'}</span>
               {m.ready ? <span className="ok">準備完了</span> : <span className="muted">準備中</span>}
             </div>
@@ -191,6 +198,7 @@ export default function RoomPage() {
               <span className="dot on" />
               <b>{c.name}</b>
               <span className="badge">CPU</span>
+              <DeckThumb db={db} deck={c.deck} width={28} />
               <span className="grow small muted">{c.deck.name}</span>
               <span className="ok">準備完了</span>
               {(isHost || c.addedBy === user.uid) && (
@@ -238,19 +246,22 @@ export default function RoomPage() {
           </div>
           {me.role === 'player' && (
             <>
+              <div className="deck-pick">
+                {myDecks.map((d) => {
+                  const issues = validateDeck(db, d, room.rules);
+                  return (
+                    <button key={d.id} className={`deck-pick-row${me.deckId === d.id ? ' selected' : ''}`} disabled={issues.length > 0} onClick={() => selectDeck(me.deckId === d.id ? '' : d.id)}>
+                      <DeckThumb db={db} deck={d} width={36} />
+                      <span className="col grow" style={{ gap: 0, minWidth: 0 }}>
+                        <b>{d.name}</b>
+                        {issues.length > 0 && <span className="small warn">使用不可: {issues[0]}</span>}
+                      </span>
+                      {me.deckId === d.id && <span className="ok">選択中</span>}
+                    </button>
+                  );
+                })}
+              </div>
               <div className="row">
-                <select value={me.deckId ?? ''} onChange={(e) => selectDeck(e.target.value)} style={{ maxWidth: '100%' }}>
-                  <option value="">デッキを選択…</option>
-                  {myDecks.map((d) => {
-                    const issues = validateDeck(db, d, room.rules);
-                    return (
-                      <option key={d.id} value={d.id} disabled={issues.length > 0}>
-                        {d.name}
-                        {issues.length ? ` (使用不可: ${issues[0]})` : ''}
-                      </option>
-                    );
-                  })}
-                </select>
                 <button className={me.ready ? '' : 'primary'} disabled={!myDeck || myIssues.length > 0} onClick={toggleReady}>
                   {me.ready ? '準備完了を取り消す' : '準備完了'}
                 </button>

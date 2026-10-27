@@ -11,6 +11,8 @@ export interface Deck {
   hyper: Record<string, number>;
   gr: Record<string, number>;
   partner: string | null;
+  /** デッキのサムネイルにするカード (デュエパはパートナー) */
+  thumb?: string | null;
   updatedAt: number;
 }
 
@@ -38,6 +40,15 @@ export function emptyDeck(type: DeckType): Deck {
     partner: null,
     updatedAt: Date.now(),
   };
+}
+
+/** デッキのサムネイルのカード: デュエパはパートナー、デュエマは選んだカード (なければ一番多く入れているカード) */
+export function deckThumb(deck: Pick<Deck, 'type' | 'main' | 'hyper' | 'gr' | 'partner' | 'thumb'>): string | null {
+  if (deck.type === 'duepa' && deck.partner) return deck.partner;
+  const inDeck = (cid: string) => !!(deck.main[cid] || deck.hyper[cid] || deck.gr[cid] || deck.partner === cid);
+  if (deck.thumb && inDeck(deck.thumb)) return deck.thumb;
+  const top = Object.entries(deck.main).sort((a, b) => b[1] - a[1])[0];
+  return top?.[0] ?? Object.keys(deck.hyper)[0] ?? deck.partner ?? null;
 }
 
 export const countOf = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);

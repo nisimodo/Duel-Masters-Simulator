@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { CIV_COLOR, CIV_NAME, cardImage, type Card, type CardDB } from '../lib/cards';
 import { keywordBadges } from '../lib/keywords';
+import { deckThumb, type Deck } from '../lib/deck';
 
 export function civGradient(card: Card): string {
   const cs = card.civs.length ? card.civs.map((c) => CIV_COLOR[c]) : [CIV_COLOR.Z];
@@ -117,4 +118,11 @@ export function CardDetail({ db, card, face }: { db: CardDB; card: Card | null; 
       ))}
     </div>
   );
+}
+
+/** デッキのサムネイル (デュエパはパートナー、デュエマは選んだカード) */
+export function DeckThumb({ db, deck, width = 40 }: { db: CardDB; deck: Deck; width?: number }) {
+  const id = deckThumb(deck);
+  const card = id ? db.byId.get(id) : undefined;
+  return card ? <CardImg card={card} width={width} /> : <div className="deck-thumb-empty" style={{ width, height: Math.round(width * 1.4) }} />;
 }
