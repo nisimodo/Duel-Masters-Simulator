@@ -18,7 +18,7 @@ import {
 import GameView from '../game/GameView';
 import { DeckThumb } from '../components/CardView';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
-import { expandDeck, presetToDeck, randomDeck, splitByFormat, validateDeck, type Deck, type RoomRules } from '../lib/deck';
+import { deckFormat, expandDeck, presetToDeck, randomDeck, splitByFormat, validateDeck, type Deck, type RoomRules } from '../lib/deck';
 import type { CardDB } from '../lib/cards';
 import type { GameInit } from '../engine/types';
 
@@ -54,10 +54,19 @@ async function backToLobby(room: Room) {
   await backend.update(`rooms/${room.key}`, updates);
 }
 
-/** オリジナルのルームではアドバンスのデッキは使えないことを見出しに書く */
+/** ルームで出すデッキの区分: オリジナルのルームではアドバンスのデッキは出さない。アドバンスのルームではアドバンスを先に */
+function roomFormats(rules: RoomRules): ('original' | 'advance')[] {
+  return rules.format === 'original' ? ['original'] : ['advance', 'original'];
+}
+
 function formatNote(rules: RoomRules, f: 'original' | 'advance') {
-  if (rules.format === 'original' && f === 'advance') return 'このルーム (オリジナル) では使えません';
+  if (rules.format === 'advance' && f === 'original') return 'オリジナルのデッキです (このルームでも使えます)';
   return f === 'original' ? '超次元・超GR・ゲーム開始時に置かれるカードなし' : '超次元・超GR・ゲーム開始時に置かれるカードあり';
+}
+
+/** アドバンスのルームでオリジナルのデッキを選ぶ時の注意 */
+function formatCaution(db: CardDB, rules: RoomRules, d: Deck | null) {
+  return rules.mode === 'duema' && rules.format === 'advance' && d && deckFormat(db, d) === 'original' ? 'オリジナルのデッキです' : undefined;
 }
 
 function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
@@ -78,10 +87,21 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
   const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
   const chosen = options.find((o) => o.id === sel);
   const tile = (o: (typeof options)[number]) => (
-    <DeckTile key={o.id} db={db} deck={o.preview} title={o.label} issues={o.issues} selected={sel === o.id} showUpdated={o.group === 'mine'} onClick={() => setSel(sel === o.id ? '' : o.id)} />
+    <DeckTile
+      key={o.id}
+      db={db}
+      deck={o.preview}
+      title={o.label}
+      issues={o.issues}
+      caution={formatCaution(db, room.rules, o.preview)}
+      selected={sel === o.id}
+      showUpdated={o.group === 'mine'}
+      onClick={() => setSel(sel === o.id ? '' : o.id)}
+    />
   );
   const mine = options.filter((o) => o.group === 'mine');
-  const presets = options.filter((o) => o.group === 'preset');
+  // オリジナルのルームではアドバンスのデッキは出さない
+  const presets = options.filter((o) => o.group === 'preset' && (room.rules.format !== 'original' || !o.preview || deckFormat(db, o.preview) !== 'advance'));
   const random = options.filter((o) => o.group === 'random');
   const split = splitByFormat(db, mine, (o) => o.preview);
   return (
@@ -89,14 +109,11 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
       {!full && <span className="small muted">CPUのデッキを選択</span>}
       {!full && <div className="deck-pick-grid col" style={{ gap: 8 }}>
         {room.rules.mode === 'duema' ? (
-          <>
-            <DeckSection title={<>マイデッキ <FormatBadge format="original" /></>} note={formatNote(room.rules, 'original')}>
-              {split.original.map(tile)}
+          roomFormats(room.rules).map((f) => (
+            <DeckSection key={f} title={<>マイデッキ <FormatBadge format={f} /></>} note={formatNote(room.rules, f)}>
+              {split[f].map(tile)}
             </DeckSection>
-            <DeckSection title={<>マイデッキ <FormatBadge format="advance" /></>} note={formatNote(room.rules, 'advance')}>
-              {split.advance.map(tile)}
-            </DeckSection>
-          </>
+          ))
         ) : (
           <DeckSection title="マイデッキ">{mine.map(tile)}</DeckSection>
         )}
@@ -192,6 +209,7 @@ export default function RoomPage() {
       deck={d}
       issues={validateDeck(db, d, room.rules)}
       okNote="このルームで使用可能"
+      caution={formatCaution(db, room.rules, d)}
       selected={me?.deckId === d.id}
       onClick={() => selectDeck(me?.deckId === d.id ? '' : d.id)}
     />
@@ -299,7 +317,7 @@ export default function RoomPage() {
             <>
               <div className="deck-pick-grid col" style={{ gap: 8 }}>
                 {room.rules.mode === 'duema' ? (
-                  (['original', 'advance'] as const).map((f) => (
+                  roomFormats(room.rules).map((f) => (
                     <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(room.rules, f)} empty="デッキがありません">
                       {splitByFormat(db, myDecks, (d) => d)[f].map(deckTile)}
                     </DeckSection>

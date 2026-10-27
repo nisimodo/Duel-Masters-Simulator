@@ -16,6 +16,10 @@ export default function Home() {
           <h3>オンラインデュエパ</h3>
           <div className="muted">2～5人で遊ぶデュエパーティー。CPUの追加もできます。</div>
         </Link>
+        <Link className="menu-card" to="/testplay">
+          <h3>テストプレイ</h3>
+          <div className="muted">2つのデッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます。</div>
+        </Link>
         <Link className="menu-card" to="/decks">
           <h3>デッキ編成</h3>
           <div className="muted">デュエマ(40枚)・デュエパ(60枚)のデッキを作成・保存します。</div>

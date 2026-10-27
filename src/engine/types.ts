@@ -244,6 +244,8 @@ export interface GameInit {
   seed: number;
   players: GameInitPlayer[];
   createdAt: number;
+  /** 先攻のプレイヤー (テストプレイで交互にする。なければ乱数で決める) */
+  first?: number;
 }
 
 export interface GameState {
@@ -273,6 +275,9 @@ export interface GameState {
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
+  /** 最近のカードの移動 (画面のアニメーション用。n は通し番号) */
+  moves?: { n: number; iid: number; owner: number; from: ZoneName | 'under' | 'gone'; to: ZoneName | 'under' | 'gone' }[];
+  moveSeq?: number;
   /** バトルで破壊されるクリーチャーのバトル相手 (置換効果用) */
   battleFoe?: number;
   /** 「ゲーム中に一度」を使ったカード */

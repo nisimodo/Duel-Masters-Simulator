@@ -17,6 +17,8 @@ interface TileProps {
   issues?: string[];
   /** 使える時に出す一言 */
   okNote?: string;
+  /** 使えるが気をつけること (アドバンスのルームでのオリジナルのデッキなど) */
+  caution?: string;
   selected?: boolean;
   onClick?: () => void;
   actions?: ReactNode;
@@ -24,7 +26,7 @@ interface TileProps {
   showUpdated?: boolean;
 }
 
-export function DeckTile({ db, deck, title, issues = [], okNote, selected, onClick, actions, showUpdated = true }: TileProps) {
+export function DeckTile({ db, deck, title, issues = [], okNote, caution, selected, onClick, actions, showUpdated = true }: TileProps) {
   const disabled = issues.length > 0 && !!onClick;
   const fmt = deck ? deckFormat(db, deck) : null;
   const hyper = deck ? countOf(deck.hyper) : 0;
@@ -51,6 +53,7 @@ export function DeckTile({ db, deck, title, issues = [], okNote, selected, onCli
         {fmt && <FormatBadge format={fmt} />}
         {selected && <span className="badge sel">選択中</span>}
       </div>
+      {caution && issues.length === 0 && <div className="small caution deck-tile-note">⚠ {caution}</div>}
       {issues.length > 0 ? (
         <div className="small warn deck-tile-note" title={issues.join('\n')}>
           ⚠ {issues[0]}

@@ -5,6 +5,9 @@ import { useApp } from '../context';
 import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
+import { ActivationDialog } from './Activation';
+import { activationOf } from './activationOf';
+import { MoveAnimator } from './MoveAnimator';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
 import { attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
@@ -45,6 +48,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     return () => window.removeEventListener('keydown', onKey);
   }, [menu]);
   const [mode, setMode] = useState<Mode>({ kind: 'none' });
+  /** 光っているカードを押して開いた「効果の発動」 */
+  const [actOpen, setActOpen] = useState<number | null>(null);
   const [pay, setPay] = useState<{ iid: number; face: number } | null>(null);
   /** カードを何枚か選ぶダイアログ (ハイパー化でタップするクリーチャー等) */
   const [pick, setPick] = useState<{ title: string; n: number; cands: number[]; picks: number[]; done: (picks: number[]) => void } | null>(null);
@@ -190,6 +195,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
 
   const pending = s.pending[0];
   const myPending = pending && pending.player === me ? pending : null;
+  /** カードを押して発動する任意効果 (S・トリガー・革命チェンジ・「〜してもよい」) */
+  const activation = activationOf(s, myPending);
   /** CPU同士の対戦: 観戦者に手札を見せる */
   const allCpu = s.players.every((p) => p.cpu);
   const isMyTurn = s.active === me && !pending && s.phase !== 'over';
@@ -392,6 +399,10 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const onCardClick = (iid: number, e: MouseEvent) => {
     e.stopPropagation();
     const c = s.cards[iid];
+    if (activation?.cards.includes(iid)) {
+      setActOpen(iid);
+      return;
+    }
     if (mode.kind === 'attack') {
       if (attackTg?.cards.includes(iid)) {
         act({ t: 'attack', attacker: mode.attacker, player: c.owner, card: iid });
@@ -448,6 +459,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         tapped={c.tapped}
         target={isTarget}
         selected={selected}
+        glow={activation?.cards.includes(iid)}
         onHover={hov(iid)}
         onClick={(e) => onCardClick(iid, e)}
         onContextMenu={(e) => openMenu(e, nameOf(s, L, iid), cardMenu(iid))}
@@ -465,8 +477,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     );
   };
 
-  const pile = (label: string, count: number, node: ReactNode, onClick?: (e: MouseEvent) => void) => (
-    <div className="pile" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
+  const pile = (label: string, count: number, node: ReactNode, onClick?: (e: MouseEvent) => void, anchor?: string) => (
+    <div className="pile" data-anchor={anchor} onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
       {node}
       <span>
         {label} {count}
@@ -521,7 +533,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const sleeve = sleeveOf(p);
     const mat = pl.cpu ? null : profiles[pl.uid]?.playmat;
     const handNode = (
-      <div className="zone hand" style={{ minHeight: pos === 'compact' ? 40 : undefined }}>
+      <div className="zone hand" data-anchor={`${p}-hand`} style={{ minHeight: pos === 'compact' ? 40 : undefined }}>
         {pl.hand.map((i) =>
           self || s.cards[i].revealed || allCpu ? (
             renderCard(i)
@@ -533,7 +545,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       </div>
     );
     const shields = (
-      <div className="row shields-row" style={{ gap: 3 }}>
+      <div className="row shields-row" data-anchor={`${p}-shield`} style={{ gap: 3 }}>
         {pl.shield.map((i, k) => (
           <CardBack
             key={i}
@@ -553,29 +565,33 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const graveTop = pl.grave[pl.grave.length - 1];
     const piles = (
       <div className="row piles-row" style={{ gap: 6, alignItems: 'flex-end' }}>
-        {pile('山札', pl.deck.length, <CardBack sleeve={sleeve} width={40} />, (e) => openMenu(e, '山札', deckMenu(p)))}
-        {pile('墓地', pl.grave.length, graveTop != null ? <CardImg card={cardAt(graveTop)} width={40} /> : <div className="card" style={{ width: 40, background: '#0004' }} />, () =>
-          setViewer({ kind: 'grave', player: p }),
+        {pile('山札', pl.deck.length, <CardBack sleeve={sleeve} width={40} />, (e) => openMenu(e, '山札', deckMenu(p)), `${p}-deck`)}
+        {pile(
+          '墓地',
+          pl.grave.length,
+          graveTop != null ? <CardImg card={cardAt(graveTop)} width={40} /> : <div className="card" style={{ width: 40, background: '#0004' }} />,
+          () => setViewer({ kind: 'grave', player: p }),
+          `${p}-grave`,
         )}
         {(pl.hyper.length > 0 || s.mode === 'duema') &&
-          pile('超次元', pl.hyper.length, <div className="card" style={{ width: 40, background: '#4c1d95' }} />, () => setViewer({ kind: 'hyper', player: p }))}
+          pile('超次元', pl.hyper.length, <div className="card" style={{ width: 40, background: '#4c1d95' }} />, () => setViewer({ kind: 'hyper', player: p }), `${p}-hyper`)}
         {(pl.gr.length > 0 || s.mode === 'duema') &&
           pile('GR', pl.gr.length, <CardBack sleeve={null} width={40} />, (e) =>
             openMenu(e, '超GRゾーン', self ? [{ label: 'GR召喚', onClick: () => act({ t: 'grSummon' }) }, { label: '中身を見る', onClick: () => setViewer({ kind: 'gr', player: p }) }] : []),
-          )}
+          `${p}-gr`)}
         {pl.partner.map((i) =>
           pile(/デュエリスト/.test(L(s.cards[i].cid)?.faces[0]?.type ?? '') ? 'デュエリスト' : 'パートナー', 1, s.cards[i].faceUp ? renderCard(i, { width: 40 }) : <CardBack sleeve={sleeve} width={40} />, undefined),
         )}
       </div>
     );
     const battle = (
-      <div className="zone" onClick={() => mode.kind === 'stack' && setMode({ kind: 'none' })}>
+      <div className="zone" data-anchor={`${p}-battle`} onClick={() => mode.kind === 'stack' && setMode({ kind: 'none' })}>
         {pl.battle.map((i) => renderCard(i, { showPower: true, width: pos === 'compact' ? 44 : undefined }))}
         {!pl.battle.length && <span className="muted small">バトルゾーン</span>}
       </div>
     );
     const mana = (
-      <div className="zone mana" onClick={(e) => e.target === e.currentTarget && setViewer({ kind: 'mana', player: p })}>
+      <div className="zone mana" data-anchor={`${p}-mana`} onClick={(e) => e.target === e.currentTarget && setViewer({ kind: 'mana', player: p })}>
         {pl.mana.map((i) => renderCard(i, { width: pos === 'compact' ? 30 : 48 }))}
         <span className="muted small">
           マナ {untappedMana(s, p)}/{pl.mana.length}
@@ -594,7 +610,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const cls = `player-area${s.active === p ? ' active' : ''}${pl.lost ? ' lost' : ''}${pos === 'compact' ? ' opp-compact' : ''}`;
     if (pos === 'bottom')
       return (
-        <div key={p} className={cls} style={style}>
+        <div key={p} className={cls} style={style} data-anchor={`${p}-area`}>
           {battle}
           <div className="row" style={{ justifyContent: 'space-between' }}>
             {shields}
@@ -607,7 +623,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       );
     if (pos === 'top')
       return (
-        <div key={p} className={cls} style={style}>
+        <div key={p} className={cls} style={style} data-anchor={`${p}-area`}>
           {header}
           {handNode}
           {mana}
@@ -619,7 +635,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         </div>
       );
     return (
-      <div key={p} className={cls} style={style}>
+      <div key={p} className={cls} style={style} data-anchor={`${p}-area`}>
         {header}
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div className="col grow" style={{ gap: 2 }}>
@@ -683,6 +699,21 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     <div className="game" onClick={() => setMenu(null)}>
       <div className="board">
         {others.length === 1 && !narrow && !short ? renderPlayer(others[0], 'top') : others.map((p) => renderPlayer(p, 'compact'))}
+        {activation && (
+          <div className="banner activation-banner">
+            <span>
+              ⚡ <b>{activation.title}</b>: 光っているカードを押すと発動する効果を確認できます
+            </span>
+            <span className="activation-cards">
+              {activation.cards.map((i) => (
+                <CardImg key={i} card={cardAt(i)} face={s.cards[i].zone === 'battle' ? s.cards[i].face : 0} width={34} glow onHover={hov(i)} onClick={() => setActOpen(i)} />
+              ))}
+            </span>
+            <button className="small" onClick={() => (setActOpen(null), act(activation.skip))}>
+              スキップ
+            </button>
+          </div>
+        )}
         {(mode.kind !== 'none' || myPending?.kind === 'breakSel') && (
           <div className="banner">
             {mode.kind === 'attack' && (
@@ -831,7 +862,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
                     </button>
                     {ability.optional && (
                       <button className="small" onClick={() => (setMode({ kind: 'none' }), act({ t: 'resolve', use: false }))}>
-                        使わない
+                        スキップ
                       </button>
                     )}
                   </div>
@@ -897,7 +928,20 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         )}
       </div>
 
-      {myPending && myPending.kind !== 'breakSel' && myPending.kind !== 'ability' && (
+      {myPending && activation && actOpen != null && activation.cards.includes(actOpen) && (
+        <ActivationDialog
+          key={`${s.seq}-${actOpen}`}
+          s={s}
+          L={L}
+          pending={myPending}
+          iid={actOpen}
+          skip={activation.skip}
+          onHover={(c) => setHover(c ? { card: c } : null)}
+          onClose={() => setActOpen(null)}
+          onSubmit={(a) => (setActOpen(null), act(a))}
+        />
+      )}
+      {myPending && !activation && myPending.kind !== 'breakSel' && myPending.kind !== 'ability' && (
         <PendingDialog
           key={s.seq}
           s={s}
@@ -999,6 +1043,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
           </div>
         </Modal>
       )}
+      <MoveAnimator s={s} L={L} me={me} showAll={allCpu} sleeveOf={sleeveOf} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

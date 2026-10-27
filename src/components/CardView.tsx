@@ -25,6 +25,8 @@ interface CardImgProps {
   tapped?: boolean;
   selected?: boolean;
   target?: boolean;
+  /** 押すと効果を発動できる (光らせる) */
+  glow?: boolean;
   onClick?: (e: MouseEvent) => void;
   onContextMenu?: (e: MouseEvent) => void;
   onHover?: (c: Card | null) => void;
@@ -33,14 +35,14 @@ interface CardImgProps {
 }
 
 /** 公式画像を表示。読み込めない場合は文明色のテキストカードにする */
-export function CardImg({ card, face = 0, width, tapped, selected, target, onClick, onContextMenu, onHover, children, title }: CardImgProps) {
+export function CardImg({ card, face = 0, width, tapped, selected, target, glow, onClick, onContextMenu, onHover, children, title }: CardImgProps) {
   const [failed, setFailed] = useState(false);
   const f = card.faces[face] ?? card.faces[0];
   const useText = failed;
   const style: CSSProperties = width != null ? ({ '--w': typeof width === 'number' ? `${width}px` : width } as CSSProperties) : {};
   return (
     <div
-      className={`card${tapped ? ' tapped' : ''}${selected ? ' selected' : ''}${target ? ' target' : ''}`}
+      className={`card${tapped ? ' tapped' : ''}${selected ? ' selected' : ''}${target ? ' target' : ''}${glow ? ' glow' : ''}`}
       style={style}
       onClick={onClick}
       onContextMenu={onContextMenu}

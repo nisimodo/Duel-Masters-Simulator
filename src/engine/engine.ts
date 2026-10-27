@@ -471,6 +471,7 @@ export function moveCard(
   c.summoned = to === 'battle' ? !!opts.summoned : undefined;
   c.under = [];
   c.zone = dest;
+  noteMove(s, iid, from, dest);
   c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
   if (opts.face != null) c.face = opts.face;
@@ -930,6 +931,16 @@ function isPartnerCard(s: GameState, iid: number) {
 /** ドロー時の判定 (ビビッドロー) に使うカード情報。applyAction のたびに設定する */
 let vividLookup: Lookup | null = null;
 
+/** カードの移動を記録する (画面のアニメーション用。最近の分だけ残す) */
+export function noteMove(s: GameState, iid: number, from: ZoneName | 'under' | 'gone', to: ZoneName | 'under' | 'gone') {
+  if (from === to) return;
+  const n = (s.moveSeq ?? 0) + 1;
+  s.moveSeq = n;
+  const list = s.moves ?? [];
+  list.push({ n, iid, owner: s.cards[iid].owner, from, to });
+  s.moves = list.length > 40 ? list.slice(-40) : list;
+}
+
 export function drawCards(s: GameState, p: number, n: number) {
   const pl = s.players[p];
   let drawn = 0;
@@ -940,6 +951,7 @@ export function drawCards(s: GameState, p: number, n: number) {
     c.zone = 'hand';
     c.faceUp = true;
     pl.hand.push(top);
+    noteMove(s, top, 'deck', 'hand');
     drawn++;
     (pl.drawnPending ??= []).push(top);
     // ビビッドロー: 自分のターン中、攻撃の前にドローしたら表向きにする
@@ -1083,7 +1095,7 @@ export function createGame(init: GameInit, L: Lookup): GameState {
     }
     drawCards(s, p, n + (zeroOwners.some((z) => z !== p) ? 1 : 0));
   });
-  s.firstPlayer = Math.floor(rand(s) * s.players.length);
+  s.firstPlayer = init.first != null && init.first < s.players.length ? init.first : Math.floor(rand(s) * s.players.length);
   s.active = s.firstPlayer;
   log(s, null, `ゲーム開始！ 先攻は ${s.players[s.active].name}`);
   for (const pl of s.players) {
