@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { applyAction, attackTargets, breakCount, breakShields, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
-import { programOf, startExec } from './interp';
+import { matchesSel, programOf, startExec } from './interp';
+import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
 import { spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
@@ -1317,6 +1318,19 @@ describe('named mechanics', () => {
     expect(kwOf(s, L, o).cantAttack).toBe(true);
     for (const pl of s.players) while (pl.shield.length > 3) pl.shield.pop();
     expect(kwOf(s, L, o).cantAttack).toBeFalsy();
+  });
+
+  it('「AまたはB」 (種類が違う) はどちらかに合うものを選べる', () => {
+    const s = setup([
+      { p: 0, cid: 'lightMon', zone: 'battle' },
+      { p: 0, cid: 'scrch', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const sel = parseSel('光のクリーチャーまたは呪文', { zones: ['battle', 'hand'] })!;
+    expect(sel.or).toHaveLength(2);
+    expect(matchesSel(s, L, find(s, 0, 'battle', 'lightMon')!, sel)).toBe(true);
+    expect(matchesSel(s, L, find(s, 0, 'hand', 'scrch')!, sel)).toBe(true);
+    expect(matchesSel(s, L, find(s, 0, 'hand', 'vanilla')!, sel)).toBe(false);
   });
 
   it('シビルカウント: free cast when enough civ creatures', () => {

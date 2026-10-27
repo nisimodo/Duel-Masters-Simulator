@@ -40,7 +40,21 @@ const KANJI_RACE = /^(革命軍|マスター革命軍|S級侵略者|侵略者(ZE
 /** 種族などとして許す語 (カタカナ・英字・記号) */
 const RACE_WORD = /^[゠-ヿー・=＝<>＜＞A-Za-z0-9.'’!！]+$/;
 
+/** 「ドラゴンまたはクロスギア」「アーマード・ドラゴンまたは名前に《X》とあるクリーチャー」: 種族どうし以外の「または」はどちらかに合うもの */
 export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
+  const om = phrase.replace(/\s+/g, '').match(/^((?:バトルゾーンにある)?(?:自分|相手)の)?([^、]+?)または([^、]+)$/);
+  if (om && !(RACE_WORD.test(om[2]) && RACE_WORD.test(om[3]) && !KIND_WORD.test(om[3])) && !/^(光|水|闇|火|自然)$/.test(om[2]) && !/》$/.test(om[2])) {
+    const a = parseSel0((om[1] ?? '') + om[2], defaults);
+    const b = a && parseSel0((om[1] ?? '') + om[3], defaults);
+    if (a && b && (a.kind !== b.kind || b.nameHas || b.name || a.nameHas || a.name))
+      return { owner: a.owner, zones: a.zones, kind: a.kind === b.kind ? a.kind : 'card', or: [a, b] };
+  }
+  return parseSel0(phrase, defaults);
+}
+
+const KIND_WORD = /^(クリーチャー|呪文|カード|クロスギア|タマシード|オーラ|フィールド|城|ドラグハート|エレメント)$/;
+
+function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
   let p = phrase.replace(/\s+/g, '').replace(/の、/g, 'の').replace(/^、/, '').trim();
   const sel: Sel = { owner: 'any', zones: ['battle'], kind: 'creature', ...defaults };
   let zoneSet = false;

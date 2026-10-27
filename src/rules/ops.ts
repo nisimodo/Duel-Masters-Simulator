@@ -82,6 +82,8 @@ export interface Sel {
   evolution?: boolean;
   nonEvolution?: boolean;
   twinpact?: boolean;
+  /** どれかに合えばよい (「ドラゴンまたはクロスギア」) */
+  or?: Sel[];
 }
 
 export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; fromCount?: boolean } | { all: true };
