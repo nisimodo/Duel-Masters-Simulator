@@ -293,6 +293,10 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       const lb = s.cards[ex.src]?.leftBehind;
       return lb != null && s.cards[lb].zone === 'battle' ? [lb] : [];
     }
+    case 'blocker': {
+      const b = s.attack?.blocked;
+      return b != null && s.cards[b].zone === 'battle' ? [b] : [];
+    }
     case 'host': {
       const par = s.cards[ex.src]?.parent;
       return par != null && s.cards[par].zone === 'battle' ? [par] : [];
@@ -809,6 +813,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (s.attack?.targetCard === other) s.attack.targetCard = ex.src;
         break;
       }
+      case 'noBattle': {
+        if (s.attack) s.attack.noBattle = true;
+        break;
+      }
       case 'manaUntapLimit': {
         for (const o of opps(s, ex.player)) s.players[o].manaUntapLimit = Math.min(op.n, s.players[o].manaUntapLimit ?? op.n);
         log(s, ex.player, `次の相手のターンのはじめに、相手はマナを${op.n}枚までしかアンタップできない`);
@@ -975,7 +983,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'countSet': {
-        if (op.civsOf) {
+        if (op.cardsOfIt) {
+          // 「そのクリーチャーに含まれるカード」: 下に重なったカードも数える
+          const i = ex.it[0];
+          ex.count = i != null && s.cards[i].zone === 'battle' ? 1 + s.cards[i].under.length : 0;
+        } else if (op.civsOf) {
           const ids = op.civsOf === 'mana' ? s.players[ex.player].mana : s.players[ex.player].battle;
           ex.count = new Set(ids.flatMap((i) => L(s.cards[i].cid)?.civs ?? [])).size;
         } else ex.count = op.sel ? candidates(s, L, ex, op.sel).length : 0;

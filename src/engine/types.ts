@@ -205,6 +205,8 @@ export interface AttackState {
   targetPlayer: number;
   targetCard: number | null;
   blocked: number | null;
+  /** 「バトルは行われない」 */
+  noBattle?: boolean;
   step: 'opt' | 'atkTrig' | 'block' | 'resolve' | 'breaking' | 'done';
   /** バトルする時/ブロックされなかった時の能力を発動済み */
   preFired?: boolean;

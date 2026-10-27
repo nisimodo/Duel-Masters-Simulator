@@ -28,6 +28,8 @@ function unOptional(s: string): string | null {
     [/させてもよい$/, 'させる'],
     [/行ってもよい$/, '行う'],
     [/とばしてもよい$/, 'とばす'],
+    // 五段の「裏返す」「外す」「移す」等 (サ変の「〜する」と区別する)
+    [/(返|外|渡|移|回|残|探)してもよい$/, '$1す'],
     [/([一-鿿゠-ヿー]+)してもよい$/, '$1する'],
     [/してもよい$/, 'する'],
     // 下一段の動詞 「入れ替えてもよい」「与えてもよい」「止めてもよい」
@@ -106,7 +108,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^コストの大きいほうに裏返す$/)) return [{ op: 'flip', target, to: 'big' }];
   if (m(/^コストの小さいほうに裏返す$/)) return [{ op: 'flip', target, to: 'small' }];
   if (m(/^クリーチャー側に裏返(す|し、アンタップする)$/)) return [{ op: 'flip', target, to: 'creature' }];
-  if (m(/^(もう一方の面に)?裏返す$/)) return [{ op: 'flip', target }];
+  if (m(/^(もう一方の面に|フォートレス側に|ドラグハート側に)?裏返す$/)) return [{ op: 'flip', target }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン|超次元ゾーン)から(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン)からコストを支払わずに召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
   if (m(/^(自分の)?(手札|墓地|マナゾーン)からコストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
@@ -128,7 +130,7 @@ function purposeOf(sel: Sel, verb: string): Purpose {
 
 // ---------- 条件 ----------
 
-function parseCond(c: string): Cond | null {
+export function parseCond(c: string): Cond | null {
   let m: RegExpMatchArray | null;
   if ((m = c.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あ$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +m[1] };
   if (/^(?:バトルゾーンにある)?自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
@@ -197,7 +199,7 @@ function parseCond(c: string): Cond | null {
     if (sel) return { c: 'not', a: { c: 'itMatches', sel } };
   }
   if ((m = c.match(/^(自分|相手)のシールドが(\d+)(?:つ|枚)以下(?:であ|で)?$/))) return { c: 'shields', who: m[1] === '自分' ? 'self' : 'opp', cmp: '<=', n: +m[2] };
-  if (/^バトルゾーンにある自分のクリーチャーがこのクリーチャーだけであ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, cmp: '<=', n: 0 };
+  if (/^(?:バトルゾーンにある)?自分のクリーチャーがこのクリーチャーだけ(?:であ|で|なら)?$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, cmp: '<=', n: 0 };
   if (/^このクリーチャーが(?:自分の)?墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if (/^このクリーチャーがバトルゾーンにあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分と相手のシールドの数が合計(\d+)つ以下$/))) return { c: 'totalShieldsLE', n: +m[1] };
@@ -326,6 +328,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/^(.+?(?:であれば|なら))、自分の墓地に置く$/, '$1、このクリーチャーを自分の墓地に置く')
+    .replace(/^相手がそうしなければ、/, 'そうしなかった場合、')
     .replace(/^(?:その後、)?(?:破壊した|捨てた)(クリーチャー|カード)(\d)(体|枚)につき、?(\d+)枚カードを引(く|いてもよい)$/, 'こうして破壊した$1$2$3につき、カードを$4枚引$5')
     .replace(/^(?:その後、)?それら(\d)(体|枚)につき、/, 'こうして選んだカード$1$2につき、')
     .replace(/^次の自分のターンが始まるまで、/, '次の自分のターンのはじめまで、')
@@ -692,6 +696,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  if (/^(?:その)?バトルは行われない$/.test(s)) return [{ op: 'noBattle' }];
+  {
+    const bk = s.match(/^(?:その|この)?(?:攻撃を)?ブロックしたクリーチャーを(.+)$/);
+    const ops = bk && verbOps(bk[1], { ref: 'blocker' });
+    if (ops) return ops;
+  }
   {
     // 「その中からN枚を手札に加え、N枚を山札の一番下に戻し、残りを山札の一番上に置く」
     const hb = s.match(/^その中から(\d+)枚を手札に加え、(\d+)枚を山札の一番下に(?:戻し|置き)、残り(?:の\d+枚)?を山札の一番上に(?:戻す|置く)$/);
@@ -1911,6 +1921,23 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         },
       ];
   }
+  // 「そのクリーチャーに含まれるカード1枚につき、〜」
+  if ((m = s.match(/^そのクリーチャーに含まれるカード1枚につき、(.+)$/))) {
+    const body = sentence(m[1], ctx);
+    if (body?.length) return [{ op: 'countSet', cardsOfIt: true }, { op: 'repeatCount', body }];
+  }
+  // 「各プレイヤーはバトルゾーン、手札、墓地にあるこのクリーチャー以外の自身のカードすべてを山札に加えてシャッフルする」
+  if (/^各プレイヤーは、?バトルゾーン、手札、墓地にあるこのクリーチャー以外の自身のカードすべてを山札に加えてシャッフルする$/.test(s))
+    return [
+      {
+        op: 'forEachPlayer',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle', 'hand', 'grave'], kind: 'card', other: true }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+          { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+          { op: 'shuffle' },
+        ],
+      },
+    ];
   // 「各プレイヤーは自身の手札を山札に戻してシャッフルし、その枚数と同じ枚数のカードを引く」
   if (/^各プレイヤーは、?自身の手札を(?:すべて)?(?:それぞれの|自身の)?山札に(?:戻して|加えて)シャッフルし、その枚数と同じ枚数のカードを引く$/.test(s))
     return [

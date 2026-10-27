@@ -503,6 +503,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if ((m = t0.match(/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(?:墓地に置く|バトルゾーンを離れる)?かわりに、?(.+?(?:破壊|捨て|手札に(?:加え|戻)|墓地に置|山札の(?:一番)?下に置|表向きに|タップ).+)$/)))
     return [{ s: 'replaceLeave', on: m[1] === '破壊される' ? 'destroy' : 'leave', effect: m[2] }];
+  if (/^これをクロスしたクリーチャーが破壊される時、そのクリーチャーは墓地に置かれるかわりにバトルゾーンにとどまる$/.test(t0)) return [{ s: 'replaceLeave', on: 'destroy', effect: '', cross: true }];
   if ((m = t0.match(/^これをクロスしたクリーチャーが破壊される時、(?:墓地に置く)?かわりに、?(.+)$/))) return [{ s: 'replaceLeave', on: 'destroy', effect: m[1], cross: true }];
   if (/^エターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3) }];
   if ((m = t0.match(/^水晶ソウル(\d+)/))) return [{ s: 'crystalSoul', n: +m[1] }];

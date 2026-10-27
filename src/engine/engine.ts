@@ -181,6 +181,8 @@ export function moveCard(
     // クロスギアの「これをクロスしたクリーチャーが破壊される時、かわりに〜」も含める
     const own = [
       ...(card?.faces[c.face]?.statics ?? []),
+      // 超魂X などで得ている置換効果
+      ...effGroups(s, L, iid).flatMap((g) => g.statics),
       ...c.under.flatMap((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.statics ?? []).filter((x) => x.s === 'replaceLeave' && x.cross)),
     ];
     // 「離れる時、〜なら、かわりにとどまる」
@@ -243,7 +245,7 @@ export function moveCard(
     // 「破壊される時、かわりに自分の〜」: 払えるなら払ってとどまる
     for (const rl of own) {
       if (rl.s !== 'replaceLeave' || (rl.on === 'destroy' && to !== 'grave')) continue;
-      const prog = programOf(rl.effect);
+      const prog = rl.effect ? programOf(rl.effect) : { ops: [], complete: true, unparsed: [] };
       // 「〜してもよい」は、払える時は払う (払わずに離れる選択はしない)
       const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
       // 置換の中で同じカードがまた置換しないように (互いに身代わりになる無限ループ防止)
@@ -492,7 +494,8 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
 function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('../rules/ops').Op[]): boolean {
   const first = ops.find((o) => o.op !== 'optional') ?? ops[0];
   const op = first?.op === 'optional' ? first.body[0] : first;
-  if (!op) return false;
+  // 何もせずにとどまる置換
+  if (!op) return ops.length === 0;
   if (op.op === 'choose' && op.target.ref === 'sel') {
     const sel = op.target.sel;
     const n = op.target.count && 'n' in op.target.count ? (op.target.count.n ?? 1) : 1;
@@ -1700,7 +1703,7 @@ function resolveAttack(s: GameState, L: Lookup) {
   if (a.blocked != null) {
     a.step = 'done';
     // 「ブロックされた場合、バトルは行われない」
-    const noBattle = [a.attacker, a.blocked].some((x, k) => (faceOf(s, L, x)?.statics ?? []).some((sp) => sp.s === 'noBlockBattle' && sp.blocking === (k === 1)));
+    const noBattle = a.noBattle || [a.attacker, a.blocked].some((x, k) => ownStatics(s, L, x).some((sp) => sp.s === 'noBlockBattle' && sp.blocking === (k === 1)));
     if (noBattle) log(s, a.owner, 'バトルは行われない');
     else if (s.cards[a.blocked].zone === 'battle') battle(s, L, a.attacker, a.blocked);
     return;

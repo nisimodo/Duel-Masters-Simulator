@@ -93,6 +93,7 @@ export type Target =
   | { ref: 'under'; count: Count } // このクリーチャーの下にあるカード
   | { ref: 'saved' } // 先に選んで保存しておいたカード
   | { ref: 'host' } // これを装備/クロスしたクリーチャー
+  | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
   | { ref: 'leftBehind' } // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
@@ -206,7 +207,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle' }
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -242,6 +243,7 @@ export type Op =
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
   | { op: 'manaUntapLimit'; n: number }
+  | { op: 'noBattle' }
   /** 封印を付ける (山札の上から裏向きで) */
   | { op: 'seal'; target: Target; n: number }
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
