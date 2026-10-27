@@ -1128,6 +1128,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'pickSameName': {
         const all = s.players.flatMap((pl) => pl.battle).filter((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.isCreature);
+        // 「そのクリーチャーと、同じ名前を持つ他のクリーチャーすべて」
+        if (op.ofIt) {
+          const names = new Set(ex.it.map((i) => nameOf(s, L, i)));
+          ex.it = all.filter((i) => ex.it.includes(i) || names.has(nameOf(s, L, i)));
+          break;
+        }
         const cnt = new Map<string, number>();
         for (const i of all) cnt.set(nameOf(s, L, i), (cnt.get(nameOf(s, L, i)) ?? 0) + 1);
         ex.it = all.filter((i) => (cnt.get(nameOf(s, L, i)) ?? 0) >= op.n);

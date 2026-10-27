@@ -19,6 +19,7 @@ export type TrigEvent =
   | 'leave' // このクリーチャーがバトルゾーンを離れた時
   | 'breakShield' // このクリーチャーがシールドをブレイクした時
   | 'ownShieldBroken' // 自分のシールドがブレイクされた時
+  | 'oppShieldBroken' // 相手のシールドがブレイクされた時 (1枚ごと)
   | 'spellOwn' // 自分が呪文を唱えた時
   | 'spellOpp' // 相手が呪文を唱えた時
   | 'spellAny'
@@ -76,6 +77,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   leave: 'バトルゾーンを離れた時',
   breakShield: 'シールドをブレイクした時',
   ownShieldBroken: 'シールドがブレイクされた時',
+  oppShieldBroken: '相手のシールドをブレイクした時',
   spellOwn: '自分が呪文を唱えた時',
   spellOpp: '相手が呪文を唱えた時',
   spellAny: '呪文が唱えられた時',

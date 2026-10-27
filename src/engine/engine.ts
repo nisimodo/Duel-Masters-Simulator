@@ -1667,6 +1667,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
   pl.broken.n += shields.length;
   if (breaker != null && s.cards[breaker].zone === 'battle') fireSelf(s, L, breaker, s.cards[breaker].face, ['breakShield']);
   fireWatchers(s, L, target, null, 'ownShieldBroken', null);
+  if (breaker != null && by !== target && s.tempTriggers?.some((t) => t.event === 'oppShieldBroken')) for (let k = 0; k < shields.length; k++) fireWatchers(s, L, target, null, null, 'oppShieldBroken');
 }
 
 function resolveAttack(s: GameState, L: Lookup) {

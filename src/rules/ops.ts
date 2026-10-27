@@ -198,7 +198,7 @@ export type Op =
   /** 相手は各ターンN度しか攻撃もブロックもできない (次の自分のターンのはじめまで) */
   | { op: 'actLimit'; n: number }
   /** バトルゾーンに同じ名前のクリーチャーがN体以上あるものを it にする */
-  | { op: 'pickSameName'; n: number }
+  | { op: 'pickSameName'; n: number; ofIt?: boolean }
   /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */
   | { op: 'mugetsu'; each?: number; total?: number }
   /** 選んだカード (it) 以外の、そのゾーンのカードをすべて to に置く */
@@ -267,7 +267,7 @@ export type Op =
   /** このターンの終わりに body を実行する (it はその時点の it) */
   | { op: 'atTurnEnd'; body: Op[] }
   /** このターン、〜した時に effect を使う (一時的な誘発型能力) */
-  | { op: 'tempTrigger'; event: 'ownAttack' | 'oppDestroyed' | 'otherOwnEnter' | 'spellOwn' | 'ownShieldBroken'; effect: string; optional: boolean }
+  | { op: 'tempTrigger'; event: 'ownAttack' | 'oppDestroyed' | 'otherOwnEnter' | 'spellOwn' | 'ownShieldBroken' | 'oppShieldBroken'; effect: string; optional: boolean }
   /** 次の自分のターンのはじめまで、ハイパーモードを解放する */
   | { op: 'hyperMode'; target: Target }
   /** 次の自分のターンのはじめに body を実行する */

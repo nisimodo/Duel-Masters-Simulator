@@ -325,6 +325,26 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/攻撃またはブロックできない$/, '攻撃もブロックもできない')
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
+    .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/^(?:その後、)?(?:破壊した|捨てた)(クリーチャー|カード)(\d)(体|枚)につき、?(\d+)枚カードを引(く|いてもよい)$/, 'こうして破壊した$1$2$3につき、カードを$4枚引$5')
+    .replace(/^(?:その後、)?それら(\d)(体|枚)につき、/, 'こうして選んだカード$1$2につき、')
+    .replace(/^次の自分のターンが始まるまで、/, '次の自分のターンのはじめまで、')
+    .replace(/^(このターン、その(?:クリーチャー)?が)バトルに勝った時、バトルの後で?アンタップする$/, '$1バトルに勝った時、アンタップする')
+    .replace(/^自分の次のターンのはじめまで、相手のクリーチャーは「このクリーチャーは、?可能(?:であれば|なら)攻撃する」を得る$/, '次の自分のターンのはじめまで、相手のクリーチャーはすべて、可能であれば攻撃する')
+    .replace(/^そのクリーチャーは、?自分の次のターンのはじめまで「このクリーチャーは、?可能(?:であれば|なら)攻撃する」を得る$/, '次の自分のターンのはじめまで、そのクリーチャーは可能であれば攻撃する')
+    .replace(/^自分のクリーチャー(\d+)体のパワーは、?このターンの終わりまで\+(\d+)される$/, '自分のクリーチャーを$1体選び、このターン、そのパワーを+$2する')
+    .replace(/^バトルゾーンにある、/, 'バトルゾーンにある')
+    .replace(/持主の/g, '持ち主の')
+    .replace(/^(その後、)?バトルゾーンにあるその他のクリーチャーを/, '$1バトルゾーンにある他のクリーチャーを')
+    .replace(/^その中から好きな(?:枚数|数)の(カード|クリーチャー)を選び、/, 'その中から$1を99枚まで選び、')
+    .replace(/^自分のシールドから好きな(?:枚数|数)を(?:裏向きのまま)?選び、(?:表向きにして)?/, '自分のシールドを99枚まで選び、')
+    .replace(/^このターン、選んだクリーチャーがタップされていなくても攻撃できる$/, 'このターン、そのクリーチャーはタップされていないクリーチャーを攻撃できる')
+    .replace(/^相手の次のターンに、相手の攻撃できるクリーチャーはすべて、攻撃しなければならない$/, '次の相手のターン、相手のクリーチャーはすべて、可能であれば攻撃する')
+    .replace(/^自分の山札のカードを上から(\d+)枚/, '自分の山札の上から$1枚')
+    .replace(/^(自分の山札の上から\d+枚)までを?、?(?=(?:自分の)?(?:新しい)?シールド|裏向きのまま)/, '$1を')
+    .replace(/^(このターン、(?:バトルゾーンにある)?自分の.*?クリーチャー)のパワーはそれぞれ\+/, '$1すべてのパワーは+')
+    .replace(/^その中の(.+?)を(\d+)(枚|体)(手札に加え|選び)/, 'その中から$1を$2$3$4')
+    .replace(/^ターンの終わりに、/, 'このターンの終わりに、')
     .replace(/^(それ|そのカード)が(.+?)なら(出す|手札に加える|墓地に置く)$/, '$1が$2なら、それを$3')
     .replace(/^それ以外なら(墓地に置く|手札に加える|マナゾーンに置く)$/, 'それ以外なら、それを$1')
     .replace(/^((?:光|水|闇|火|自然)の(?:カード|クリーチャー|呪文))であれば、/, 'それが$1であれば、')
@@ -529,6 +549,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   {
     const sn = s.match(/^バトルゾーンに同じ名前のクリーチャーが(\d+)体以上あれば、それらをすべて破壊する$/);
     if (sn) return [{ op: 'pickSameName', n: +sn[1] }, { op: 'destroy', target: { ref: 'it' } }];
+    const sm = s.match(/^そのクリーチャーと、?同じ名前を持つ他のクリーチャーをすべて、?(.+)$/);
+    const smOps = sm && verbOps(sm[1].replace(/^バトルゾーンから/, ''), { ref: 'it' });
+    if (smOps) return [{ op: 'pickSameName', n: 0, ofIt: true }, ...smOps];
     if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?手札に戻す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'hand' }];
   }
   if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
@@ -864,6 +887,15 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 相手が選ぶ・各プレイヤーなど
   {
+    const ua = s.match(/^このターン、(?:バトルゾーンにある)?自分の(.*?)クリーチャー(?:(\d+)体は|はすべて|すべては)、?(?:タップされていない|アンタップしている)クリーチャーを攻撃できる$/);
+    const uaSel = ua && parseSel(`自分の${ua[1]}クリーチャー`);
+    if (ua && uaSel)
+      return ua[2]
+        ? [
+            { op: 'choose', target: { ref: 'sel', sel: uaSel, count: { n: +ua[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `タップされていないクリーチャーを攻撃できるクリーチャーを${ua[2]}体選ぶ` },
+            { op: 'grant', target: { ref: 'it' }, kws: ['アンタップ攻撃'], until: 'turn' },
+          ]
+        : [{ op: 'grant', target: { ref: 'sel', sel: uaSel, count: { all: true }, chooser: 'self' }, kws: ['アンタップ攻撃'], until: 'turn' }];
     if (/^(このターン|そのターン)、(この|その)クリーチャーは(タップされていない|アンタップしている)クリーチャーを攻撃できる$/.test(s))
       return [{ op: 'grant', target: { ref: /この/.test(s.slice(6, 10)) ? 'self' : 'it' }, kws: ['アンタップ攻撃'], until: 'turn' }];
     const dc = s.match(/^相手は(?:自身|自分)の手札から(\d+)枚選び、捨てる$/);
@@ -1146,9 +1178,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 「このターン、自分のクリーチャーが攻撃する時、〜」: このターンだけの誘発型能力
   {
-    const tt = s.match(/^このターン、(自分のクリーチャーが攻撃する|相手のクリーチャーが破壊された|自分がクリーチャーを召喚した|自分のクリーチャーを召喚した|自分が呪文を唱えた|自分のシールドがブレイクされた)(?:時|たび)、(.+)$/);
+    const tt = s.match(/^このターン、(自分のクリーチャーが攻撃する|相手のクリーチャーが破壊された|自分がクリーチャーを召喚した|自分のクリーチャーを召喚した|自分が呪文を唱えた|自分のシールドがブレイクされた|自分のクリーチャーが(?:相手の)?シールドをブレイクする)(?:時|たび|たびに)、(.+)$/);
     if (tt) {
-      const EV = { 自分のクリーチャーが攻撃する: 'ownAttack', 相手のクリーチャーが破壊された: 'oppDestroyed', 自分がクリーチャーを召喚した: 'otherOwnEnter', 自分のクリーチャーを召喚した: 'otherOwnEnter', 自分が呪文を唱えた: 'spellOwn', 自分のシールドがブレイクされた: 'ownShieldBroken' } as const;
+      const EV = { 自分のクリーチャーが攻撃する: 'ownAttack', 相手のクリーチャーが破壊された: 'oppDestroyed', 自分がクリーチャーを召喚した: 'otherOwnEnter', 自分のクリーチャーを召喚した: 'otherOwnEnter', 自分が呪文を唱えた: 'spellOwn', 自分のシールドがブレイクされた: 'ownShieldBroken' } as Record<string, 'ownAttack' | 'oppDestroyed' | 'otherOwnEnter' | 'spellOwn' | 'ownShieldBroken' | 'oppShieldBroken'>;
+      if (/^自分のクリーチャーが/.test(tt[1]) && /ブレイクする$/.test(tt[1])) EV[tt[1]] = 'oppShieldBroken';
       // 「〜てもよい」は効果の中で聞く
       if (parseEffect(tt[2]).complete) return [{ op: 'tempTrigger', event: EV[tt[1] as keyof typeof EV], effect: tt[2], optional: false }];
     }
@@ -1632,7 +1665,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const to: Dest = m[6] === '墓地' ? 'grave' : m[4] ? 'manaTapped' : 'mana';
     return [{ op: 'top', n: +m[2], to, who: m[1] === '相手' ? 'opp' : 'self', nth: !!m[3] }];
   }
-  if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(新しい)?(シールド|シールドゾーン)(に裏向きにして|に|として)?(加える|化する|置く)$`))))
+  if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を、?(?:自分の)?(新しい)?(シールド|シールドゾーン)(に裏向きにして|に|として)?(加える|化する|置く)$`))))
     return [{ op: 'top', n: +m[2], to: 'shield', who: 'self' }];
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?をシールド化する$`)))) return [{ op: 'top', n: +m[2], to: 'shield', who: 'self' }];
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(裏向きのまま|裏向きにして)、?(新しい)?(シールドとして)?(自分の)?(シールドゾーン|シールド)に(置く|加える)$`))))
@@ -1878,6 +1911,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         },
       ];
   }
+  // 「各プレイヤーは自身の手札を山札に戻してシャッフルし、その枚数と同じ枚数のカードを引く」
+  if (/^各プレイヤーは、?自身の手札を(?:すべて)?(?:それぞれの|自身の)?山札に(?:戻して|加えて)シャッフルし、その枚数と同じ枚数のカードを引く$/.test(s))
+    return [
+      {
+        op: 'forEachPlayer',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+          { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+          { op: 'shuffle' },
+          { op: 'drawItPlus', plus: 0 },
+        ],
+      },
+    ];
   // 「各プレイヤーは(自身の)〜」: プレイヤーごとに行う
   if ((m = s.match(/^各プレイヤーは、?(.+)$/))) {
     const rest = m[1].replace(/^バトルゾーンにある自身の/, '自分の').replace(/自身の/g, '自分の').replace(/それぞれの/g, '自分の').replace(/(\d+)(体|枚)ずつ/g, '$1$2');
