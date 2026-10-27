@@ -74,6 +74,8 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^破壊する$/)) return [{ op: 'destroy', target }];
   if (m(/^(持ち主の|自分の)?手札に(戻す|加える)$/)) return [{ op: 'move', target, to: 'hand' }];
   if (m(/^相手に見せ(てから|て)?、?(持ち主の|自分の)?手札に(加える|戻す)$/)) return [{ op: 'move', target, to: 'hand', reveal: true }];
+  if (m(/^表向きにし(てから|て)?、?(持ち主の|自分の)?手札に(加える|戻す)$/)) return [{ op: 'move', target, to: 'hand', reveal: true }];
+  if (m(/^タップして(自分の)?(バトルゾーンに)?出す$/) && target.ref === 'it') return [{ op: 'play', target, mode: 'put' }, { op: 'tap', target: { ref: 'it' } }];
   if (m(/^(バトルゾーンから|自分の(墓地|マナゾーン)から)、?(持ち主の|自分の)?手札に(戻す|加える)$/)) return [{ op: 'move', target, to: 'hand' }];
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
@@ -96,7 +98,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^タップする$/)) return [{ op: 'tap', target }];
   if (m(/^タップまたはアンタップする$/)) return [{ op: 'toggleTap', target }];
   if (m(/^このクリーチャーとバトルさせる$/)) return [{ op: 'battle', a: { ref: 'self' }, b: target }];
-  if (m(/^(?:裏向きのまま)?このクリーチャーの下に(?:置く|置いてもよい)$/) && target.ref === 'it') return [{ op: 'stackUnder', what: 'it' }];
+  if (m(/^(?:裏向きのまま)?このクリーチャーの下に(?:置く|置いてもよい|重ねる)$/) && target.ref === 'it') return [{ op: 'stackUnder', what: 'it' }];
   if (m(/^(《[^》]+》のほう|フォートレス側|ウエポン側)に裏返す$/)) return [{ op: 'flip', target }];
   if (m(/^アンタップする$/)) return [{ op: 'untap', target }];
   if (m(/^(自分の)?(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
@@ -581,6 +583,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/好きな数の(.+?)を選び、/, '$1を99枚まで選び、')
     .replace(/^その中から好きな数の(.+?)を(?!.*選)(?=(?:自分の|持ち主の)?(?:手札|墓地|マナゾーン|山札|バトルゾーン))/, 'その中から$1を99枚まで選び、')
     .replace(/^相手クリーチャー/, '相手のクリーチャー')
+    .replace(/^(バトルゾーンにクリーチャーが\d+体以上あれば、)それ(?:ら)?をすべて破壊する$/, '$1バトルゾーンにあるクリーチャーをすべて破壊する')
+    .replace(/^((?:[^、]+、)?)このクリーチャーをバトルゾーンに戻(す|してもよい)$/, (_, a, b) => `${a}このクリーチャーをバトルゾーンに出${b === 'す' ? 'す' : 'してもよい'}`)
     .replace(/^(その中から|そのうち)、?([^、]+?)を?(\d+)(?:体|枚)または([^、]+?)を?(\d+)(?:体|枚)(?:を選び、|を選んで|、)/, (all, a, b, n1, c, n2) => (n1 === n2 ? `${a}${b}または${c}を${n1}枚選び、` : all))
     .replace(/^その中から好きな(?:枚数|数)の、?([^、]+?)を(?:相手に見せ、|相手に見せてから、?)?(?=(?:自分の|持ち主の)?(?:手札|墓地|マナゾーン|山札|バトルゾーン))/, 'その中から$1を99枚まで選び、')
     .replace(/^(その中から[^、]+?を\d+(?:体|枚))、バトルゾーンにタップして出(す|してもよい)$/, '$1選び、タップしてバトルゾーンに出$2')
