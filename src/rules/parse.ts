@@ -102,7 +102,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(バトルゾーンに)?出し、(この|その選んだ|その)クリーチャーに装備する$/) || m(/^、?(この|その選んだ|その)クリーチャーに装備して(バトルゾーンに)?出す$/)) return [{ op: 'play', target, mode: 'put' }];
   if (m(/^タップして(自分の)?バトルゾーンに出す$/)) return [{ op: 'play', target, mode: 'put' }, { op: 'tap', target: { ref: 'it' } }];
   if (m(/^(コストを支払わずに|コストを支払ったものとして)召喚する$/)) return [{ op: 'play', target, mode: 'summon' }];
-  if (m(/^コストを支払わずに唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
+  if (m(/^(?:コストを支払わずに|コストを支払ったものとして)唱える$/)) return [{ op: 'play', target, mode: 'cast' }];
   if (m(/^コストを支払わずに(使う|実行する|プレイする|ジェネレートする)$/)) return [{ op: 'play', target, mode: 'use' }];
   if (m(/^捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^コストの大きいほうに裏返す$/)) return [{ op: 'flip', target, to: 'big' }];
@@ -239,7 +239,7 @@ export function parseCond(c: string): Cond | null {
   if (/^これを(装備|クロス)したクリーチャーがタップ(され|し)てい$/.test(c)) return { c: 'equippedTapped' };
   if (/^このクリーチャーがリンクしてい(る)?$/.test(c)) return { c: 'linked' };
   if (/^このクリーチャーがリンクしていな(い|け)?$/.test(c)) return { c: 'linked', neg: true };
-  if (/^このクリーチャーが表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
+  if (/^この(?:クリーチャー|呪文|カード)が表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
     const Z = { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] as SelZone[] };
     const sel = parseSel(m[2], Z);
@@ -720,6 +720,22 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  {
+    // 「その中の進化ではないドラゴンと進化ではないヒューマノイドをすべてバトルゾーンに出す」
+    const two = s.match(/^その中(?:から|の)、?(.+?)(?:または|と)(.+?)をすべて(.+)$/);
+    if (two && ctx.looked) {
+      const a = sentence(`その中から${two[1]}をすべて${two[3]}`, ctx);
+      const b = a && sentence(`その中から${two[2]}をすべて${two[3]}`, ctx);
+      if (a?.length && b?.length) return [...a, ...b];
+    }
+    // 「その中から、アンノウン1体と呪文を1枚、手札に加える」
+    const pair = s.match(/^その中から、?(.+?)を?(\d+)(体|枚)と(.+?)を?(\d+)(体|枚)(?:を|、)?(手札に加える|相手に見せてから手札に加える)$/);
+    if (pair && ctx.looked) {
+      const a = sentence(`その中から${pair[1]}を${pair[2]}${pair[3]}手札に加える`, ctx);
+      const b = a && sentence(`その中から${pair[4]}を${pair[5]}${pair[6]}手札に加える`, ctx);
+      if (a?.length && b?.length) return [...a, ...b];
+    }
+  }
   if (/^(?:その|見た)(?:カード|クリーチャー)を(?:自分の)?手札に加えるか、タップして(?:自分の)?マナゾーンに置く$/.test(s))
     return [{ op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'タップしてマナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'manaTapped' }] }] }];
   if (/^(?:その|この)ターン、相手がバトルゾーンにあるクリーチャーを選ぶ時、自分のクリーチャーは選ばれない$/.test(s))
