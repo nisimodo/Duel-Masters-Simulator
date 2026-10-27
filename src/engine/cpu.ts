@@ -20,6 +20,7 @@ import {
   luresFor,
   mustAttackers,
   duelistTargets,
+  tapAbilityOf,
   playCost,
   cardCivs,
   faceOf,
@@ -829,10 +830,10 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
       return { t: 'duelist', iid: d, target: best };
     }
     for (const iid of me.battle) {
-      const f = faceOf(s, L, iid);
-      if (!f?.tapAbility || s.cards[iid].tapped || (s.cards[iid].sick && !kwOf(s, L, iid).speedAttacker)) continue;
+      const ta = tapAbilityOf(s, L, iid);
+      if (!ta || s.cards[iid].tapped || (s.cards[iid].sick && !kwOf(s, L, iid).speedAttacker)) continue;
       // 処理できる効果で、攻撃しても相手のシールドを割れない程度のクリーチャーなら使う
-      if (!programOf(f.tapAbility).complete) continue;
+      if (!programOf(ta.text).complete) continue;
       if (power(s, L, iid, true) >= 6000 && s.players[mainOpp(s, p)].shield.length <= 2) continue;
       return { t: 'tapAbility', iid };
     }

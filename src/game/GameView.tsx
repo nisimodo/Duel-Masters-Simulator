@@ -7,7 +7,7 @@ import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { attackTargets, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
+import { attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { costOf } from '../engine/statics';
@@ -280,7 +280,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             });
           }
           if ((f.statics ?? []).some((x) => x.s === 'rinne')) items.push({ label: '輪廻∞: 呪文側を唱える (コストは支払う)', disabled: !isMyTurn, onClick: () => act({ t: 'rinne', iid }) });
-          if (f.tapAbility) items.push({ label: 'タップして能力を使う (攻撃のかわり)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'tapAbility', iid }) });
+          if (c.zone === 'battle' && tapAbilityOf(s, L, iid)) items.push({ label: 'タップして能力を使う (攻撃のかわり)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'tapAbility', iid }) });
           const hz = card.hyper && c.face === 0 ? card.faces[0].statics.find((x) => x.s === 'hyperize') : undefined;
           if (hz && hz.s === 'hyperize') {
             const cands = s.players[me].battle.filter((b) => b !== iid && !s.cards[b].tapped && faceOf(s, L, b)?.isCreature);

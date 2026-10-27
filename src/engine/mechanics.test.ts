@@ -24,6 +24,8 @@ const db = buildDB(
     cr('lightMon', 1, 1000, [], 'L'),
     cr('loneWB', 1, 1000, ['バトルゾーンに自分のクリーチャーが他になければ、このクリーチャーは「パワーアタッカー+3000」と「W・ブレイカー」を得る。']),
     cr('condST', 1, 1000, ['相手のクリーチャーが2体以上あれば、自分のシールドゾーンにあるこのクリーチャーに「S・トリガー」を与える。']),
+    cr('tapGiver', 1, 1000, ['このクリーチャーがバトルゾーンにある間、バトルゾーンにある自分の火のクリーチャーをタップし、攻撃する代わりに次の能力を使ってもよい。', 'カードを１枚引く。']),
+    cr('waterMon', 1, 1000, [], 'W'),
     cr('tapGuard', 1, 1000, ['このクリーチャーがタップしていれば、自分は攻撃されない。']),
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
@@ -335,6 +337,19 @@ describe('named mechanics', () => {
       breakShields(s, L, 1, [st], 0);
       expect(s.pending.some((x) => x.kind === 'trigger' && x.iid === st)).toBe(n >= 2);
     }
+  });
+
+  it('自分の火のクリーチャーをタップし、攻撃するかわりに次の能力を使ってもよい', () => {
+    let s = setup([{ p: 0, cid: 'tapGiver', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'waterMon', zone: 'battle' }]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    const w = find(s, 0, 'battle', 'waterMon')!;
+    for (const i of s.players[0].battle) s.cards[i].sick = false;
+    expect(applyAction(s, 0, { t: 'tapAbility', iid: w }, L).error).toBeTruthy();
+    const hand = s.players[0].hand.length;
+    s = act(s, 0, { t: 'tapAbility', iid: v });
+    while (s.pending.length) s = act(s, 0, { t: 'resolve', use: true } as never);
+    expect(s.cards[v].tapped).toBe(true);
+    expect(s.players[0].hand.length).toBe(hand + 1);
   });
 
   it('このクリーチャーがタップしていれば、自分は攻撃されない', () => {

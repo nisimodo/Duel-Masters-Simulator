@@ -694,6 +694,18 @@ export function duelistTargets(s: GameState, L: Lookup, p: number, duelist: numb
   });
 }
 
+/** このクリーチャーが攻撃するかわりにタップして使える能力 (自身の能力、または他のカードが与える能力) */
+export function tapAbilityOf(s: GameState, L: Lookup, iid: number): { text: string; tapMana?: number } | null {
+  const f = faceOf(s, L, iid);
+  if (f?.tapAbility && !f.tapFor) return { text: f.tapAbility, tapMana: f.tapMana };
+  const c = s.cards[iid];
+  for (const b of s.players[c.owner].battle) {
+    const g = faceOf(s, L, b);
+    if (g?.tapAbility && g.tapFor && matchesSel(s, L, iid, { ...g.tapFor, owner: 'any' })) return { text: g.tapAbility };
+  }
+  return null;
+}
+
 /** 能力を誘発させる (interp から使う) */
 export function fireEvent(s: GameState, L: Lookup, iid: number, events: TrigEvent[]) {
   if (s.cards[iid]) fireSelf(s, L, iid, s.cards[iid].face, events);
@@ -1949,19 +1961,20 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
     case 'tapAbility': {
       const c = s.cards[a.iid];
       const f = faceOf(s, L, a.iid);
-      if (c.owner !== p || c.zone !== 'battle' || !f?.tapAbility) return 'タップして使う能力がありません';
+      const ta = tapAbilityOf(s, L, a.iid);
+      if (c.owner !== p || c.zone !== 'battle' || !f || !ta) return 'タップして使う能力がありません';
       if (s.turnStep !== 'main' || s.attack) return '今は使えません';
       if (c.tapped) return 'タップしているクリーチャーは使えません';
       if (c.sick && !kwOf(s, L, a.iid).speedAttacker) return '召喚酔いしているので使えません';
-      if (f.tapMana) {
+      if (ta.tapMana) {
         const free = s.players[p].mana.filter((m) => !s.cards[m].tapped);
-        if (free.length < f.tapMana) return `マナゾーンのタップされていないカードが${f.tapMana}枚必要です`;
-        for (const m of free.slice(0, f.tapMana)) s.cards[m].tapped = true;
+        if (free.length < ta.tapMana) return `マナゾーンのタップされていないカードが${ta.tapMana}枚必要です`;
+        for (const m of free.slice(0, ta.tapMana)) s.cards[m].tapped = true;
       }
       c.tapped = true;
       fireSelf(s, L, a.iid, c.face, ['tapped']);
       log(s, p, `${q(f.name)} をタップして能力を使った`);
-      pushAbility(s, L, a.iid, c.face, { events: ['tapAbility'], text: f.tapAbility, effect: f.tapAbility, optional: false, auto: false }, 'tapAbility');
+      pushAbility(s, L, a.iid, c.face, { events: ['tapAbility'], text: ta.text, effect: ta.text, optional: false, auto: false }, 'tapAbility');
       return null;
     }
     case 'endTurn': {

@@ -121,6 +121,8 @@ export function splitAbilities(lines: string[]): {
   main: string[];
   groups: { kind: AbilityGroupKind; lines: string[]; n?: number; race?: string }[];
   tap: string | null;
+  /** 「自分の〇〇をタップし、攻撃するかわりに次の能力を使ってもよい」の〇〇 (他のクリーチャーに与えるタップ能力) */
+  tapFor?: string;
   /** タップして使う能力で、いっしょにタップするマナの枚数 */
   tapMana?: number;
   silent: string | null;
@@ -138,6 +140,7 @@ export function splitAbilities(lines: string[]): {
   let tap: string[] | null = null;
   let inTap = false;
   let tapMana: number | undefined;
+  let tapFor: string | undefined;
   let silent: string[] | null = null;
   let inSilent = false;
   let nextAbility = false;
@@ -229,6 +232,14 @@ export function splitAbilities(lines: string[]): {
       inTap = false;
     }
     const tapM = stripReminder(t).replace(/\s+/g, '').match(TAP_ABILITY);
+    const tapG = stripReminder(t).replace(/\s+/g, '').match(/^(?:このクリーチャーがバトルゾーンにある間、)?(?:バトルゾーンにある)?自分の(.+?)をタップし、攻撃する(?:かわりに|代わりに)、?次の能力を使ってもよい/);
+    if (tapG && !tapM) {
+      tapFor = '自分の' + tapG[1];
+      main.push(raw);
+      tap = [];
+      inTap = true;
+      continue;
+    }
     if (tapM) {
       tapMana = tapM[2] ? +tapM[2] : undefined;
       main.push(raw);
@@ -264,5 +275,5 @@ export function splitAbilities(lines: string[]): {
     }
     push(cur, raw);
   }
-  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined, race: kind === 'fortE' ? fortRace : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked, tapMana };
+  return { main, groups: [...groups].map(([kind, ls]) => ({ kind, lines: ls, n: kind === 'oniOff' ? oniN : undefined, race: kind === 'fortE' ? fortRace : undefined })), tap: tap?.length ? tap.join('。').replace(/。▼/g, '▼') : null, silent: silent?.length ? silent.join('。').replace(/。▼/g, '▼') : null, marked, tapMana, tapFor };
 }

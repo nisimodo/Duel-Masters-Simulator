@@ -4,6 +4,7 @@ import { parseTriggers, type TriggerSpec } from './triggers';
 import { parseStatics, type StaticSpec } from '../rules/statics';
 import { collectKwDefs, expandKwLines, type KwDef } from '../rules/kwdefs';
 import { mergeModal, normText, splitAbilities, stripReminder, type AbilityGroupKind } from '../rules/text';
+import { parseSel } from '../rules/selector';
 
 export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
 export const CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];
@@ -57,6 +58,8 @@ export interface Face {
   groups?: AbilityGroup[];
   /** 「攻撃するかわりに、タップして次の能力を使ってもよい」の効果 */
   tapAbility?: string;
+  /** tapAbility を、このカードではなくバトルゾーンにある自分の〇〇が使う */
+  tapFor?: import('../rules/ops').Sel;
   /** タップして使う能力で、いっしょにタップするマナの枚数 */
   tapMana?: number;
   /** サイレントスキルで使う能力 */
@@ -150,6 +153,7 @@ function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
     isEvolution: f.t.startsWith('進化') || f.t.includes('進化'),
     groups: groups.length ? groups : undefined,
     tapAbility: sp.tap ?? undefined,
+    tapFor: sp.tapFor ? (parseSel(sp.tapFor) ?? undefined) : undefined,
     tapMana: sp.tap ? sp.tapMana : undefined,
     silentSkill: sp.silent ?? undefined,
     marked: Object.keys(sp.marked).length ? Object.fromEntries(Object.entries(sp.marked).map(([k, v]) => [k, v.join('。')])) : undefined,
