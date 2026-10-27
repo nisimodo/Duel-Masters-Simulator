@@ -5,6 +5,7 @@ import type { Cond, Count, Dest, Op, Sel, Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
   attachCross,
+  stabIntoDeck,
   attackTargets,
   faceOf,
   battle,
@@ -260,6 +261,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const civs = new Set(me.battle.flatMap((i) => L(s.cards[i].cid)?.civs ?? []));
       return civs.size >= 5;
     }
+    case 'itCastFrom':
+      return ex.it.some((i) => s.cards[i]?.castFrom === c.zone);
+    case 'enteredNameThisTurn':
+      return s.cards.some((x) => x.owner === ex.player && x.enteredTurn === s.turn && (L(x.cid)?.faces ?? []).some((f) => f.name === c.name));
     case 'stPlus': {
       const b = me.broken?.turn === s.turn ? me.broken.n : 0;
       return s.active !== ex.player && b >= 2;
@@ -1302,6 +1307,62 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           pl.summonLockUntil = ex.player;
         }
         log(s, ex.player, `次の自分のターンのはじめまで、相手は${op.costMax != null ? `コスト${op.costMax}以下の` : ''}クリーチャーを召喚できない`);
+        break;
+      }
+      case 'oncePerTurn': {
+        const sc = s.cards[ex.src];
+        if (sc?.onceTurn === s.turn) {
+          ex.ops = [];
+          break;
+        }
+        if (sc) sc.onceTurn = s.turn;
+        break;
+      }
+      case 'stab': {
+        for (const i of resolveRef(s, ex, op.target) ?? []) if (s.cards[i].zone !== 'gone') stabIntoDeck(s, L, i);
+        break;
+      }
+      case 'shieldOnTop': {
+        for (const i of resolveRef(s, ex, op.target) ?? []) {
+          if (s.cards[i].zone !== 'battle') continue;
+          // シールドの上に重ねるかわりに、表向きのシールドとして置く (重ねたシールドは扱えないため)
+          moveCard(s, L, i, 'shield', { faceUp: true });
+          log(s, ex.player, `${q(nameOf(s, L, i))} を表向きにしてシールドゾーンに置いた`);
+        }
+        break;
+      }
+      case 'cycleHand': {
+        const pl = s.players[ex.player];
+        const hand = [...pl.hand];
+        for (const h of hand) moveCard(s, L, h, 'deck', { pos: 'bottom' });
+        const d = drawCards(s, ex.player, hand.length);
+        log(s, ex.player, `手札${hand.length}枚を山札の下に置き、${d}枚引いた`);
+        break;
+      }
+      case 'cycleShields': {
+        const pl = s.players[ex.player];
+        const sh = [...pl.shield];
+        for (const x of sh) moveCard(s, L, x, 'deck', { pos: 'bottom' });
+        for (let k = 0; k < sh.length && pl.deck.length; k++) moveCard(s, L, pl.deck[pl.deck.length - 1], 'shield', { faceUp: false });
+        log(s, ex.player, `シールド${sh.length}つを山札の下に置き、山札の上から同じ数をシールド化した`);
+        break;
+      }
+      case 'kokoroe': {
+        for (let p = 0; p < s.players.length; p++) {
+          const pl = s.players[p];
+          if (pl.lost) continue;
+          const fOf = (i: number) => L(s.cards[i].cid)?.faces[s.cards[i].face];
+          const cr = pl.battle.filter((i) => fOf(i)?.isCreature);
+          const tm = pl.battle.filter((i) => !fOf(i)?.isCreature && /タマシード/.test(fOf(i)?.type ?? ''));
+          // 残すのは、パワーの一番大きいクリーチャーとコストの一番大きいタマシード
+          const keepC = cr.sort((a, b) => power(s, L, b) - power(s, L, a))[0];
+          const keepT = tm.sort((a, b) => (fOf(b)?.cost ?? 0) - (fOf(a)?.cost ?? 0))[0];
+          const back = [...cr, ...tm].filter((i) => i !== keepC && i !== keepT);
+          for (const i of back) moveCard(s, L, i, 'deck', { pos: 'top' });
+          shuffleArr(s, pl.deck);
+          for (let k = 0; k < back.length && pl.deck.length; k++) moveCard(s, L, pl.deck[pl.deck.length - 1], 'shield', { faceUp: false });
+          log(s, p, `${pl.name}: ${back.length}枚を山札に加えてシャッフルし、${back.length}枚をシールド化した`);
+        }
         break;
       }
       case 'ignoreAbilities': {

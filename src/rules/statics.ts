@@ -219,6 +219,12 @@ export type StaticSpec =
   | { s: 'noBlockBattle'; blocking: boolean }
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
   | { s: 'breakToGrave' }
+  /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
+  | { s: 'breakToDeck4' }
+  /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
+  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn' }
+  /** 鬼S-MAX進化: 自分がゲームに負ける時・このクリーチャーが離れる時、かわりに自分の表向きのカードをN枚破壊する (orShield: かわりにシールドを1つ墓地に置いてもよい) */
+  | { s: 'oniSmax'; n: number; orShield?: boolean }
   /** バトルゾーンを離れない */
   | { s: 'neverLeave' }
   /** このカードがバトルゾーン以外のゾーンにあれば負ける */
@@ -532,6 +538,18 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     }
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:持ち主の)?墓地に置く$/.test(t0)) return [{ s: 'breakToGrave' }];
+  if (/^(?:5\.S\.D\.[:：])?このクリーチャーがシールドをブレイクする時、相手はそのシールドのカードを手札に加えるかわりに、?自身の山札の上から4枚目の位置に、?横向きに刺す$/.test(t0)) return [{ s: 'breakToDeck4' }];
+  // 「相手は、自身の山札の横向きのカードを手札に加えた時、ゲームに負ける」「相手は、自身の山札を見たり、順番を入れ替えたりできない」(横向きのカードは 5.S.D. の処理で扱う)
+  if (/^相手は、?自身の山札の横向きのカードを手札に加えた時、ゲームに負ける$/.test(t0) || /^相手は、?自身の山札を見たり、?順番を入れ替えたりできない$/.test(t0)) return [{ s: 'note' }];
+  // 「相手の「このクリーチャーがバトルゾーンに出た時」で始まる能力を持つクリーチャーがバトルゾーンに出る時、相手はかわりにそのクリーチャーをマナゾーンに置く」
+  if (/^相手の「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を持つクリーチャーが(?:バトルゾーンに)?出る時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', cip: true }];
+  if (/^自分のターン中に、?相手のクリーチャーがバトルゾーンに出る時、そのクリーチャーはバトルゾーンのかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'ownTurn' }];
+  if (/^相手のターン中に、?相手のクリーチャーが召喚以外の方法で出る時、相手はかわりにそのクリーチャーを墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'oppTurn', notSummon: true }];
+  if (/^ドラゴンではないクリーチャーがバトルゾーンに出る時、バトルゾーンに出るかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', nonDragon: true, all: true }];
+  {
+    const om = t0.match(/^(?:鬼|CRY-)S-MAX進化[:：]自分がゲームに負ける時、?またはこのクリーチャーが離れる時、かわりに自分の表向きのカードを(\d+)枚破壊(?:するか、自分のシールドを1つ墓地に置いて|して)?もよい/);
+    if (om) return [{ s: 'oniSmax', n: +om[1], orShield: /シールドを1つ墓地/.test(t0) }];
+  }
   if (/^この(鼓動|最終禁断フィールド|禁断フィールド|フィールド|カード|クリーチャー)は(、)?(バトルゾーンを)?離れない$/.test(t0) || /^零龍カードはバトルゾーンを離れない$/.test(t0)) return [{ s: 'neverLeave' }];
   if (/^このカードがバトルゾーン以外のゾーンにあれば、(クリーチャーをすべて破壊し、)?自分はゲームに負ける$/.test(t0)) return [{ s: 'loseIfLeave' }];
   if ((m = t0.match(/^(自分のクリーチャー|このクリーチャー)は(?:すべて)?、?すべてのバトルに勝つ$/)))
@@ -809,6 +827,15 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (cond && t !== t0) {
     const inner = parseStaticLine(t);
     if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart' || x.s === 'summonFrom') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
+  }
+  // 「〜あれば、このクリーチャーのパワーを+10000し、「T・ブレイカー」と「(誘発型能力)」を与える」(与える誘発型能力は扱えないので、キーワードだけ)
+  {
+    const pg = t0.match(/^([^、]+?(?:あれば|なら))、このクリーチャーのパワーを\+(\d+)し、((?:「[^」]+」(?:と|、)?)+)を与える$/);
+    const pc = pg && parseCondPrefix(pg[1] + '、_');
+    if (pg && pc?.cond) {
+      const kws = [...pg[3].matchAll(/「([^」]+)」/g)].map((x) => x[1]).filter((k) => !/時、/.test(k));
+      return [{ s: 'power', target: { t: 'self' }, delta: +pg[2], when: 'always', cond: pc.cond }, ...(kws.length ? [{ s: 'grant', target: { t: 'self' }, kws, when: 'always', cond: pc.cond } as StaticSpec] : [])];
+    }
   }
   // 「〜あれば、このクリーチャーに「ブロッカー」を与え、破壊される時、墓地に置くかわりに手札に戻す」
   {

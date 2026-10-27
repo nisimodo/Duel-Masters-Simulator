@@ -96,6 +96,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の|自分の)?(シールドゾーンに|シールドとして)?(裏向きにして|裏向きのまま)?(シールドゾーンに)?(加える|置く)$/) && /シールド/.test(v))
     return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(持ち主の)?シールド化する$/)) return [{ op: 'move', target, to: 'shield' }];
+  if (m(/^表向きにして、?(?:持ち主の)?シールド(?:1つ|ひとつ)の上に置く$/)) return [{ op: 'shieldOnTop', target }];
   if (m(/^タップする$/)) return [{ op: 'tap', target }];
   if (m(/^タップまたはアンタップする$/)) return [{ op: 'toggleTap', target }];
   if (m(/^このクリーチャーとバトルさせる$/)) return [{ op: 'battle', a: { ref: 'self' }, b: target }];
@@ -155,6 +156,14 @@ export function parseCond(c0: string): Cond | null {
     const zone = ({ マナゾーン: 'mana', 墓地: 'grave', 手札: 'hand' } as const)[m[2] as 'マナゾーン'];
     const sel = m[3] === 'カード' ? ({ owner: 'any', zones: [zone], kind: 'card' } as Sel) : parseSel(m[3], { zones: [zone] });
     if (sel) return { c: 'count', sel: { ...sel, owner: m[1] === '自分' ? 'self' : 'opp', zones: [zone] }, cmp: /以下/.test(m[5]) ? '<=' : '>=', n: +m[4] };
+  }
+  if (/^このクリーチャーが自分の手札にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['hand'], kind: 'card', self: true }, cmp: '>=', n: 1 };
+  if ((m = c.match(/^このターン(?:中に)?自分の《([^》]+)》を(?:バトルゾーンに)?出していな(?:け|い)?$/))) return { c: 'not', a: { c: 'enteredNameThisTurn', name: m[1] } };
+  // 「その攻撃がこのターン2度目のクリーチャーによる攻撃で、B」
+  if ((m = c.match(/^(.+?攻撃)で、(.+)$/))) {
+    const a = parseCond(m[1]);
+    const b = a && parseCond(m[2]);
+    if (a && b) return { c: 'and', a, b };
   }
   if (/^このクリーチャーが自分の墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
   // 「AがありBがあれば」「Aがいて、B」: 両方
@@ -927,6 +936,40 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「そのクリーチャーのこのターン最初の攻撃の終わりにアンタップする」
   if (/^(?:その|この)クリーチャー(?:の|は)、?このターン最初の攻撃の終わりにアンタップする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
   let mm: RegExpMatchArray | null;
+  if (/^〈手札とシールドを引き直す〉$/.test(s)) return [{ op: 'cycleHand' }, { op: 'cycleShields' }];
+  if (/^〈心絵〉$/.test(s)) return [{ op: 'kokoroe' }];
+  if (/^〈各ターン1度〉$/.test(s)) return [{ op: 'oncePerTurn' }];
+  // サイクルペディア: 「自分の手札から/墓地から呪文を唱えた時」は、その呪文を唱えたゾーンで分ける
+  if ((mm = s.match(/^〈(手札|墓地)から唱えた〉(.+)$/))) {
+    const rest = /^唱えた後で?、墓地(?:に置く)?の?かわりに山札の(?:一番)?下に置く$/.test(mm[2]) ? [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' } as Op] : sentence(mm[2], ctx);
+    if (rest) return [{ op: 'if', cond: { c: 'itCastFrom', zone: mm[1] === '手札' ? 'hand' : 'grave' }, body: rest }];
+  }
+  if (/^その呪文を自分の墓地からもう1度、?コストを支払わずに唱え(?:る|てもよい)$/.test(s)) {
+    const body: Op[] = [{ op: 'play', target: { ref: 'it' }, mode: 'cast' }];
+    return /てもよい$/.test(s) ? [{ op: 'optional', body, prompt: s0 }] : body;
+  }
+  // 終葬 5.S.D. 「相手はそれを、自身の山札の上から4枚目の位置に、横向きに刺す」
+  if (/^(?:相手は)?それを、?(?:自身の|持ち主の)山札の上から4枚目の位置に、?横向きに刺す$/.test(s)) return [{ op: 'stab', target: { ref: 'it' } }];
+  // エンドレス・フローズン・カーニバル
+  if (/^(?:バトルゾーンにある)?相手の、?クリーチャーではない表向きのカードすべてと、?相手のシールドゾーンにある表向きのカードをすべて、?持ち主の墓地に置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'card', notCreature: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card', shieldFaceUp: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  if (/^相手のクリーチャーすべてと、?相手のマナゾーンにあるカードをすべてタップする$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'tap', target: { ref: 'it' } },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['mana'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'tap', target: { ref: 'it' } },
+    ];
+  if (/^次の相手のターンのはじめに、それらはアンタップしない$/.test(s))
+    return [
+      { op: 'restrict', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', tapped: true }, count: { all: true }, chooser: 'self' }, what: 'untap' },
+      { op: 'manaUntapLimit', n: 0 },
+    ];
   // 「自分の火のエレメントの数以下のコストの〜」「自分のマナゾーンにあるツインパクトカードの枚数よりコストの小さい〜」: 数えてから選ぶ
   if ((mm = s.match(/^(自分の(?:マナゾーン|墓地|手札)から)?自分の(.+?)の(?:数|枚数)(以下のコストの|以下のコストを持つ|より、?コストの小さい)(.+)$/))) {
     const zm = mm[2].match(/^(マナゾーン|墓地|手札)にある(.+)$/);
@@ -2633,6 +2676,13 @@ function fixPurposes(ops: Op[]) {
 
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
+  // 「自分の手札から/墓地から呪文を唱えた時」(誘発の側で印を付ける): 効果全体をその条件で
+  const castFrom = text.match(/^〈(手札|墓地)から唱えた〉([\s\S]*)$/);
+  if (castFrom) {
+    const zone = castFrom[1] === '手札' ? 'hand' : 'grave';
+    const inner = /^\s*唱えた後で?、墓地(?:に置く)?の?かわりに山札の(?:一番)?下に置く。?\s*$/.test(castFrom[2]) ? { ops: [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' } as Op], complete: true, unparsed: [] } : parseEffect(castFrom[2]);
+    return { ...inner, ops: inner.ops.length ? [{ op: 'if', cond: { c: 'itCastFrom', zone }, body: inner.ops }] : [] };
+  }
   // S・トリガー・プラスで与えられる {x+} 能力: 条件を満たした時だけ
   if (/(?:^|\n|。)\s*\{x\+\}/.test(text)) {
     const parts = text.split(/\n|(?<=。)(?=\s*\{x\+\})/).filter((x) => x.trim());
@@ -2672,6 +2722,13 @@ export function parseEffect(text: string): Program {
   body = normText(body).replace(/そのクリーチャーをバトルゾーンに出した時、このターンの終わりまでそのクリーチャーは「([^」]+)」を得る/g, 'そのクリーチャーが出た時、このターン、そのクリーチャーに「$1」を与える');
   body = normText(body).replace(/(次に(?:自分が)?召喚する[^。]+?少なく)(?:する|してもよい)。(ただし、コストは\d+(?:以下には|より少なく)ならない。)?そのクリーチャーが出た時、このターン、そのクリーチャーに「([^」]+)」を与える/g, '$1する、出た時「$3」を与える。$2');
   body = body.replace(/相手は(?:自分自身|自身)のシールドを(\d+)(?:枚|つ)選ぶ。(?:その後、)?このクリーチャーは、?そのシールドをブレイクする/g, 'このクリーチャーは相手のシールドを$1枚ブレイクする');
+  // Vチャロン: 手札とシールドを引き直す
+  body = body.replace(/そのプレイヤーは自身の手札をすべて、?好きな順序で山札の一番下に置き、その後、その枚数と同じ数、カードを引く。その後、そのプレイヤーは自身のシールドゾーンにあるカードをすべて好きな順序で山札の一番下に置き、その枚数と同じ数のカードを、山札の上から裏向きのまま、それぞれ新しいシールドとしてシールドゾーンに置く/g, 'そのプレイヤーは〈手札とシールドを引き直す〉');
+  // ジョーカーズの心絵
+  body = body.replace(/各プレイヤーは自身のクリーチャーとタマシードを最大1つずつ選び、残りをすべて山札に加えてシャッフルする。その後、各プレイヤーは、こうして山札に加えたカード1枚につき、自身の山札の上から1枚目をシールド化する/g, '〈心絵〉');
+  // 「この能力は各ターン1度しか使えない」: 効果の先頭で使ったかを調べる
+  const once = /この能力は各ターン(?:1|一)度しか使えない。?/.test(body);
+  if (once) body = '〈各ターン1度〉。' + body.replace(/この能力は各ターン(?:1|一)度しか使えない。?/g, '');
   body = body.replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
   const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);

@@ -59,6 +59,14 @@ export interface CardInst {
   enteredFree?: boolean;
   /** 攻撃したターン */
   attackedTurn?: number;
+  /** バトルゾーンに出たターン */
+  enteredTurn?: number;
+  /** 5.S.D. で山札に横向きに刺されている */
+  sideways?: boolean;
+  /** 呪文を唱えたゾーン */
+  castFrom?: string;
+  /** 「この能力は各ターン1度しか使えない」を使ったターン */
+  onceTurn?: number;
   /** このターンに「かわりに〜を支払ってとどまる」置換効果を使った回数 (互いに身代わりになり続けないように) */
   replUses?: { turn: number; n: number };
   /** エクストラEXライフの残りのシールド */

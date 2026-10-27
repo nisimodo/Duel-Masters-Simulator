@@ -148,6 +148,63 @@ function resetCard(c: CardInst) {
   c.revealed = false;
 }
 
+/** 出る時の置換 (地封龍 ギャイア・単騎連射 マグナム 等) の行き先 */
+function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: number; summoned?: boolean }): 'mana' | 'grave' | null {
+  const c = s.cards[iid];
+  const face = L(c.cid)?.faces[opts.face ?? c.face];
+  if (!face?.isCreature) return null;
+  for (const a of activeStatics(s, L)) {
+    const sp = a.spec;
+    if (sp.s !== 'enterReplace') continue;
+    if (!sp.all && a.owner === c.owner) continue;
+    if (sp.when === 'ownTurn' && s.active !== a.owner) continue;
+    if (sp.when === 'oppTurn' && s.active === a.owner) continue;
+    if (sp.notSummon && opts.summoned) continue;
+    if (sp.cip && !face.triggers.some((t) => t.events.includes('enter'))) continue;
+    if (sp.nonDragon && face.races.some((r) => r.includes('ドラゴン'))) continue;
+    return sp.to;
+  }
+  return null;
+}
+
+/** 鬼S-MAX進化の支払い: 自分の他のバトルゾーンのカードをN枚 (コストの小さい順に) 破壊する。払えなければ、シールドを1つ墓地に置く (orShield) */
+function payOniSmax(s: GameState, L: Lookup, p: number, self: number, n: number, orShield?: boolean): boolean {
+  const sc = s.cards[self];
+  const uses = sc.replUses?.turn === s.turn ? sc.replUses.n : 0;
+  if (uses >= 2) return false;
+  const pl = s.players[p];
+  const others = pl.battle.filter((b) => b !== self).sort((a, b) => (L(s.cards[a].cid)?.faces[s.cards[a].face]?.cost ?? 0) - (L(s.cards[b].cid)?.faces[s.cards[b].face]?.cost ?? 0));
+  if (others.length >= n) {
+    sc.replUses = { turn: s.turn, n: uses + 1 };
+    REPLACING.add(self);
+    try {
+      for (const b of others.slice(0, n)) moveCard(s, L, b, 'grave');
+    } finally {
+      REPLACING.delete(self);
+    }
+    return true;
+  }
+  if (orShield && pl.shield.length) {
+    sc.replUses = { turn: s.turn, n: uses + 1 };
+    moveCard(s, L, pl.shield[pl.shield.length - 1], 'grave', { silent: true });
+    return true;
+  }
+  return false;
+}
+
+/** 5.S.D.: カードを持ち主の山札の上から4枚目の位置に、横向きに刺す */
+export function stabIntoDeck(s: GameState, L: Lookup, iid: number) {
+  const c = s.cards[iid];
+  moveCard(s, L, iid, 'deck', { pos: 'top', noReplace: true });
+  const deck = s.players[c.owner].deck;
+  if (deck[deck.length - 1] === iid) {
+    deck.pop();
+    deck.splice(Math.max(0, deck.length - 3), 0, iid);
+  }
+  c.sideways = true;
+  log(s, c.owner, `${q(nameOf(s, L, iid))} を山札の上から4枚目に横向きに刺した`);
+}
+
 type ReplaceMoveSpec = Extract<import('../rules/statics').StaticSpec, { s: 'replaceMove' }>;
 
 /** iid がバトルゾーンを離れる時に効く汎用の置換効果を探して適用する。適用したら移動先 (とどまれば 'battle') */
@@ -250,6 +307,15 @@ export function moveCard(
   const card = L(c.cid);
   const from = c.zone;
   const prevFace = c.face;
+  // 「相手のクリーチャーがバトルゾーンに出る時、かわりにマナゾーン/墓地へ」
+  if (to === 'battle' && from !== 'battle' && !opts.noReplace) {
+    const r = enterReplaceOf(s, L, iid, opts);
+    if (r) {
+      log(s, c.owner, `${q(nameOf(s, L, iid))} はバトルゾーンに出るかわりに${r === 'mana' ? 'マナゾーン' : '墓地'}へ`);
+      return moveCard(s, L, iid, r, { ...opts, noReplace: true });
+    }
+  }
+  if (from === 'deck') c.sideways = undefined;
   // EXライフ: 離れるかわりに、そのシールドを墓地に置く
   if (from === 'battle' && to !== 'battle' && !opts.silent && c.exShield != null && s.cards[c.exShield]?.zone === 'shield') {
     const sh = c.exShield;
@@ -349,6 +415,14 @@ export function moveCard(
         REPLACING.delete(iid);
       }
       return 'battle';
+    }
+    // 鬼S-MAX進化: 離れるかわりに自分の表向きのカードをN枚破壊する
+    {
+      const om = own.find((x) => x.s === 'oniSmax');
+      if (om && om.s === 'oniSmax' && payOniSmax(s, L, c.owner, iid, om.n, om.orShield)) {
+        log(s, c.owner, `${q(nameOf(s, L, iid))} は離れるかわりに自分のカードを破壊した`);
+        return 'battle';
+      }
     }
     // 汎用の置換効果 「(主語)が破壊される/離れる時、(〜なら、)かわりに〜」
     {
@@ -481,6 +555,7 @@ export function moveCard(
   c.zone = dest;
   noteMove(s, iid, from, dest);
   if (dest === 'battle' && from !== 'battle') {
+    c.enteredTurn = s.turn;
     // 召喚 (コストを払ったかは playCard で決める) 以外で出たものは、マナを支払わずに出たもの
     c.enteredFree = !opts.summoned;
     if (c.enteredFree && card?.faces[opts.face ?? c.face]?.isCreature) s.players[c.owner].freePlayTurn = s.turn;
@@ -966,6 +1041,11 @@ export function drawCards(s: GameState, p: number, n: number) {
     pl.hand.push(top);
     noteMove(s, top, 'deck', 'hand');
     pl.draws = pl.draws?.turn === s.turn ? { turn: s.turn, n: pl.draws.n + 1 } : { turn: s.turn, n: 1 };
+    // 5.S.D.: 横向きに刺されたカードを手札に加えたら負ける
+    if (c.sideways) {
+      c.sideways = undefined;
+      lose(s, p, '5.S.D. (横向きのカードを手札に加えた)');
+    }
     drawn++;
     (pl.drawnPending ??= []).push(top);
     // ビビッドロー: 自分のターン中、攻撃の前にドローしたら表向きにする
@@ -1416,6 +1496,17 @@ export function lose(s: GameState, p: number, reason: string) {
     log(s, p, `${pl.name} はゲームに負けない (${reason})`);
     return;
   }
+  // 鬼S-MAX進化: ゲームに負けるかわりに、自分の表向きのカードを破壊する
+  if (vividLookup) {
+    const L = vividLookup;
+    for (const b of pl.battle) {
+      const om = (faceOf(s, L, b)?.statics ?? []).find((x) => x.s === 'oniSmax');
+      if (om && om.s === 'oniSmax' && payOniSmax(s, L, p, b, om.n, om.orShield)) {
+        log(s, p, `${q(nameOf(s, L, b))}: ゲームに負けるかわりに自分のカードを破壊した (${reason})`);
+        return;
+      }
+    }
+  }
   pl.lost = true;
   pl.place = s.players.filter((x) => !x.lost).length + 1;
   log(s, p, `${pl.name} の敗北 (${reason})`);
@@ -1776,6 +1867,11 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     if (saver != null) {
       log(s, target, `シールド・セイバー: ${q(nameOf(s, L, saver))} がシールドのかわりに破壊される`);
       moveCard(s, L, saver, 'grave');
+      continue;
+    }
+    // 5.S.D.: 手札に加えるかわりに、山札の上から4枚目に横向きに刺す
+    if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToDeck4')) {
+      stabIntoDeck(s, L, sh);
       continue;
     }
     // 「相手はそのシールドを手札に加えるかわりに墓地に置く」
@@ -2525,7 +2621,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     if (charger) log(s, p, 'チャージャーでマナゾーンへ');
     me.spellsCast = me.spellsCast?.turn === s.turn ? { turn: s.turn, n: me.spellsCast.n + 1 } : { turn: s.turn, n: 1 };
     if (!a.pay?.length) me.freePlayTurn = s.turn;
-    fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
+    c.castFrom = zone0;
+    fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp', a.iid);
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };
   } else if (/城$/.test(face.type)) {

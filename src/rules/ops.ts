@@ -176,6 +176,10 @@ export type Cond =
   | { c: 'costSum'; sel: Sel; n: number }
   /** S・トリガー・プラス: 相手のターン中で、そのターンに自分のシールドが2つ以上ブレイクされている ({x+} 能力) */
   | { c: 'stPlus' }
+  /** その呪文をこのゾーンから唱えた */
+  | { c: 'itCastFrom'; zone: 'hand' | 'grave' }
+  /** このターン、自分のこの名前のカードがバトルゾーンに出た */
+  | { c: 'enteredNameThisTurn'; name: string }
   /** 相手がこのターン、マナゾーンのカードをタップせずにクリーチャーを出すか呪文を唱えた */
   | { c: 'oppFreePlay' }
   /** そのクリーチャーがマナを支払わずに出た */
@@ -331,6 +335,18 @@ export type Op =
   | { op: 'drawPer'; sel: Sel; each?: number; mult?: number }
   /** このターンの後に自分のターンを追加する */
   | { op: 'extraTurn' }
+  /** ジョーカーズの心絵: 各プレイヤーはクリーチャーとタマシードを最大1つずつ残し、残りを山札に加えてシャッフルし、その数だけシールド化する */
+  | { op: 'kokoroe' }
+  /** 手札をすべて山札の下に置いて同じ枚数引く */
+  | { op: 'cycleHand' }
+  /** シールドをすべて山札の下に置いて同じ枚数シールド化する */
+  | { op: 'cycleShields' }
+  /** 表向きにして持ち主のシールド1つの上に置く */
+  | { op: 'shieldOnTop'; target: Target }
+  /** 5.S.D.: 持ち主の山札の上から4枚目に横向きに刺す */
+  | { op: 'stab'; target: Target }
+  /** 「この能力は各ターン1度しか使えない」: 使っていれば残りを実行しない */
+  | { op: 'oncePerTurn' }
   /** 相手のバトルゾーンのカードの能力を無視する (costRef: 選んだ数字と同じコストだけ) */
   | { op: 'ignoreAbilities'; until: 'turn' | 'nextOwnTurn'; costRef?: boolean }
   /** クロスギアをコストを支払わずにクロスする (onto: pick は自分のクリーチャーから自動で選ぶ) */

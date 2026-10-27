@@ -174,14 +174,17 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/(離れるかわりにとどまる|離れずにとどまる)$|^このクリーチャーがシールドをブレイクする時、相手は.*手札に加えるかわりに、?(持ち主の)?墓地に置く/.test(line.replace(/\s+/g, '').replace(/。$/, '')) && /^(相手の呪文(の効果で|によって))?(バトルゾーンに.+?があり、)?このクリーチャーが/.test(line)) continue;
     if (/^これをクロスしたクリーチャーが破壊される時、.*かわりに/.test(line.replace(/\s+/g, ''))) continue;
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
-    // 汎用の置換効果 (「〜が破壊される時、かわりに〜」) は常在型能力として処理
-    if (/かわりに/.test(line) && (parseStaticLine(raw) ?? []).some((x) => x.s === 'replaceMove')) continue;
+    // 汎用の置換効果 (「〜が破壊される時、かわりに〜」「〜が出る時、かわりに〜」・鬼S-MAX進化・5.S.D.) は常在型能力として処理
+    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant'].includes(x.s))) continue;
     // S・トリガー・プラスで与えられる {x+} 能力は、効果の側に印を残す (条件は効果を解釈する時に付ける)
     const stPlus = /^\{x\+\}/.test(line);
     const m = line.replace(/^\{x\+\}\s*/, '').match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
     let clause = m[1] + m[2];
     let effect = (stPlus ? '{x+}' : '') + m[3];
+    // 「自分の手札から/墓地から呪文を唱えた時」: 唱えたゾーンを効果の側で調べる
+    const cfz = clause.replace(/\s+/g, '').match(/^自分の(手札|墓地)から呪文を唱えた時$/);
+    if (cfz) effect = `〈${cfz[1]}から唱えた〉${effect}`;
     // 「このクリーチャーが出た時、またはこのクリーチャーが攻撃する時、〜」
     for (let k = 0; k < 4 && /^(または|あるいは)/.test(effect); k++) {
       const more = effect.match(/^((?:または|あるいは).{1,80}?(?:時|はじめに|終わりに))、(.+)$/s);
@@ -268,7 +271,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
-      else if (/自分が/.test(clause)) ev.add('spellOwn');
+      else if (/自分が|^自分の(?:手札|墓地)から/.test(clause)) ev.add('spellOwn');
       else ev.add('spellAny');
     }
     if (!ev.size) continue;

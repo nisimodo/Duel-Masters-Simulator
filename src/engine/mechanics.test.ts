@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, attackTargets, battle, breakCount, breakShields, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { applyAction, attackTargets, battle, breakCount, breakShields, drawCards, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
@@ -193,6 +193,10 @@ const db = buildDB(
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
     { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
     cr('alienLord', 1, 1000, ['エイリアンを自分の墓地から召喚してもよい。']),
+    cr('gaia', 1, 1000, ['相手の「このクリーチャーがバトルゾーンに出た時」で始まる能力を持つクリーチャーがバトルゾーンに出る時、相手はかわりにそのクリーチャーをマナゾーンに置く。']),
+    cr('cipDraw', 1, 1000, ['このクリーチャーがバトルゾーンに出た時、カードを１枚引く。']),
+    cr('qqq', 1, 9000, ['５.S.D.：このクリーチャーがシールドをブレイクする時、相手はそのシールドのカードを手札に加えるかわりに、自身の山札の上から４枚目の位置に、横向きに刺す。', '相手は、自身の山札の横向きのカードを手札に加えた時、ゲームに負ける。']),
+    cr('oniSmax', 1, 9000, ['鬼S-MAX進化：自分がゲームに負ける時、またはこのクリーチャーが離れる時、かわりに自分の表向きのカードを３枚破壊してもよい。']),
     cr('graveSym', 5, 5000, ['自分の墓地にある呪文１枚につき、このクリーチャーの召喚コストを１少なくする。ただし、コストは２より少なくならない。']),
     cr('rmFoe', 1, 5000, ['相手のクリーチャーがこのクリーチャーとのバトルによって破壊される時、そのクリーチャーを墓地に置くかわりに持ち主のマナゾーンに置く。']),
     cr('rmHand', 1, 1000, ['このクリーチャーが破壊される時、バトルゾーンに自分のパワー6000以上のクリーチャーがあれば、このクリーチャーを墓地に置くかわりに手札に戻す。']),
@@ -543,6 +547,44 @@ describe('named mechanics', () => {
     expect(costOf(s, L, 0, g, 0)).toBe(5);
     moveCard(s, L, find(s, 0, 'hand', 'scrch')!, 'grave');
     expect(costOf(s, L, 0, g, 0)).toBe(4);
+  });
+
+  it('相手の「出た時」能力を持つクリーチャーが出る時、かわりにマナゾーンへ', () => {
+    const s = setup([
+      { p: 1, cid: 'gaia', zone: 'battle' },
+      { p: 0, cid: 'cipDraw', zone: 'hand' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    expect(moveCard(s, L, find(s, 0, 'hand', 'cipDraw')!, 'battle')).toBe('mana');
+    expect(moveCard(s, L, find(s, 0, 'hand', 'vanilla')!, 'battle')).toBe('battle');
+  });
+
+  it('5.S.D.: ブレイクしたシールドを山札の上から4枚目に刺し、引いたら負ける', () => {
+    const s = setup([{ p: 0, cid: 'qqq', zone: 'battle' }]);
+    const q = find(s, 0, 'battle', 'qqq')!;
+    const sh = s.players[1].shield[0];
+    breakShields(s, L, 1, [sh], 0, q);
+    const deck = s.players[1].deck;
+    expect(deck.indexOf(sh)).toBe(deck.length - 4);
+    expect(s.cards[sh].sideways).toBe(true);
+    drawCards(s, 1, 3);
+    expect(s.players[1].lost).toBeFalsy();
+    drawCards(s, 1, 1);
+    expect(s.players[1].lost).toBe(true);
+  });
+
+  it('鬼S-MAX進化: 離れる時・負ける時、かわりに自分のカードを3枚破壊する', () => {
+    const s = setup([
+      { p: 0, cid: 'oniSmax', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'battle' },
+      { p: 0, cid: 'lightMon', zone: 'battle' },
+      { p: 0, cid: 'waterMon', zone: 'battle' },
+    ]);
+    const o = find(s, 0, 'battle', 'oniSmax')!;
+    expect(moveCard(s, L, o, 'grave')).toBe('battle');
+    expect(s.players[0].battle).toEqual([o]);
+    // もう払えないので離れる
+    expect(moveCard(s, L, o, 'grave')).toBe('grave');
   });
 
   it('効果でコストを支払わずにクロスする', () => {
