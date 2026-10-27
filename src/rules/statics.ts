@@ -297,6 +297,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出(?:た|した)ターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^自分の手札が(\d+)枚もない(?:時|なら)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーがタップ(?:されて|して)(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
+  if ((m = t.match(/^(?:バトルゾーンに)?相手の([^、]+?)が(\d+)(?:体|枚|つ)以上あれば、(.+)$/)) && !/(マナゾーン|墓地|手札|シールド)/.test(m[1]) && parseSel('相手の' + m[1])) return { cond: { c: 'countAtLeast', sel: parseSel('相手の' + m[1])!, n: +m[2] }, rest: m[3] };
   if ((m = t.match(/^相手の(マナゾーン|墓地)に(.+?)があれば、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : 'mana';
     const sel = parseSel(m[2], { zones: [z] });
@@ -344,7 +345,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '')
-    .replace(/アウトレイジ犬(\d+)匹につき/, 'アウトレイジ$1体につき');
+    .replace(/アウトレイジ犬(\d+)匹につき/, 'アウトレイジ$1体につき')
+    // 条件つきのS・トリガー: 「〜があり、このクリーチャーが自分のシールドゾーンにあれば」「自分のシールドゾーンにあるこのクリーチャーに」
+    .replace(/(以上)?あり、この(?:クリーチャー|呪文|カード)が(?:自分の)?シールドゾーンにあれば、/, '$1あれば、')
+    .replace(/、(?:自分の)?シールドゾーンにあるこの(?:クリーチャー|呪文|カード)に「S・トリガー」を与える$/, '、このクリーチャーに「S・トリガー」を与える')
+    .replace(/、この呪文に「S・トリガー」を与える$/, '、このクリーチャーに「S・トリガー」を与える');
   let m: RegExpMatchArray | null;
 
   // ---- キーワード系 ----

@@ -553,14 +553,16 @@ export function PendingDialog({
       );
     case 'block': {
       const at = s.attack!;
+      // 選ぶ前に破壊されるなどして、もうブロックできないクリーチャーは出さない
+      const blockers = pending.blockers.filter((b) => s.cards[b].zone === 'battle' && !s.cards[b].tapped);
       return (
         <Modal title="ブロック">
           <div className="small">
             {nameOf(s, L, at.attacker)} (パワー{power(s, L, at.attacker, true)}) が {at.targetCard != null ? nameOf(s, L, at.targetCard) : 'あなた'} を攻撃しています
           </div>
-          {pending.blockers.length > 0 && <b>ブロッカー</b>}
+          {blockers.length > 0 && <b>ブロッカー</b>}
           <div className="row">
-            {pending.blockers.map((b) => (
+            {blockers.map((b) => (
               <div key={b} className="col" style={{ alignItems: 'center' }}>
                 {img(b)}
                 <button className="small" onClick={() => onSubmit({ t: 'block', blocker: b })}>

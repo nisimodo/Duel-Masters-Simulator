@@ -50,6 +50,7 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
         }
         if (!ok) {
           const errs = [...cpuPlan(s, p, L), ...fb].map((a) => `${a.t}: ${applyAction(s, p, a as never, L).error}`);
+          if (process.env.FUZZ_REPLAY) console.log('PLAN', JSON.stringify(cpuPlan(s, p, L)), 'P', p, 'LOG', JSON.stringify(s.log.slice(-8).map((x) => x.m)), 'PEND', JSON.stringify(s.pending));
           console.log('STUCK', g, JSON.stringify(errs), JSON.stringify(s.attack), s.turnStep, s.phase, s.players[p].battle.map((b) => `${L(s.cards[b].cid)?.name}${s.cards[b].tapped ? '(T)' : ''}${s.cards[b].sick ? '(酔)' : ''}`));
           // 再現用にゲームの初期設定を残す (FUZZ_REPLAY=ファイル で同じゲームを再生できる)
           fs.writeFileSync(path.join(os.tmpdir(), `duema-fuzz-stuck-${g}.json`), JSON.stringify(init));

@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, attackTargets, breakCount, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { applyAction, attackTargets, breakCount, breakShields, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { programOf, startExec } from './interp';
 import { costOf } from './statics';
 import { spellEffectLines } from '../lib/triggers';
@@ -23,6 +23,7 @@ const db = buildDB(
     cr('lightHunter', 1, 1000, ['このクリーチャーは、タップされていない光のクリーチャーを攻撃できる。']),
     cr('lightMon', 1, 1000, [], 'L'),
     cr('loneWB', 1, 1000, ['バトルゾーンに自分のクリーチャーが他になければ、このクリーチャーは「パワーアタッカー+3000」と「W・ブレイカー」を得る。']),
+    cr('condST', 1, 1000, ['相手のクリーチャーが2体以上あれば、自分のシールドゾーンにあるこのクリーチャーに「S・トリガー」を与える。']),
     cr('tapGuard', 1, 1000, ['このクリーチャーがタップしていれば、自分は攻撃されない。']),
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
@@ -320,6 +321,20 @@ describe('named mechanics', () => {
     s.cards[v].zone = 'battle';
     s.players[0].battle.push(v);
     expect(kwOf(s, L, w).breaker).toBeLessThan(2);
+  });
+
+  it('条件つきの「S・トリガー」はブレイクされた時に条件を見る', () => {
+    for (const n of [1, 2]) {
+      const s = setup(Array.from({ length: n }, () => ({ p: 0, cid: 'vanilla', zone: 'battle' as const })));
+      const pl = s.players[1];
+      const st = s.players[1].deck.findLast((i) => s.cards[i].cid === 'vanilla')!;
+      s.cards[st].cid = 'condST';
+      pl.deck.splice(pl.deck.indexOf(st), 1);
+      s.cards[st].zone = 'shield';
+      pl.shield.push(st);
+      breakShields(s, L, 1, [st], 0);
+      expect(s.pending.some((x) => x.kind === 'trigger' && x.iid === st)).toBe(n >= 2);
+    }
   });
 
   it('このクリーチャーがタップしていれば、自分は攻撃されない', () => {

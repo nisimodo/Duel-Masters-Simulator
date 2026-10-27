@@ -1667,7 +1667,9 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
         });
       }
     }
-    const trigger = !!card?.faces.some((f) => f.kw.shieldTrigger) && !activeStatics(s, L).some((x) => x.owner === target && x.spec.s === 'noSTrigger');
+    // 「〜なら、このクリーチャーに「S・トリガー」を与える」: シールドにある時に条件を見る
+    const condTrig = (card?.faces[0]?.statics ?? []).some((x) => x.s === 'grant' && x.target.t === 'self' && x.kws.includes('S・トリガー') && staticCondOk(s, L, { src: sh, owner: target, spec: x }));
+    const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig) && !activeStatics(s, L).some((x) => x.owner === target && x.spec.s === 'noSTrigger');
     const strike = !!card?.faces.some((f) => f.kw.gStrike) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }

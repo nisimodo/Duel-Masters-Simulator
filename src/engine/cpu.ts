@@ -737,14 +737,15 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         const ap = power(s, L, at.attacker, true);
         const breaker = faceOf(s, L, at.attacker)?.kw.breaker ?? 1;
         const shields = s.players[p].shield.length;
-        const sorted = [...top.blockers].sort((a, b) => power(s, L, a) - power(s, L, b));
+        // 選ぶ前に破壊されるなどして、もうブロックできないクリーチャーは除く
+        const sorted = top.blockers.filter((b) => s.cards[b].zone === 'battle' && !s.cards[b].tapped).sort((a, b) => power(s, L, a) - power(s, L, b));
         // 「可能であればブロックする」
         const oppMust = activeStatics(s, L).some((x) => x.owner !== p && x.spec.s === 'oppMustBlock');
         const must = sorted.find((b) => oppMust || (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustBlock') || (s.cards[b].grants ?? []).some((g) => g.kws.includes('強制ブロック')));
         if (must != null) return { t: 'block', blocker: must };
         // ガードマン: 守られるクリーチャーより価値が低い/生き残るなら身代わりに
         if (at.targetCard != null)
-          for (const g of top.guards ?? []) {
+          for (const g of (top.guards ?? []).filter((x) => s.cards[x].zone === 'battle' && !s.cards[x].tapped)) {
             if (power(s, L, g) > ap || threatOf(s, L, at.targetCard) > threatOf(s, L, g)) return { t: 'block', guard: g };
           }
         // 生き残って倒せる → ブロック
