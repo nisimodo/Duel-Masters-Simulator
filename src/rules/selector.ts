@@ -77,6 +77,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
       });
     }
     changed ||= take(/^他の/, () => (sel.other = true));
+    changed ||= take(/^(?:名前に)?《([^》]+)》(?:とある(?:クリーチャー|カード))?以外の/, (m) => (sel.nameNot = m[1]));
     changed ||= take(/^名前に《([^》]+)》(とある|を持つ)/, (m) => (sel.nameHas = m[1]));
     changed ||= take(/^コスト(\d+)以下の/, (m) => (sel.costMax = +m[1]));
     changed ||= take(/^コスト(\d+)以上の/, (m) => (sel.costMin = +m[1]));

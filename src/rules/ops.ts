@@ -50,6 +50,8 @@ export interface Sel {
   /** この種族ではない */
   racesNot?: string[];
   nameHas?: string;
+  /** 名前にこの文字列を含まない (「《X》以外の」「名前に《X》とあるクリーチャー以外の」) */
+  nameNot?: string;
   /** 《名前》のカード */
   name?: string;
   costMin?: number;

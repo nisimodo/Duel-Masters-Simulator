@@ -407,7 +407,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(?:好きな数字|数)を(?:ひとつ|1つ)選(?:んで言う|んでもよい|ぶ)$/, '数字を1つ選ぶ')
     .replace(/^そのカードのコストが、?選んだ数(?:字)?と同じ(であれば|なら)、/, 'それが〈数字コスト〉のカード$1、')
     .replace(/につき(\d+)枚、カードを引(く|いてもよい)$/, 'につき、カードを$1枚引$2')
-    .replace(/^自分はゲームに勝利する$/, '自分はゲームに勝つ')
+    .replace(/^(?:自分は)?ゲームに勝利する$/, '自分はゲームに勝つ')
+    .replace(/^(その|この)クリーチャーは(?:この|その)ターン、/, 'このターン、$1クリーチャーは')
     .replace(/^((?:この|その)ターン|次の(?:自分|相手)のターンのはじめまで)、(.+?)は、?すべて、?(?=攻撃|ブロック)/, '$1、$2すべては')
     .replace(/^次の相手のターン(?:中)?、(相手の[^、]+?)は(攻撃(?:もブロックも)?できない)$/, '次の自分のターンのはじめまで、$1は$2')
     .replace(/^相手に手札を(\d+)枚捨てさせる$/, '相手は自身の手札を$1枚捨てる')
@@ -633,6 +634,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^(?:自分は)?ゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  {
+    const sh = s.match(/^自分の山札をシャッフルした後、(.+)$/);
+    const rest = sh && sentence(sh[1], ctx);
+    if (rest) return [{ op: 'shuffle' }, ...rest];
+  }
   if (/^自分のシールドを(?:\d+枚(?:まで)?)?見る$/.test(s)) return [{ op: 'note', text: '自分のシールドを見た' }];
   if (/^(?:自分は)?ゲームに負ける$/.test(s)) return [{ op: 'loseGame' }];
   if (/^その攻撃の後(?:で|、)このクリーチャーを破壊する$/.test(s)) return [{ op: 'grant', target: { ref: 'self' }, kws: ['攻撃後破壊'], until: 'turn' }];
@@ -1792,14 +1798,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
 
   // ---- 相手の手札を見て選ぶ ----
-  if ((m = s.match(new RegExp(`^相手の手札を見て、?(?:その中から、?)?(?:(.+?)を)?${N}枚選(び|ぶ)、?(.*)$`)))) {
+  if ((m = s.match(new RegExp(`^相手の手札を見て、?(?:その中から、?)?(?:(.+?)を)?${N}枚(まで)?選(び|ぶ)、?(.*)$`)))) {
     ctx.looked = true;
     const sel = m[1] ? parseSel(m[1], { zones: ['hand'] }) : undefined;
-    const rest = m[4] ? verbOps(m[4].replace(/^捨てさせる$/, '捨てる'), { ref: 'it' }) : [];
+    const rest = m[5] ? verbOps(m[5].replace(/^捨てさせる$/, '捨てる'), { ref: 'it' }) : [];
     if (rest && (!m[1] || sel))
       return [
         { op: 'lookHand', who: 'opp' },
-        { op: 'choose', target: { ref: 'looked', sel: sel ?? undefined, count: { n: +m[2], upTo: false } }, purpose: 'hostile', prompt: '相手の手札から選ぶ' },
+        { op: 'choose', target: { ref: 'looked', sel: sel ?? undefined, count: { n: +m[2], upTo: !!m[3] } }, purpose: 'hostile', prompt: '相手の手札から選ぶ' },
         ...rest,
       ];
   }
@@ -1943,6 +1949,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((m = s.match(/^(?:この|その)ターン、(.+?)は攻撃できない$/))) {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'attack' }];
+  }
+  if ((m = s.match(/^(?:(?:この|その)ターン|次の(?:自分|相手)のターンのはじめまで)、(.+?)はブロック(?:することが)?できない$/))) {
+    const t = refTarget(m[1]);
+    if (t) return [{ op: 'restrict', target: t, what: 'block' }];
   }
   if ((m = s.match(/^次の(?:自分|相手)のターンのはじめまで、(.+?)は攻撃できない$/))) {
     const t = refTarget(m[1]);
@@ -2252,6 +2262,7 @@ export function parseEffect(text: string): Program {
     }
   }
   body = normText(body).replace(/(次に(?:自分が)?召喚する[^。]+?少なくする)。(ただし、コストは0以下にはならない。)?そのクリーチャーが出た時、このターン、そのクリーチャーに「([^」]+)」を与える/g, '$1、出た時「$3」を与える。$2');
+  body = body.replace(/相手は(?:自分自身|自身)のシールドを(\d+)(?:枚|つ)選ぶ。(?:その後、)?このクリーチャーは、?そのシールドをブレイクする/g, 'このクリーチャーは相手のシールドを$1枚ブレイクする');
   body = body.replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
   const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);

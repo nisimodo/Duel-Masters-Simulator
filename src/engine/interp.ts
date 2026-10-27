@@ -117,6 +117,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.races?.length && !sel.races.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.racesNot?.length && sel.racesNot.some((r) => f.races.some((x) => x.includes(r)))) return false;
   if (sel.nameHas && ![f.name, card.name].some((x) => x.replace(/\s+/g, '').includes(sel.nameHas!.replace(/\s+/g, '')))) return false;
+  if (sel.nameNot && [f.name, card.name].some((x) => x.replace(/\s+/g, '').includes(sel.nameNot!.replace(/\s+/g, '')))) return false;
   if (sel.name) {
     const want = sel.name.replace(/\s+/g, '');
     if (![f.name, card.name, ...card.faces.map((x) => x.name)].some((x) => x.replace(/\s+/g, '') === want)) return false;
@@ -150,7 +151,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -616,6 +617,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           if (op.what === 'untap') c.noUntap = true;
           else if (op.what === 'attack') c.noAttack = true;
           else if (op.what === 'attackNext') c.restrict = { attack: true, block: false, until: ex.player };
+          else if (op.what === 'block') c.restrict = { attack: false, block: true, until: ex.player };
           else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
           else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: mainOpp(s, ex.player) };
           else c.restrict = { attack: true, block: true, until: ex.player };
