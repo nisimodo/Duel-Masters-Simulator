@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, breakCount, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { applyAction, attackTargets, breakCount, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { programOf, startExec } from './interp';
 import { costOf } from './statics';
 import { spellEffectLines } from '../lib/triggers';
@@ -20,6 +20,8 @@ const db = buildDB(
     cr('ulim', 1, 1000, ['相手のターンのはじめに、相手は自身のマナゾーンのカードを２枚までしかアンタップできない。']),
     { id: 'scrch', n: 'scrch', img: '', f: [{ n: 'scrch', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['このターン、次に自分が召喚するクリーチャーのコストを１少なくする。ただし、コストは０以下にはならない。そのクリーチャーが出た時、このターン、そのクリーチャーに「スピードアタッカー」を与える。', 'この呪文を唱えた後、墓地に置くかわりに山札に加えてシャッフルする。'] }] },
     { id: 'slock', n: 'slock', img: '', f: [{ n: 'slock', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手は、次の自身のターンにクリーチャーを召喚できず、呪文を唱えることもできない。'] }] },
+    cr('lightHunter', 1, 1000, ['このクリーチャーは、タップされていない光のクリーチャーを攻撃できる。']),
+    cr('lightMon', 1, 1000, [], 'L'),
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
     cr('baku', 5, 5000, ['マナ爆誕3(このクリーチャーを自分のマナゾーンから、コスト3を支払って召喚してもよい)']),
@@ -296,6 +298,15 @@ describe('named mechanics', () => {
     expect(applyAction(s, 1, { t: 'play', iid: v, face: 0, pay: freeMana(s, 1, 1) }, L).error).toBeTruthy();
     s = act(s, 1, { t: 'endTurn' });
     expect(s.players[1].summonLockUntil).toBeUndefined();
+  });
+
+  it('タップされていない光のクリーチャーを攻撃できる', () => {
+    const s = setup([{ p: 0, cid: 'lightHunter', zone: 'battle' }, { p: 1, cid: 'lightMon', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+    const h = find(s, 0, 'battle', 'lightHunter')!;
+    s.cards[h].sick = false;
+    const t = attackTargets(s, L, h).cards;
+    expect(t).toContain(find(s, 1, 'battle', 'lightMon'));
+    expect(t).not.toContain(find(s, 1, 'battle', 'vanilla'));
   });
 
   it('マナ爆誕: summons from the mana zone', () => {

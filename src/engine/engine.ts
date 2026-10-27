@@ -5,7 +5,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { activeStatics, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { activeStatics, staticCondOk, ALL_CIVS, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -513,10 +513,12 @@ function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('.
 }
 
 /** このターン、あと何体マナゾーンから召喚できるか (効果 + 「自分のターン中、N体マナゾーンから召喚してもよい」) */
-export function manaSummonLeft(s: GameState, L: Lookup, p: number): number {
+export function manaSummonLeft(s: GameState, L: Lookup, p: number, iid?: number): number {
   const ms = s.players[p].manaSummon;
   const cur = ms?.turn === s.turn ? ms : undefined;
-  const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' ? x.spec.n : 0), 0) : 0;
+  // 「ドラゴンをN体、マナゾーンから召喚してもよい」: 種族などの指定があれば、そのカードにだけ使える
+  const fits = (sel?: import('../rules/ops').Sel) => !sel || (iid != null && matchesSel(s, L, iid, sel));
+  const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' && fits(x.spec.sel) ? x.spec.n : 0), 0) : 0;
   return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
 }
 
@@ -534,7 +536,7 @@ function countAct(s: GameState, p: number, k: 'atk' | 'blk') {
 /** 「可能なら毎ターン攻撃する」で、まだ攻撃できるクリーチャー */
 export function mustAttackers(s: GameState, L: Lookup, p: number): number[] {
   return s.players[p].battle.filter((b) => {
-    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃')) && !activeStatics(s, L).some((x) => x.spec.s === 'allMustAttack' || (x.spec.s === 'oppMustAttack' && x.owner !== p))) return false;
+    if (!(faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'mustAttack') && !(s.cards[b].grants ?? []).some((g) => g.kws.includes('強制攻撃')) && !activeStatics(s, L).some((x) => x.spec.s === 'allMustAttack' || (x.spec.s === 'oppMustAttack' && x.owner !== p && staticCondOk(s, L, x)))) return false;
     if (!canAttackWith(s, L, b) || faceOf(s, L, b)?.kw.cantAttack) return false;
     const tg = attackTargets(s, L, b);
     // 実際に攻撃を宣言できるか (挑発などの制限も含めて) 確かめる
@@ -1448,14 +1450,15 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };
   if (mine.some((x) => x.s === 'cantAttackCreatures')) return { players, cards };
-  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped') || (c.grants ?? []).some((g) => g.kws.includes('アンタップ攻撃'));
+  const untappedSel = mine.flatMap((x) => (x.s === 'attackUntapped' && x.sel ? [x.sel] : []));
+  const untappedOk = (k.machFighter && c.sick) || mine.some((x) => x.s === 'attackUntapped' && !x.sel) || (c.grants ?? []).some((g) => g.kws.includes('アンタップ攻撃'));
   for (const o of opps)
     for (const t of s.players[o].battle) {
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
       if (tc.justDive != null || isSealed(s, t) || notCreatureNow(s, L, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
-      if (tc.tapped || untappedOk) cards.push(t);
+      if (tc.tapped || untappedOk || untappedSel.some((sel) => matchesSel(s, L, t, { ...sel, owner: 'any' }))) cards.push(t);
     }
   return { players, cards };
 }
@@ -1534,7 +1537,7 @@ function blockStep(s: GameState, L: Lookup) {
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
         return !ownStatics(s, L, a.attacker).some(
-          (x) => x.s === 'unblockableBy' && ((x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap) || (x.sel != null && matchesSel(s, L, b, x.sel))),
+          (x) => x.s === 'unblockableBy' && ((x.vsCreature && a.targetCard != null) || (x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap) || (x.sel != null && matchesSel(s, L, b, x.sel))),
         );
       });
   const manaCount = s.players[def].mana.length;
@@ -2091,7 +2094,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     c.zone === 'partner' ||
     ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone)) ||
     (a.alt === 'mana' && c.zone === 'mana') ||
-    (face.isCreature && c.zone === 'mana' && manaSummonLeft(s, L, p) > 0) ||
+    (face.isCreature && c.zone === 'mana' && manaSummonLeft(s, L, p, a.iid) > 0) ||
     (a.alt === 'mugen' && c.zone === 'grave') ||
     ((a.alt === 'fushigi' || a.alt === 'abyss') && c.zone === 'grave');
   if (!fromOk && !a.free && !a.force) return '手札以外から使う場合は「コストを支払わずに使う」を選んでください';
@@ -2234,7 +2237,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     // 「そのクリーチャーが出た時、このターン、そのクリーチャーに「〜」を与える」
     const nsGrants = !a.free && me2.nextSummon?.turn === s.turn ? me2.nextSummon.grants : undefined;
     if (!a.free && me2.nextSummon?.turn === s.turn) me2.nextSummon = undefined;
-    if (c.zone === 'mana' && a.alt !== 'mana' && manaSummonLeft(s, L, p) > 0) {
+    if (c.zone === 'mana' && a.alt !== 'mana' && manaSummonLeft(s, L, p, a.iid) > 0) {
       if (me2.manaSummon?.turn !== s.turn) me2.manaSummon = { turn: s.turn, left: 0 };
       if (me2.manaSummon.left > 0) me2.manaSummon.left--;
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;

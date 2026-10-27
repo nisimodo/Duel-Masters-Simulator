@@ -234,7 +234,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       const fg = (f.statics ?? []).find((x) => x.s === 'fushigi');
       if (c.zone === 'grave' && fg && fg.s === 'fushigi') items.push({ label: `フシギバース (基本コスト${fg.n})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       if (c.zone === 'grave' && (f.statics ?? []).some((x) => x.s === 'abyss')) items.push({ label: `アビスラッシュ (墓地から召喚)`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
-      if (f.isCreature && c.zone === 'mana' && me >= 0 && manaSummonLeft(s, L, me) > 0 && !(f.statics ?? []).some((x) => x.s === 'summonFrom'))
+      if (f.isCreature && c.zone === 'mana' && me >= 0 && manaSummonLeft(s, L, me, iid) > 0 && !(f.statics ?? []).some((x) => x.s === 'summonFrom'))
         items.push({ label: `マナゾーンから召喚 (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });
       if ((f.isCreature || f.isSpell) && (f.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone))
         items.push({ label: `${f.isSpell ? '唱える' : '召喚'} (コスト${costOf(s, L, me, iid, fi)})`, onClick: () => startPlay(iid, fi), disabled: !isMyTurn });

@@ -147,6 +147,12 @@ function countRel(s: GameState, L: Lookup, a: ActiveStatic, sel: Sel): number {
   return n;
 }
 
+/** 条件つきの常在型能力が今有効か */
+export function staticCondOk(s: GameState, L: Lookup, a: ActiveStatic): boolean {
+  const cond = (a.spec as { cond?: StaticCond }).cond;
+  return !cond || condOk(s, L, a, cond, a.src);
+}
+
 function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | undefined, iid: number): boolean {
   if (!cond) return true;
   switch (cond.c) {
@@ -173,7 +179,7 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
     case 'shieldsMore':
       return s.players[a.owner].shield.length > s.players[mainOpp(s, a.owner)].shield.length;
     case 'selfTapped':
-      return !!s.cards[a.src]?.tapped;
+      return !!s.cards[a.src]?.tapped && (!cond.oppTurn || s.active !== s.cards[a.src].owner);
     case 'selfNew':
       return !!s.cards[a.src]?.sick;
     case 'handLE':
