@@ -753,7 +753,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     return [{ s: 'creatureOnlyIf', cond: pos }];
   }
   // ---- 条件つきで、このクリーチャーの召喚コストを増減 ----
-  if (cond && (m = body.match(/^このクリーチャーの(?:召喚)?コストを(\d+)(少なく|多く)する(?:[、。]?ただし.*)?$/)))
+  if (cond && (m = body.match(/^(?:このクリーチャーの(?:召喚)?|この呪文(?:を唱える|の))コストを(\d+)(少なく|多く)する(?:[、。]?ただし.*)?$/)))
     return [{ s: 'selfCost', delta: (m[2] === '少なく' ? -1 : 1) * +m[1], cond, floor: floorOf(full) }];
   // 「〜あれば、この呪文をコストを支払わずに唱えてもよい」: コスト0として扱う
   if (cond && /^この(?:呪文|クリーチャー)を(?:自分の手札から)?コストを支払わずに(?:唱え|召喚し)てもよい$/.test(body)) return [{ s: 'selfCost', delta: -99, cond, floor: 0 }];

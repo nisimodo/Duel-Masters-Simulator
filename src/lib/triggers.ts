@@ -314,6 +314,6 @@ export function spellEffectLines(lines: string[]): string[] {
 
 /** 「〜あれば、この呪文に「S・トリガー」を与える」「〜あれば、この呪文をコストを支払わずに唱えてもよい」 (常在型として処理する) */
 function isCastStatic(l: string) {
-  if (!/「S・トリガー」を与える。?$|この呪文を(?:自分の手札から)?コストを支払わずに唱えてもよい。?$/.test(l)) return false;
+  if (!/「S・トリガー」を与える。?$|この呪文を(?:自分の手札から)?コストを支払わずに唱えてもよい。?$|この呪文(?:を唱える|の)コストを\d+少なくする/.test(l)) return false;
   return !!parseStaticLine(l)?.some((x) => (x.s === 'grant' && x.kws.includes('S・トリガー')) || x.s === 'selfCost');
 }

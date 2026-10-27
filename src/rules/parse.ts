@@ -135,9 +135,18 @@ export function parseCond(c0: string): Cond | null {
   let m: RegExpMatchArray | null;
   let c = c0
     .replace(/(\d+)(体|枚|つ)でもあ$/, '$1$2以上あ')
+    .replace(/^(《[^》]+》)が自分の(墓地|マナゾーン|手札)にあ$/, '自分の$2に$1があ')
+    .replace(/^そのカードのコストが(\d+)(以上|以下)$/, 'それがコスト$1$2')
     .replace(/^(バトルゾーンに自分の《[^》]+》が\d+(?:体|枚))あ$/, '$1以上あ')
     .replace(/^(名前に《[^》]+》とあるカード|[^、]+?・カード)(が\d+枚以上|が)自分の(墓地|マナゾーン)に(あ|な(?:け|い)?)$/, '自分の$3に$1$2$4');
   if ((m = c.match(new RegExp(`^シールドが${N}つもないプレイヤーがい$`)))) return { c: 'anyShieldsLess', n: +m[1] };
+  if (/^このクリーチャーが自分の墓地にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'card', self: true }, cmp: '>=', n: 1 };
+  // 「AがありBがあれば」「Aがいて、B」: 両方
+  if ((m = c.match(/^(.+?)(あり|いて)、(.+)$/))) {
+    const a = parseCond(m[1] + (m[2] === 'あり' ? 'あ' : 'い'));
+    const b = a && parseCond(m[3]);
+    if (a && b) return { c: 'and', a, b };
+  }
   if (/^バトルゾーンにある自分のクリーチャーの数が自分のシールドの数より多け$/.test(c)) return { c: 'creaturesGEShields', strict: true };
   if (/^相手のマナゾーンにあるカードが自分のより多け$/.test(c)) return { c: 'oppMore', zone: 'mana' };
   if (/^バトルゾーンにある相手のクリーチャーの数が自分(?:のクリーチャーの数)?より多け$/.test(c)) return { c: 'oppMore', zone: 'battle' };
@@ -169,6 +178,7 @@ export function parseCond(c0: string): Cond | null {
   if (/^(?:バトルゾーンにある)?自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
   if (/^自分のクリーチャーの数が自分のシールドの数以上$/.test(c)) return { c: 'creaturesGEShields' };
   if (/^その直前にバトルゾーンにあ$/.test(c)) return { c: 'wasInBattle' };
+  if (/^これが進化クリーチャーでな(?:け|い)?$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', self: true, evolution: true }, cmp: '<=', n: 0 };
   if (/^自分のクリーチャーの数が相手(?:の|のクリーチャー)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
   if (/^自分のシールドが相手(?:のシールド)?よりも?少な(?:けれ|け|い)?$/.test(c)) return { c: 'shieldsCmp', cmp: 'oppMore' };
   if (/^自分のシールドが相手(?:のシールド)?よりも?多(?:けれ|け|い)?$/.test(c)) return { c: 'shieldsCmp', cmp: 'selfMore' };
@@ -379,6 +389,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^鬼タイム\s*[:：]\s*(?=自分と相手のシールド)/, '')
     .replace(/^シビルカウント\s*\d+\s*[:：]\s*/, '')
     .replace(/^革命\d+[―ー\-－:：]/, '')
+    .replace(/^自分の山札の上から(?:もう|さらに)(\d+)枚、?(タップして)?(?:自分の)?マナゾーンに置く$/, '自分の山札の上から$1枚を$2マナゾーンに置く')
+    .replace(/^次の自分のターンのはじめまで(?=[^、])/, '次の自分のターンのはじめまで、')
+    .replace(/^次の自分のターンまで、/, '次の自分のターンのはじめまで、')
+    .replace(/撰/g, '選')
+    .replace(/^相手がブロックする前に、/, '')
+    .replace(/^(?:この|その)ターン中に、/, 'このターン、')
+    .replace(/^(?:こうして出さなければ|それができなければ|出さなければ)、/, 'そうしなかった場合、')
+    .replace(/^(相手の[^、]+?)をさらに(\d+)(体|枚)(まで)?選び、/, '$1を$2$3$4選び、')
     .replace(/^(?:こうして)?(?:見せた|表向きにした|捨てた|加えた)(?:カード|手札)が(?=[^、]+?(?:なら|であれば|でなければ)、)/, 'それが')
     .replace(/^([゠-ヿー・]{2,})でなければ、/, 'それが$1でなければ、')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
@@ -522,7 +540,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(自分の山札の上から\d+枚(?:目)?)を、?(?:裏向きにし(?:て)?|裏向きのまま)?、?(?:それぞれ別の)?新しいシールドとして(?:自分の)?シールド(?:ゾーン)?に(?:加える|置く)$/, '$1をシールド化する')
     .replace(/選んで(?=裏向きにし)/, '選び、')
     .replace(/^このターン(?=(?:その|この|自分の|相手の)(?:クリーチャー|[^、]*クリーチャー)は)/, 'このターン、')
-    .replace(/^(?:このターンが終わるまで|このターンの終わりまで|そのターンの終わりまで|このターン中|そのターン中|その攻撃の終わりまで)、?/, 'このターン、')
+    .replace(/^(?:このターンが終わるまで|このターンの終わりまで|そのターンの終わりまで|このターン中|そのターン中|その攻撃の終わりまで)(?:、|(?![にのはでから、]))/, 'このターン、')
     .replace(/^(このターン、)?その(?:ドラゴン|[゠-ヿー・]{2,})は(、?「)/, '$1そのクリーチャーは$2')
     .replace(/(クリーチャーは)さらに「/, '$1「')
     .replace(/^自分の手札を、?好きな枚数捨てる$/, '自分の手札を99枚まで捨てる')
@@ -1078,7 +1096,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 一時的な能力 「次の自分のターンのはじめまで、このクリーチャーは離れない/破壊されない/すべてのバトルに勝つ/相手に選ばれず、攻撃されない」
   {
-    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その|自分の|バトルゾーンにある自分の)クリーチャーは、?(?:すべて(?!の)、?)?(.+)$/);
+    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その|選んだ|自分の|バトルゾーンにある自分の)クリーチャーは、?(?:すべて(?!の)、?)?(.+)$/);
     const map: [RegExp, string[]][] = [
       [/^(バトルゾーンを)?離れない$/, ['離れない']],
       [/^破壊されない$/, ['破壊されない']],
@@ -1088,7 +1106,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       [/^攻撃されない$/, ['攻撃されない']],
     ];
     const hit = nl && map.find(([re]) => re.test(nl[3]));
-    const tgt: Target | null = nl ? (nl[2] === 'この' ? { ref: 'self' } : nl[2] === 'その' ? { ref: 'it' } : { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }) : null;
+    const tgt: Target | null = nl ? (nl[2] === 'この' ? { ref: 'self' } : nl[2] === 'その' || nl[2] === '選んだ' ? { ref: 'it' } : { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }) : null;
     if (nl && hit && tgt) return [{ op: 'grant', target: tgt, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
     // 「次の相手のターン中、自分の〇〇は攻撃されない」など (種族つき)
     const nr = s.match(/^(次の(?:自分|相手)のターン(?:のはじめまで|中)|このターン)、(自分の[^、]+?)は、?(?:すべて(?!の)、?)?(.+)$/);
@@ -1701,7 +1719,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (m) {
     const cond = parseCond(m[1]);
     if (cond) {
-      const body = sentence(m[2], ctx);
+      // 「それがクリーチャーなら、手札に加える」: 目的語のない動詞は「それ」に対して行う
+      const uo = unOptional(m[2]);
+      const bare = verbOps(uo ?? m[2], { ref: 'it' });
+      const body = sentence(m[2], ctx) ?? (bare && uo ? [{ op: 'optional', body: bare, prompt: m[2] } as Op] : bare);
       return body ? [{ op: 'if', cond, body }] : null;
     }
   }
