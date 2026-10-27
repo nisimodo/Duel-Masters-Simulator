@@ -168,6 +168,12 @@ function applyReplaceMove(s: GameState, L: Lookup, iid: number, to: ZoneName, op
   const foe = s.inBattleNow ? s.battleFoe : undefined;
   if (foe != null && s.cards[foe]?.zone === 'battle')
     for (const sp of specsOf(foe)) if (sp.subj.t === 'foe' && (!sp.subj.oppOnly || s.cards[foe].owner !== c.owner)) found.push({ src: foe, spec: sp });
+  // 効果で一時的に得た「墓地のかわりに〜」
+  const tg = to === 'grave' ? (c.grants ?? []).flatMap((g) => g.kws).find((k) => k === '墓地のかわりにマナ' || k === '墓地のかわりに手札') : undefined;
+  if (tg) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は墓地に置くかわりに${tg === '墓地のかわりにマナ' ? 'マナゾーン' : '手札'}へ`);
+    return moveCard(s, L, iid, tg === '墓地のかわりにマナ' ? 'mana' : 'hand', { ...opts, noReplace: true });
+  }
   for (const { src, spec } of found) {
     if (spec.on === 'destroy' && to !== 'grave') continue;
     if (spec.oppTurn && s.active === c.owner) continue;

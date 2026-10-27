@@ -1915,6 +1915,22 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterAttack', body }];
   }
 
+  // ---- 一時的な置換 「このターン、自分のクリーチャーが破壊される時、墓地に置くかわりにマナゾーンに置く」 ----
+  {
+    const tr = s.match(/^(この|その)ターン(?:中)?、|^(?:次の自分|自分の次)のターンのはじめまで、/);
+    const rest = tr ? s.slice(tr[0].length) : '';
+    const tm = rest.match(/^(.+?)が(破壊される|バトルゾーンから自分の墓地に置かれる|バトルゾーンを離れる|離れる)時、(?:(?:その|この)クリーチャーを)?(?:墓地に置(?:く|かれる)|離れる|バトルゾーンを離れる)?かわりに、?(バトルゾーンにとどまる|とどまる|(?:自分の|持ち主の)?マナゾーンに置く|(?:自分の|持ち主の)?手札に戻す)$/);
+    if (tm) {
+      const t = refTarget(tm[1]) ?? (() => {
+        const sel = parseSel(tm[1]);
+        return sel ? ({ ref: 'sel', sel, count: { all: true }, chooser: 'self' } as Target) : null;
+      })();
+      const leave = /離れる/.test(tm[2]);
+      const kw = /とどまる/.test(tm[3]) ? (leave ? '離れない' : '破壊されない') : /マナ/.test(tm[3]) ? '墓地のかわりにマナ' : '墓地のかわりに手札';
+      if (t) return [{ op: 'grant', target: t, kws: [kw], until: tr![1] ? 'turn' : 'nextOwnTurn' }];
+    }
+  }
+
   // ---- クロスギアをコストを支払わずにクロスする ----
   {
     const cx =

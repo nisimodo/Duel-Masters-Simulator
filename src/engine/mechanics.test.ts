@@ -508,6 +508,13 @@ describe('named mechanics', () => {
     expect(s.players[0].hand.length).toBe(h + 2);
   });
 
+  it('このターン、破壊される時、墓地に置くかわりにマナゾーンに置く (一時的な置換)', () => {
+    const s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    startExec(s, L, 0, v, programOf('このターン、自分のクリーチャーが破壊される時、墓地に置くかわりに自分のマナゾーンに置く').ops, 'v');
+    expect(moveCard(s, L, v, 'grave')).toBe('mana');
+  });
+
   it('効果でコストを支払わずにクロスする', () => {
     const s = setup([
       { p: 0, cid: 'gear', zone: 'battle' },
