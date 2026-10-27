@@ -87,7 +87,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
     changed ||= take(/^「([^」]+)」を持つ/, (m) => (sel.hasKw = m[1]));
     changed ||= take(/^、?「([^」]+)」(?:以外の|を持たない)/, (m) => (sel.hasKwNot = m[1]));
     changed ||= take(/^(タップされていない|タップしていない)/, () => (sel.tapped = false));
-    changed ||= take(/^(タップされている|タップしている|タップ状態の)/, () => (sel.tapped = true));
+    changed ||= take(/^(タップされている|タップしている|タップされた|タップ状態の)/, () => (sel.tapped = true));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)(?:ではない|以外の)/, (m) => {
       sel.civNot = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);
     });
