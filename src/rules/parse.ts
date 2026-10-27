@@ -334,6 +334,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(このターン、(?:バトルゾーンにある)?自分のクリーチャー)すべては「/, '$1すべてに「')
     .replace(/コスト(\d+)以下で「/g, 'コスト$1以下の「')
     .replace(/(クリーチャー|カード)をもう(\d+)(体|枚)、?/, '$1を$2$3')
+    .replace(/好きな順番で/g, '好きな順序で')
+    .replace(/(^|、)(相手|自分)クリーチャーを/, '$1$2のクリーチャーを')
+    .replace(/、それ以外のカードを(?:すべて)?好きな順序で/, '、残りを好きな順序で')
+    .replace(/^その中にある(?:すべての)?(.+?)と(.+?)を(?:すべて)?(自分の手札に加え|自分の墓地に置き|手札に加え)、/, 'その中から$1または$2をすべて$3、')
+    .replace(/から好きな(?:枚数|数)選び、/, 'から99枚まで選び、')
+    .replace(/^([^、]+?)を自分の(手札|墓地|マナゾーン)から(\d+(?:枚|体)(?:まで)?)選び、/, '自分の$2から$1を$3選び、')
     // 「「パワーアタッカー+N」を得、シールドをさらにN枚ブレイクする」: ブレイク数の追加も付与する能力として扱う
     .replace(/「([^」]+)」を得、シールドをさらに(\d+)(?:枚|つ)ブレイクする$/, '「$1」と「ブレイク+$2」を得る')
     .replace(/シールドをさらに(\d+)(?:枚|つ)ブレイクし、「([^」]+)」を得る$/, '「ブレイク+$1」と「$2」を得る')
@@ -736,6 +742,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  if (/^(?:その後、)?(?:これ|それら|そのN?\d*枚|その\d+枚|表向きにしたカード)を好きな順序で(?:元に戻す|(?:自分の)?山札の上に戻す)$/.test(s)) return [{ op: 'note', text: '好きな順序で戻した' }];
   {
     const dd = s.match(/^相手はカードを(\d+)枚引き、その後、(?:カードを)?(\d+)枚、?自身の手札から選んで捨てる$/);
     if (dd) return [{ op: 'draw', n: +dd[1], upTo: false, who: 'opp' }, { op: 'discard', who: 'opp', count: { n: +dd[2], upTo: false }, how: 'ownerChooses' }];
@@ -743,7 +750,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   {
     // 「その中の進化ではないドラゴンと進化ではないヒューマノイドをすべてバトルゾーンに出す」
     const two = s.match(/^その中(?:から|の)、?(.+?)(?:または|と)(.+?)をすべて(.+)$/);
-    if (two && ctx.looked) {
+    if (two && ctx.looked && !/残り/.test(two[3])) {
       const a = sentence(`その中から${two[1]}をすべて${two[3]}`, ctx);
       const b = a && sentence(`その中から${two[2]}をすべて${two[3]}`, ctx);
       if (a?.length && b?.length) return [...a, ...b];
@@ -1949,6 +1956,33 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const count: Count = m[2] === 'パワー' ? { n: 99, upTo: true, sumPowerMax: +m[3] } : { n: 99, upTo: true, sumCostMax: +m[3] };
     if (sel && ops)
       return [{ op: 'choose', target: { ref: 'sel', sel, count, chooser: 'self' }, purpose: purposeOf(sel, m[4]), prompt: `${m[2]}の合計が${m[3]}以下になるように選ぶ` }, ...ops];
+  }
+
+  // 「(パワー|コスト)の合計がN以下になるように〜選ぶ」: その部分を外した文を解釈して、最初の選択に合計の上限を付ける
+  {
+    const sm = s.match(/(パワー|コスト)の合計が(\d+)以下になるよう(?:に)?、?/);
+    if (sm) {
+      const rest = s
+        .replace(sm[0], '')
+        .replace(/、、/, '、')
+        .replace(/^、/, '')
+        .replace(/好きな(?:数|枚数)の(.+?)を/, '$1を99枚まで、')
+        .replace(/を、?好きな(?:数|枚数)、?選/, 'を99枚まで選')
+        .replace(/^(.+?)を(?=選び、|選ぶ$)/, '$1を99枚まで');
+      const ops = sentence(rest, ctx);
+      const first = (list: Op[]): Op | undefined => {
+        for (const o of list) {
+          if (o.op === 'choose') return o;
+          if (o.op === 'optional') return first(o.body);
+        }
+        return undefined;
+      };
+      const ch = ops && first(ops);
+      if (ops && ch && ch.op === 'choose' && 'count' in ch.target && ch.target.count && 'n' in ch.target.count) {
+        ch.target.count = { ...ch.target.count, upTo: true, ...(sm[1] === 'パワー' ? { sumPowerMax: +sm[2] } : { sumCostMax: +sm[2] }) };
+        return ops;
+      }
+    }
   }
 
   // ---- 「その〇〇を〜」 (直前に表向きにした/選んだカード) ----
