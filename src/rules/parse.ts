@@ -328,6 +328,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/^(自分の墓地にある)すべての(.+?)と(.+?)を(?:自分の)?手札に戻す$/, '$1$2または$3をすべて、自分の手札に戻す')
+    .replace(/^相手の手札が(\d+)枚(?:でも|以上)あれば、その中から(\d+)枚見ないで選び、相手はそれを持ち主の墓地に置く$/, '相手の手札を見ないで$2枚選び、捨てさせる')
+    .replace(/^相手の手札が(\d+)枚(?:でも|以上)あれば、相手はその中から(\d+)枚選んで持ち主の墓地に置く$/, '相手は自身の手札を$2枚選び、捨てる')
+    .replace(/^バトルゾーンにある([^、自相]+?)の数と同じ枚数のカードを引(く|いてもよい)$/, 'バトルゾーンにある$1のクリーチャー1体につき、カードを1枚引$2')
+    .replace(/^(?:その後、)?そのクリーチャー(\d)体につき(\d+)枚カードを引(く|いてもよい)$/, 'こうして選んだクリーチャー$1体につき、カードを$2枚引$3')
+    .replace(/^そのバトルの終わりまで、(その|この)クリーチャーのパワーは/, 'このターン、$1クリーチャーのパワーは')
     .replace(/、それ以外のカードを好きな順(?:序|番)?で/, '、残りを好きな順序で')
     .replace(/^その中から好きな枚数を自分の山札の一番下に好きな順序で置く$/, 'その中からカードを99枚まで選び、自分の山札の一番下に置く')
     .replace(/^(?:そのカード|見たシールド)を手札に加えなかった(?:場合|ら)、/, 'そうしなかった場合、')
@@ -568,6 +574,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const smOps = sm && verbOps(sm[1].replace(/^バトルゾーンから/, ''), { ref: 'it' });
     if (smOps) return [{ op: 'pickSameName', n: 0, ofIt: true }, ...smOps];
     if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?手札に戻す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'hand' }];
+    if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?山札の(一番)?上に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'deckTop' }];
+    {
+      // 「相手は、バトルゾーンかマナゾーンから自身のカードをN枚選び、持ち主の墓地に置く」
+      const oz = s.match(/^相手は、?(バトルゾーン(?:か|または)マナゾーン|マナゾーン(?:か|または)バトルゾーン)から自身のカードを(\d+)枚選び、(.+)$/);
+      const rest = oz && verbOps(oz[3], { ref: 'it' });
+      if (oz && rest) return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'mana'], kind: 'card' }, count: { n: +oz[2], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `カードを${oz[2]}枚選ぶ` }, ...rest];
+    }
   }
   if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
@@ -707,6 +720,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  {
+    const gr = s.match(/^そのクリーチャーは「([^」]+)」を得、(?:この)?ターンの終わりにバトルゾーンから(?:自分の|持ち主の)手札に戻す$/);
+    if (gr) return [{ op: 'grant', target: { ref: 'it' }, kws: [gr[1]], until: 'turn' }, { op: 'atTurnEnd', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }];
+  }
   // 「AをN体破壊するか、BをN体破壊する」「A N体か、B N体を破壊する」: どちらかを選ぶ
   {
     const or2 = s.match(/^(.+?)(破壊する|持ち主の手札に戻す|持ち主の墓地に置く)か、(.+)$/);
@@ -1685,6 +1702,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ];
   }
 
+  // 「相手の手札を見て、その中から〇〇をすべて捨てさせる」
+  if ((m = s.match(/^相手の手札を見て、?その中から(.+?)をすべて(?:選び出し、持ち主の墓地に置く|捨てさせる)$/))) {
+    const sel = parseSel(m[1], { zones: ['hand'] });
+    if (sel)
+      return [
+        { op: 'lookHand', who: 'opp' },
+        { op: 'choose', target: { ref: 'looked', sel, count: { all: true } }, purpose: 'hostile', prompt: 'all' },
+        { op: 'move', target: { ref: 'it' }, to: 'grave' },
+      ];
+  }
   // ---- 自分と相手を破壊 ----
   if (/^そのクリーチャーとこのクリーチャーを破壊する$/.test(s)) return [{ op: 'destroy', target: { ref: 'it' } }, { op: 'destroy', target: { ref: 'self' } }];
 
@@ -1981,6 +2008,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       },
     ];
   // 「各プレイヤーは自身の手札を山札に戻してシャッフルし、その枚数と同じ枚数のカードを引く」
+  if (/^自分の手札を(?:すべて)?(?:自分の)?山札に(?:戻して|加えて)シャッフルし、その枚数と同じ枚数のカードを引く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+      { op: 'shuffle' },
+      { op: 'drawItPlus', plus: 0 },
+    ];
   if (/^各プレイヤーは、?自身の手札を(?:すべて)?(?:それぞれの|自身の)?山札に(?:戻して|加えて)シャッフルし、その枚数と同じ枚数のカードを引く$/.test(s))
     return [
       {
