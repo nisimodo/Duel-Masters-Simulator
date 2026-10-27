@@ -26,6 +26,8 @@ export interface CardInst {
   /** 使用中の面 (ツインパクト・サイキックの裏面) */
   face: number;
   under: number[];
+  /** スター進化で離れた時、バトルゾーンに残った下のクリーチャー */
+  leftBehind?: number;
   parent: number | null;
   /** ターン終了時まで有効なパワー修正 */
   powerMod: number;
@@ -115,6 +117,8 @@ export interface PlayerState {
   noLose?: { turn?: number; until?: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
+  /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */
+  manaUntapLimit?: number;
   /** デュエリストの能力を使ったターン */
   duelistTurn?: number;
   /** 「ファイナル革命」を使ったターン */

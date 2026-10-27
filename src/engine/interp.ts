@@ -159,8 +159,10 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
   const out: number[] = [];
   for (const o of owners)
     for (const z of sel.zones) {
-      const arr = z === 'deckTop' ? s.players[o].deck.slice(-1) : z === 'underSelf' ? (o === s.cards[ex.src]?.owner ? s.cards[ex.src].under : []) : (s.players[o][z as ZoneName] as number[] | undefined);
+      let arr = z === 'deckTop' ? s.players[o].deck.slice(-1) : z === 'underSelf' ? (o === s.cards[ex.src]?.owner ? s.cards[ex.src].under : []) : (s.players[o][z as ZoneName] as number[] | undefined);
       if (!arr) continue;
+      // デュエリストはパートナーゾーンにあるが、名前指定ではバトルゾーンのカードとして扱う
+      if (z === 'battle' && sel.name) arr = [...arr, ...s.players[o].partner.filter((x) => /デュエリスト/.test(L(s.cards[x].cid)?.faces[0]?.type ?? ''))];
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
         if (sel.self && iid !== ex.src) continue;
@@ -287,6 +289,14 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       return ex.looked.filter((i) => !ex.it.includes(i));
     case 'saved':
       return (ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone');
+    case 'leftBehind': {
+      const lb = s.cards[ex.src]?.leftBehind;
+      return lb != null && s.cards[lb].zone === 'battle' ? [lb] : [];
+    }
+    case 'host': {
+      const par = s.cards[ex.src]?.parent;
+      return par != null && s.cards[par].zone === 'battle' ? [par] : [];
+    }
     case 'looked':
       // 条件・枚数のない「見たカード」はすべて
       return !t.sel && !t.count ? ex.looked.filter((i) => s.cards[i].zone !== 'gone') : null;
@@ -562,7 +572,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'destroy': {
-        const ids = (resolveRef(s, ex, op.target) ?? []).filter((i) => s.cards[i].zone === 'battle');
+        const ids = (resolveRef(s, ex, op.target) ?? []).filter((i) => s.cards[i].zone === 'battle' || (s.cards[i].zone === 'partner' && /デュエリスト/.test(L(s.cards[i].cid)?.faces[0]?.type ?? '')));
         for (const i of ids) {
           log(s, ex.player, `${q(nameOf(s, L, i))} を破壊`);
           moveCard(s, L, i, 'grave');
@@ -730,6 +740,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.ops.unshift(...seq, { op: 'setPlayer', p: me0 });
         continue;
       }
+      case 'asPlayer': {
+        ex.ops.shift();
+        const me0 = ex.player;
+        const q = op.who === 'self' ? me0 : (opps(s, me0)[0] ?? me0);
+        ex.ops.unshift({ op: 'setPlayer', p: q }, ...op.body, { op: 'setPlayer', p: me0 });
+        continue;
+      }
       case 'setPlayer':
         ex.player = op.p;
         ex.it = [];
@@ -790,6 +807,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         moveCard(s, L, ex.src, 'battle', { tapped: wasTapped });
         if (s.attack?.blocked === other) s.attack.blocked = ex.src;
         if (s.attack?.targetCard === other) s.attack.targetCard = ex.src;
+        break;
+      }
+      case 'manaUntapLimit': {
+        for (const o of opps(s, ex.player)) s.players[o].manaUntapLimit = Math.min(op.n, s.players[o].manaUntapLimit ?? op.n);
+        log(s, ex.player, `次の相手のターンのはじめに、相手はマナを${op.n}枚までしかアンタップできない`);
         break;
       }
       case 'superLink': {

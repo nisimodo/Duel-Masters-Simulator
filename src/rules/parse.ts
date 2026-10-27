@@ -137,6 +137,10 @@ function parseCond(c: string): Cond | null {
       const sel = parseSel('自分の' + m[1]);
       if (sel) return { c: 'count', sel, cmp: '>=', n: +m[2] };
     }
+    if ((m = c.match(/^(?:バトルゾーンに)?自分の、?(.+?)がな(?:けれ|け|い)?$/))) {
+      const sel = parseSel('自分の' + m[1]);
+      if (sel) return { c: 'count', sel, cmp: '<=', n: 0 };
+    }
     if ((m = c.match(/^(?:バトルゾーンに)?自分の(.+?)があ$/))) {
       const sel = parseSel('自分の' + m[1]);
       if (sel) return { c: 'count', sel, cmp: '>=', n: 1 };
@@ -239,9 +243,11 @@ function parseCond(c: string): Cond | null {
     const sel = parseSel(m[2], Z);
     if (sel) return { c: 'itMatches', sel };
     // 「それが呪文か、ブロッカーを持つクリーチャー」「進化ではないドラゴンか進化ではないヒューマノイド」
-    const or = m[2].match(/^(.+?)か、?(.+)$/);
-    const a = or && parseSel(or[1], Z);
+    const or = m[2].match(/^(.+?)(?:か、?|または)(.+)$/);
     const b = or && parseSel(or[2], Z);
+    // 「レクスターズまたは火のクリーチャー」: 前半に名詞がなければ後半の名詞を補う
+    const noun = or?.[2].match(/(クリーチャー|タマシード|カード|呪文)$/)?.[1];
+    const a = or && (parseSel(or[1], Z) ?? (noun && !/(クリーチャー|タマシード|カード|呪文)$/.test(or[1]) ? parseSel(`${or[1]}の${noun}`, Z) ?? parseSel(or[1] + noun, Z) : null));
     return a && b ? { c: 'or', a: { c: 'itMatches', sel: a }, b: { c: 'itMatches', sel: b } } : null;
   }
   return null;
@@ -319,6 +325,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/攻撃またはブロックできない$/, '攻撃もブロックもできない')
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
+    .replace(/^(それ|そのカード)が(.+?)なら(出す|手札に加える|墓地に置く)$/, '$1が$2なら、それを$3')
+    .replace(/^それ以外なら(墓地に置く|手札に加える|マナゾーンに置く)$/, 'それ以外なら、それを$1')
     .replace(/^((?:光|水|闇|火|自然)の(?:カード|クリーチャー|呪文))であれば、/, 'それが$1であれば、')
     .replace(/^(?:好きな数字|数)を(?:ひとつ|1つ)選(?:んで言う|んでもよい|ぶ)$/, '数字を1つ選ぶ')
     .replace(/^そのカードのコストが、?選んだ数(?:字)?と同じ(であれば|なら)、/, 'それが〈数字コスト〉のカード$1、')
@@ -661,6 +669,34 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  {
+    // 「その中からN枚を手札に加え、N枚を山札の一番下に戻し、残りを山札の一番上に置く」
+    const hb = s.match(/^その中から(\d+)枚を手札に加え、(\d+)枚を山札の一番下に(?:戻し|置き)、残り(?:の\d+枚)?を山札の一番上に(?:戻す|置く)$/);
+    if (hb) {
+      const inDeck: Sel = { owner: 'self', zones: ['deck'], kind: 'card' };
+      return [
+        { op: 'choose', target: { ref: 'looked', count: { n: +hb[1], upTo: false } }, purpose: 'benefit', prompt: `手札に加えるカードを${hb[1]}枚選ぶ` },
+        { op: 'move', target: { ref: 'it' }, to: 'hand' },
+        { op: 'choose', target: { ref: 'looked', sel: inDeck, count: { n: +hb[2], upTo: false } }, purpose: 'neutral', prompt: `山札の一番下に置くカードを${hb[2]}枚選ぶ` },
+        { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+        { op: 'choose', target: { ref: 'looked', sel: inDeck, count: { all: true } }, purpose: 'neutral', prompt: 'all' },
+        { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+      ];
+    }
+  }
+  {
+    // 「次の相手のターンのはじめに、相手は自身のマナゾーンのカードをN枚までしかアンタップできない」
+    const ul = s.match(/^(次の相手のターンのはじめに、)?相手は自身のマナゾーン(?:にある|の)カードを(\d+)枚までしかアンタップできない$/);
+    if (ul) return ul[1] ? [{ op: 'manaUntapLimit', n: +ul[2] }] : [];
+  }
+  {
+    const hv = s.match(/^これを(?:装備|クロス)したクリーチャーを(.+)$/);
+    const ops = hv && verbOps(hv[1], { ref: 'host' });
+    if (ops) return ops;
+    const lb = s.match(/^(?:その)?下にあったクリーチャーを(.+)$/);
+    const ops2 = lb && verbOps(lb[1], { ref: 'leftBehind' });
+    if (ops2) return ops2;
+  }
   {
     const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
     if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
@@ -1825,6 +1861,23 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (a && b) return [{ op: 'modal', pick: 1, options: [{ label: `${m[1]}を${m[2]}枚`, body: a }, { label: `${m[4]}を${m[5]}枚`, body: b }] }];
   }
   if (/^(?:相手は)?山札をシャッフルする$/.test(s) && /^相手は/.test(s0.replace(/^その後、/, ''))) return [{ op: 'shuffle', who: 'opp' }];
+  // 「プレイヤーを1人選ぶ。そのプレイヤーは(自身の)〜」 (parseEffect で1文にまとめる)
+  if ((m = s.match(/^プレイヤーを1人選(んでもよい|び)、そのプレイヤーは、?(.+)$/))) {
+    const rest = m[2].replace(/^バトルゾーンにある自身の/, '自分の').replace(/自身の/g, '自分の');
+    const body = sentence(rest, ctx);
+    if (body?.length)
+      return [
+        {
+          op: 'modal',
+          pick: 1,
+          optional: m[1] === 'んでもよい',
+          options: [
+            { label: '自分を選ぶ', body: [{ op: 'asPlayer', who: 'self', body }] },
+            { label: '相手を選ぶ', body: [{ op: 'asPlayer', who: 'opp', body }] },
+          ],
+        },
+      ];
+  }
   // 「各プレイヤーは(自身の)〜」: プレイヤーごとに行う
   if ((m = s.match(/^各プレイヤーは、?(.+)$/))) {
     const rest = m[1].replace(/^バトルゾーンにある自身の/, '自分の').replace(/自身の/g, '自分の').replace(/それぞれの/g, '自分の').replace(/(\d+)(体|枚)ずつ/g, '$1$2');
@@ -1852,6 +1905,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 function refTarget(phrase: string): Target | null {
   const p = phrase.replace(/\s+/g, '');
   if (/^この(クリーチャー|カード|タマシード|ドラグハート|クロスギア|フォートレス)$/.test(p)) return { ref: 'self' };
+  if (/^これを(装備|クロス)したクリーチャー$/.test(p)) return { ref: 'host' };
   // 「自分のクリーチャー」「相手のドラゴン」(数を書かない) はすべて
   if (/^(自分|相手)の[^\d]*(クリーチャー|ドラゴン|コマンド|ハンター|エイリアン|ジョーカーズ)$/.test(p) && !/\d/.test(p)) {
     const sel = parseSel(p);
@@ -1905,6 +1959,7 @@ export function parseEffect(text: string): Program {
       body = normText(body).replace(both[0], both[0].startsWith('。') ? '。' : '');
     }
   }
+  body = normText(body).replace(/プレイヤーを1人選(んでもよい|ぶ)。そのプレイヤーは/g, (_, x) => `プレイヤーを1人選${x === 'ぶ' ? 'び' : x}、そのプレイヤーは`);
   const prog = parseEffectRaw(body);
   fixPurposes(prog.ops);
   for (const o of prog.ops)

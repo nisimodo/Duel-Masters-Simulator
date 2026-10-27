@@ -92,6 +92,8 @@ export type Target =
   | { ref: 'rest' } // 見ている中で選ばれなかったカード (「残り」)
   | { ref: 'under'; count: Count } // このクリーチャーの下にあるカード
   | { ref: 'saved' } // 先に選んで保存しておいたカード
+  | { ref: 'host' } // これを装備/クロスしたクリーチャー
+  | { ref: 'leftBehind' } // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
 /** 選択の目的 (CPU が選ぶ基準になる) */
@@ -178,6 +180,7 @@ export type Op =
   | { op: 'forEachPlayer'; body: Op[] }
   /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */
   | { op: 'setPlayer'; p: number }
+  | { op: 'asPlayer'; who: 'self' | 'opp'; body: Op[] }
   /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
   | { op: 'repeatIt'; sel?: Sel; body: Op[]; saved?: boolean }
   /** キーワード能力を一時的に与える */
@@ -238,6 +241,7 @@ export type Op =
   | { op: 'handSwap' }
   /** 覚醒リンク: 指定の名前のサイキック・クリーチャーとこのクリーチャーを裏返してリンクさせる */
   | { op: 'superLink'; names: string[] }
+  | { op: 'manaUntapLimit'; n: number }
   /** 封印を付ける (山札の上から裏向きで) */
   | { op: 'seal'; target: Target; n: number }
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */

@@ -69,7 +69,7 @@ export type StaticSpec =
   /** 離れる時、かわりに手札へ (エターナル・Ω) */
   | { s: 'leaveToHand' }
   /** 破壊される時、墓地に置くかわりに別の場所へ */
-  | { s: 'destroyTo'; zone: 'hand' | 'mana' | 'deckBottom' | 'shield' }
+  | { s: 'destroyTo'; zone: 'hand' | 'mana' | 'deckBottom' | 'deckTop' | 'shield' }
   /** エスケープ: 破壊される時、かわりにシールドを1つ手札へ */
   | { s: 'escape' }
   /** セイバー: 自分の〇〇が破壊される時、かわりにこのクリーチャーを破壊 */
@@ -197,7 +197,9 @@ export type StaticSpec =
   /** 「火・自然ブロッカー」「ドラゴン・ブロッカー」: 条件に合う相手クリーチャーだけブロックできる */
   | { s: 'limitedBlocker'; sel: Sel }
   /** 離れる時、条件を満たせばかわりにとどまる */
-  | { s: 'stayIf'; cond: 'always' | 'tapped' | 'oppSpell'; powerGt?: number; ownSel?: Sel; oppSel?: Sel }
+  | { s: 'stayIf'; cond: 'always' | 'tapped' | 'oppSpell' | 'hasUnder'; powerGt?: number; ownSel?: Sel; oppSel?: Sel }
+  /** 「ブロックされた/ブロックした場合、バトルは行われない」 */
+  | { s: 'noBlockBattle'; blocking: boolean }
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
   | { s: 'breakToGrave' }
   /** バトルゾーンを離れない */
@@ -423,6 +425,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sel = parseSel(m[1]);
     if (sel) return [{ s: 'limitedBlocker', sel }];
   }
+  // 「このクリーチャーが離れる時、カードがこれの下にあれば、かわりに下にあるカードをすべて墓地に置く」
+  if (/^このクリーチャーが(?:バトルゾーンを)?離れる時、カードがこ(?:れ|のクリーチャー)の下にあれば、かわりに下にあるカードをすべて墓地に置く$/.test(t0)) return [{ s: 'stayIf', cond: 'hasUnder' }];
+  {
+    const nb = t0.match(/^このクリーチャー(?:の攻撃)?が(ブロックされた|攻撃をブロックした)(?:場合|とき|時)、バトルは行われない。?ただし、両クリーチャーはタップしたままである$/);
+    if (nb) return [{ s: 'noBlockBattle', blocking: nb[1] !== 'ブロックされた' }];
+  }
   // 「このクリーチャーがバトルゾーンを離れる時、〜なら、離れるかわりにとどまる」
   {
     const st = t0.match(/^(相手の呪文(?:の効果で|によって))?(バトルゾーンに(自分|相手)の(.+?)があり、)?このクリーチャーがバトルゾーン(?:を|から)離れる時、(.*?)(?:このクリーチャーは)?(?:バトルゾーンを離れるかわりにとどまる|離れるかわりにとどまる|バトルゾーンから離れずにとどまる)$/);
@@ -535,8 +543,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^このクリーチャーは、?リンクしている(?:時|間)、?((?:「[^」]+」(?:と|、)?)+)を得る$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: [...m[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond: { c: 'linked' } }];
   if ((m = full.replace(/\s+/g, '').match(/^ムゲンクライム(\d+).*?\[[a-z]*(\d+)\]/))) return [{ s: 'mugen', n: +m[1], cost: +m[2] }];
-  if ((m = t0.match(/^このクリーチャーが(?:破壊される|バトルゾーンから(?:自分の)?墓地に置かれる)時、墓地に置くかわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?下に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
-    const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
+  if ((m = t0.match(/^このクリーチャーが(?:破壊される|バトルゾーンから(?:自分の)?墓地に置かれる)時、(?:墓地に置く)?かわりに(?:自分の|持ち主の)?(手札に(?:戻す|加える)|マナゾーンに置く|山札の(?:一番)?(?:下|上)に置く|シールド(?:ゾーンに|として)(?:裏向きにして)?(?:加える|置く))$/))) {
+    const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札の(?:一番)?上/.test(m[1]) ? 'deckTop' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
     return [{ s: 'destroyTo', zone: z }];
   }
   if ((m = t0.match(/^(W・)?シンパシー[:：](.+)$/))) {

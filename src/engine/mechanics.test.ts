@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, breakCount, canAttackWith, createGame, kwOf, power } from './engine';
+import { applyAction, breakCount, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { programOf, startExec } from './interp';
 import { costOf } from './statics';
 import { spellEffectLines } from '../lib/triggers';
@@ -17,6 +17,8 @@ const cr = (id: string, cost: number, power: number, text: string[], civ = 'F') 
 const db = buildDB(
   [
     cr('vanilla', 1, 1000, []),
+    cr('ulim', 1, 1000, ['相手のターンのはじめに、相手は自身のマナゾーンのカードを２枚までしかアンタップできない。']),
+    cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
     cr('baku', 5, 5000, ['マナ爆誕3(このクリーチャーを自分のマナゾーンから、コスト3を支払って召喚してもよい)']),
     cr('omega', 1, 5000, ['エターナル・Ω(このクリーチャーがバトルゾーンを離れる時、かわりに手札に戻す)']),
@@ -148,6 +150,11 @@ const db = buildDB(
     cr('hakuyon', 2, 2000, ['自分の「無月の門」能力を使った時、このクリーチャーを自分の墓地からバトルゾーンにタップして出してもよい。']),
     cr('ebase', 1, 1000, ['このカードが墓地に置かれた時、それが墓地に置かれる直前に進化クリーチャーの下にあった場合、カードを１枚引いてもよい。']),
     { id: 'dl', n: 'dl', img: '', f: [{ n: 'dl', t: 'デュエリスト', c: 'F', co: 0, p: null, r: [], x: ['デュエリスト：', 'テスタ (各ターンに１度、自分のマナゾーンにあるカードの枚数以下のコストで種族にテスタを持つデュエルメイト・カードを１枚、自分の超次元ゾーンからコストを支払わずに実行してもよい)'] }] },
+    { id: 'dl2', n: 'dl2', img: '', f: [{ n: 'dl2', t: 'デュエリスト', c: 'F', co: 0, p: null, r: [], x: ['デュエリスト：', 'テスタ (各ターンに１度…)', 'デュエリスト・リンク：', 'テスタ (自分の、種族にテスタを持つ、異なる名前のデュエルメイト・カードが３枚バトルゾーンにあれば、それら１つずつを裏返しリンクさせる）'] }] },
+    { id: 'lm1', n: 'lm1', img: '', f: [{ n: 'lm1', t: 'デュエルメイト・クリーチャー', c: 'F', co: 2, p: '2000', r: ['テスタ'], x: [] }, { n: 'super', t: 'デュエルメイト・スーパー・クリーチャー', c: 'F', co: 10, p: '11000', r: ['テスタ'], x: ['（リンクしたクリーチャーは、リンクしたターンに攻撃できる）', 'W・ブレイカー', 'このクリーチャーが離れる時、かわりに自分の《dl2》１つを破壊する。'] }] },
+    { id: 'lm2', n: 'lm2', img: '', f: [{ n: 'lm2', t: 'デュエルメイト・クリーチャー', c: 'F', co: 2, p: '2000', r: ['テスタ'], x: [] }, { n: 'super', t: 'デュエルメイト・スーパー・クリーチャー', c: 'F', co: 10, p: '11000', r: ['テスタ'], x: ['（リンクしたクリーチャーは、リンクしたターンに攻撃できる）', 'W・ブレイカー', 'このクリーチャーが離れる時、かわりに自分の《dl2》１つを破壊する。'] }] },
+    { id: 'lm3', n: 'lm3', img: '', f: [{ n: 'lm3', t: 'デュエルメイト・クリーチャー', c: 'F', co: 2, p: '2000', r: ['テスタ'], x: [] }, { n: 'super', t: 'デュエルメイト・スーパー・クリーチャー', c: 'F', co: 10, p: '11000', r: ['テスタ'], x: ['（リンクしたクリーチャーは、リンクしたターンに攻撃できる）', 'W・ブレイカー', 'このクリーチャーが離れる時、かわりに自分の《dl2》１つを破壊する。'] }] },
+    { id: 'dsp', n: 'dsp', img: '', f: [{ n: 'dsp', t: 'デュエルメイト呪文', c: 'F', co: 1, p: null, r: ['テスタ'], x: ['カードを１枚引く。', 'この呪文を唱えた後、墓地のかわりに自分の《dl2》１つの下に置く。'] }] },
     { id: 'dm', n: 'dm', img: '', f: [{ n: 'dm', t: 'デュエルメイト・クリーチャー', c: 'F', co: 3, p: '3000', r: ['テスタ'], x: [] }] },
     {
       id: 'zero',
@@ -247,6 +254,21 @@ describe('named mechanics', () => {
     expect(s.cards[iid].zone).toBe('battle');
     s = act(s, 0, { t: 'endTurn' });
     expect(s.cards[iid].zone).toBe('grave');
+  });
+
+  it('相手はマナをN枚までしかアンタップできない / 破壊される時かわりに山札の上', () => {
+    let s = setup([{ p: 0, cid: 'ulim', zone: 'battle' }, { p: 0, cid: 'dante', zone: 'battle' }], 3);
+    for (let i = 0; i < 4; i++) {
+      const m = s.players[1].deck.pop()!;
+      s.cards[m].zone = 'mana';
+      s.cards[m].tapped = true;
+      s.players[1].mana.push(m);
+    }
+    s = act(s, 0, { t: 'endTurn' });
+    expect(s.players[1].mana.filter((m) => s.cards[m].tapped).length).toBe(2);
+    const d = find(s, 0, 'battle', 'dante')!;
+    moveCard(s, L, d, 'grave');
+    expect(s.players[0].deck.at(-1)).toBe(d);
   });
 
   it('マナ爆誕: summons from the mana zone', () => {
@@ -616,6 +638,36 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'duelist', iid: dl, target: t });
     expect(s.cards[t].zone).toBe('battle');
     expect(applyAction(s, 0, { t: 'duelist', iid: dl, target: s.players[0].hyper[0] }, L).error).toBeTruthy();
+  });
+
+  it('デュエリスト・リンク: 3 duel mates link, can attack, leave replaced by destroying the duelist', () => {
+    const g = createGame({ mode: 'duema', seed: 3, createdAt: 0, players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: Array(40).fill('vanilla'), hyper: p === 0 ? ['dl2', 'lm1', 'lm2', 'lm3', 'dsp'] : [], gr: [], partner: null })) } as never, L);
+    let s = structuredClone(g);
+    const dl = s.players[0].partner[0];
+    for (let i = 0; i < 10; i++) {
+      const m = s.players[0].deck.pop()!;
+      s.cards[m].zone = 'mana';
+      s.players[0].mana.push(m);
+    }
+    s.active = 0;
+    s.pending = [];
+    s.turnStep = 'main';
+    const sp = s.players[0].hyper.find((h) => s.cards[h].cid === 'dsp')!;
+    s = act(s, 0, { t: 'duelist', iid: dl, target: sp });
+    expect(s.cards[sp].zone).toBe('under');
+    expect(s.cards[dl].under).toContain(sp);
+    for (const id of ['lm1', 'lm2', 'lm3']) {
+      s.players[0].duelistTurn = undefined;
+      s = act(s, 0, { t: 'duelist', iid: dl, target: s.players[0].hyper.find((h) => s.cards[h].cid === id)! });
+    }
+    expect(s.players[0].battle.length).toBe(1);
+    const sup = s.players[0].battle[0];
+    expect(s.cards[sup].face).toBe(1);
+    expect(s.cards[sup].under.length).toBe(2);
+    expect(canAttackWith(s, L, sup)).toBe(true);
+    moveCard(s, L, sup, 'grave');
+    expect(s.cards[sup].zone).toBe('battle');
+    expect(s.cards[dl].zone).not.toBe('partner');
   });
 
   it('零龍: placed at game start and 零龍卍誕 after 4 links', () => {

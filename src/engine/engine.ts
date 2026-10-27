@@ -189,6 +189,10 @@ export function moveCard(
       let ok = true;
       if (sp.cond === 'tapped') ok = c.tapped;
       if (sp.cond === 'oppSpell') ok = s.curSpellBy != null && s.curSpellBy !== c.owner;
+      if (sp.cond === 'hasUnder') {
+        ok = c.under.length > 0;
+        if (ok) for (const u of [...c.under]) moveCard(s, L, u, 'grave');
+      }
       if (sp.powerGt != null) ok = ok && power(s, L, iid) > sp.powerGt;
       if (sp.ownSel) ok = ok && s.players[c.owner].battle.some((b) => b !== iid && matchesSel(s, L, b, sp.ownSel!));
       if (sp.oppSel) ok = ok && s.players.some((pl, o) => o !== c.owner && pl.battle.some((b) => matchesSel(s, L, b, sp.oppSel!)));
@@ -281,9 +285,9 @@ export function moveCard(
     if (to === 'grave') {
       const dt = own.find((x) => x.s === 'destroyTo');
       if (dt && dt.s === 'destroyTo') {
-        const z: ZoneName = dt.zone === 'deckBottom' ? 'deck' : dt.zone;
-        log(s, c.owner, `${q(card!.faces[c.face].name)} は墓地に置くかわりに${{ hand: '手札', mana: 'マナゾーン', deck: '山札の下', shield: 'シールド' }[z as 'hand']}へ`);
-        return moveCard(s, L, iid, z, { ...opts, pos: dt.zone === 'deckBottom' ? 'bottom' : opts.pos, faceUp: z === 'shield' ? false : opts.faceUp });
+        const z: ZoneName = dt.zone === 'deckBottom' || dt.zone === 'deckTop' ? 'deck' : dt.zone;
+        log(s, c.owner, `${q(card!.faces[c.face].name)} は墓地に置くかわりに${dt.zone === 'deckTop' ? '山札の上' : { hand: '手札', mana: 'マナゾーン', deck: '山札の下', shield: 'シールド' }[z as 'hand']}へ`);
+        return moveCard(s, L, iid, z, { ...opts, pos: dt.zone === 'deckBottom' ? 'bottom' : dt.zone === 'deckTop' ? 'top' : opts.pos, faceUp: z === 'shield' ? false : opts.faceUp });
       }
       const pl0 = s.players[c.owner];
       if (own.some((x) => x.s === 'escape') && pl0.shield.length) {
@@ -327,6 +331,7 @@ export function moveCard(
     for (const u of restUnder) s.cards[u].parent = first;
     fc.tapped = c.tapped;
     c.under = [];
+    c.leftBehind = first;
     log(s, c.owner, `スター進化: ${q(nameOf(s, L, first))} がバトルゾーンに残る`);
   }
   // G・リンク: 離れるのは1枚だけで、残りのゴッドはバトルゾーンに残る
@@ -492,7 +497,12 @@ function canPay(s: GameState, L: Lookup, p: number, self: number, ops: import('.
     const sel = op.target.sel;
     const n = op.target.count && 'n' in op.target.count ? (op.target.count.n ?? 1) : 1;
     let have = 0;
-    for (const z of sel.zones) for (const i of (s.players[p][z as 'battle'] as number[] | undefined) ?? []) if (i !== self && matchesSel(s, L, i, sel)) have++;
+    for (const z of sel.zones) {
+      const arr = [...((s.players[p][z as 'battle'] as number[] | undefined) ?? [])];
+      // デュエリスト (パートナーゾーン) も名前指定ではバトルゾーンのカードとして扱う
+      if (z === 'battle' && sel.name) arr.push(...s.players[p].partner.filter((x) => /デュエリスト/.test(L(s.cards[x].cid)?.faces[0]?.type ?? '')));
+      for (const i of arr) if (i !== self && matchesSel(s, L, i, sel)) have++;
+    }
     return have >= n;
   }
   if (op.op === 'discard') return s.players[p].hand.length >= ('n' in op.count ? (op.count.n ?? 1) : 1);
@@ -974,6 +984,22 @@ function startTurn(s: GameState, L: Lookup) {
   // サイレントスキル: タップしていれば、アンタップするかわりに能力を使ってもよい
   const silent = pl.battle.filter((b) => s.cards[b].tapped && !s.cards[b].noUntap && faceOf(s, L, b)?.silentSkill && programOf(faceOf(s, L, b)!.silentSkill!).complete);
   for (const b of silent) s.cards[b].noUntap = true;
+  // 「相手のターンのはじめに、相手は自身のマナゾーンのカードをN枚までしかアンタップできない」
+  let untapLimit = pl.manaUntapLimit;
+  pl.manaUntapLimit = undefined;
+  for (let o = 0; o < s.players.length; o++) {
+    if (o === p) continue;
+    for (const b of s.players[o].battle)
+      for (const l of faceOf(s, L, b)?.text ?? []) {
+        const m = normText(l).match(/^相手のターンのはじめに、相手は自身のマナゾーン(?:にある|の)カードを(\d+)枚までしかアンタップできない/);
+        if (m) untapLimit = Math.min(+m[1], untapLimit ?? +m[1]);
+      }
+  }
+  if (untapLimit != null) {
+    const tapped = pl.mana.filter((m) => s.cards[m].tapped);
+    for (const m of tapped.slice(untapLimit)) s.cards[m].noUntap = true;
+    log(s, p, `マナゾーンのカードは${untapLimit}枚までしかアンタップできない`);
+  }
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
     if (c.noUntap) c.noUntap = false;
@@ -1281,7 +1307,55 @@ function checkState(s: GameState, L: Lookup) {
       }
     }
   }
+  duelistLink(s, L);
   if (s.players[s.active].lost) advanceTurn(s, L);
+}
+
+/** デュエリスト・リンク: デュエリストの種族を持つ、異なる名前のデュエルメイト・クリーチャーが3体あれば裏返してリンクする */
+function duelistLink(s: GameState, L: Lookup) {
+  for (let p = 0; p < s.players.length; p++) {
+    const pl = s.players[p];
+    for (const d of pl.partner) {
+      const df = L(s.cards[d].cid)?.faces[0];
+      if (!df || !df.text.some((l) => /^デュエリスト・リンク[:：]/.test(normText(l).trim()))) continue;
+      const race = duelistRace(L, s.cards[d].cid);
+      if (!race) continue;
+      const names = new Set<string>();
+      const mates: number[] = [];
+      for (const b of pl.battle) {
+        const c = s.cards[b];
+        const card = L(c.cid);
+        const f = card?.faces[c.face];
+        if (!card || c.face !== 0 || !f || !/デュエルメイト・クリーチャー/.test(f.type) || !f.races.some((r) => r.includes(race)) || names.has(f.name)) continue;
+        if (!card.faces.some((x) => /デュエルメイト・スーパー/.test(x.type))) continue;
+        names.add(f.name);
+        mates.push(b);
+      }
+      if (mates.length < 3) continue;
+      const [root, ...cells] = mates.slice(0, 3);
+      const rc = s.cards[root];
+      const fi = L(rc.cid)!.faces.findIndex((x) => /デュエルメイト・スーパー/.test(x.type));
+      const tapped = mates.slice(0, 3).some((x) => s.cards[x].tapped);
+      for (const b of cells) {
+        pl.battle = pl.battle.filter((x) => x !== b);
+        const bc = s.cards[b];
+        rc.under.push(...bc.under);
+        for (const u of bc.under) s.cards[u].parent = root;
+        bc.under = [];
+        bc.zone = 'under';
+        bc.parent = root;
+        bc.cellOf = root;
+        bc.face = fi;
+      }
+      rc.under.push(...cells);
+      rc.face = fi;
+      rc.tapped = tapped;
+      // リンクしたクリーチャーは、リンクしたターンに攻撃できる
+      rc.sick = false;
+      log(s, p, `デュエリスト・リンク: ${q(nameOf(s, L, root))} になった`);
+      fireFlipped(s, L, root);
+    }
+  }
 }
 
 // ---------- マナ ----------
@@ -1624,7 +1698,10 @@ function resolveAttack(s: GameState, L: Lookup) {
   }
   if (a.blocked != null) {
     a.step = 'done';
-    if (s.cards[a.blocked].zone === 'battle') battle(s, L, a.attacker, a.blocked);
+    // 「ブロックされた場合、バトルは行われない」
+    const noBattle = [a.attacker, a.blocked].some((x, k) => (faceOf(s, L, x)?.statics ?? []).some((sp) => sp.s === 'noBlockBattle' && sp.blocking === (k === 1)));
+    if (noBattle) log(s, a.owner, 'バトルは行われない');
+    else if (s.cards[a.blocked].zone === 'battle') battle(s, L, a.attacker, a.blocked);
     return;
   }
   if (a.targetCard != null) {
@@ -2253,7 +2330,16 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     if (cyclone) log(s, p, 'サイクロン: 手札に戻る');
     const crystalCharger = kwLine(/^水晶チャージャー/);
     const toBottom = face.text.some((l) => /唱えた後、(この呪文を)?墓地に置くかわりに(自分の)?山札の(一番)?下に置く/.test(normText(l)));
-    if (crystalCharger) {
+    // デュエルメイト呪文: 唱えた後、墓地のかわりに自分の《デュエリスト》の下に置く
+    const underName = face.text.map((l) => normText(l).match(/唱えた後、墓地(?:に置く)?の?かわりに自分の《([^》]+)》(?:1つ|１つ)?の下に置く/)).find(Boolean)?.[1];
+    const underHost = underName != null ? [...me.partner, ...me.battle].find((x) => nameOf(s, L, x).includes(underName)) : undefined;
+    if (underHost != null && !cyclone) {
+      detach(s, a.iid);
+      c.zone = 'under';
+      c.parent = underHost;
+      s.cards[underHost].under.push(a.iid);
+      log(s, p, `唱えた後、${q(nameOf(s, L, underHost))} の下に置いた`);
+    } else if (crystalCharger) {
       moveCard(s, L, a.iid, 'mana');
       c.manaDown = true;
       log(s, p, '水晶チャージャー: 裏向きにしてマナゾーンへ');
