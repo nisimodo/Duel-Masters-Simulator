@@ -96,7 +96,7 @@ export type Target =
   | { ref: 'self' } // この効果の発生源のカード
   | { ref: 'looked'; sel?: Sel; count?: Count } // 山札から見ている/表向きにしたカード (条件・枚数で絞って選ぶ)
   | { ref: 'rest' } // 見ている中で選ばれなかったカード (「残り」)
-  | { ref: 'under'; count: Count } // このクリーチャーの下にあるカード
+  | { ref: 'under'; count: Count; sel?: Sel } // このクリーチャーの下にあるカード
   | { ref: 'saved' } // 先に選んで保存しておいたカード
   | { ref: 'host' } // これを装備/クロスしたクリーチャー
   | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
@@ -126,6 +126,8 @@ export type Cond =
   | { c: 'underHas'; kind: 'tamaseed' }
   /** このクリーチャーにカードがN枚以上含まれている */
   | { c: 'selfCardsGE'; n: number }
+  /** このクリーチャーの下にあるカードの数 */
+  | { c: 'underCount'; cmp: '>=' | '<='; n: number }
   /** そのターン中に他の「ファイナル革命」をまだ使っていない (満たせば使ったことにする) */
   | { c: 'finalRev' }
   /** 手札が1枚もないプレイヤーがいる */
@@ -226,7 +228,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host' }
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */

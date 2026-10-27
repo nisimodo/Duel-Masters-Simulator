@@ -486,6 +486,19 @@ describe('named mechanics', () => {
     expect(s.cards[g].zone).toBe('battle');
   });
 
+  it('このクリーチャーの下にあるカードの数を数える・条件にする', () => {
+    const s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }]);
+    const v = find(s, 0, 'battle', 'vanilla')!;
+    for (const d of s.players[0].deck.splice(0, 2)) {
+      s.cards[d].zone = 'under';
+      s.cards[d].parent = v;
+      s.cards[v].under.push(d);
+    }
+    const h = s.players[0].hand.length;
+    startExec(s, L, 0, v, programOf('このクリーチャーの下にあるカード1枚につき、カードを1枚引く。このクリーチャーの下にカードが3枚以上あれば、カードを1枚引く').ops, 'v');
+    expect(s.players[0].hand.length).toBe(h + 2);
+  });
+
   it('効果でコストを支払わずにクロスする', () => {
     const s = setup([
       { p: 0, cid: 'gear', zone: 'battle' },

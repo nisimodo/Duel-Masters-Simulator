@@ -338,6 +338,8 @@ export function parseCond(c0: string): Cond | null {
   if ((m = c.match(/^これが(NEO)?進化クリーチャー(?:であ|で)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', self: true, evolution: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分のシールドが(\d+)(?:枚|つ)(?:であ|で)?$/))) return { c: 'shields', who: 'self', cmp: '==', n: +m[1] };
   if ((m = c.match(/^このクリーチャーにカードが(\d+)枚以上含まれてい$/))) return { c: 'selfCardsGE', n: +m[1] };
+  if ((m = c.match(/^(?:この(?:クリーチャー|カード)|これ)の下に(?:ある)?(?:カード)?が?(?:カードが)?(\d+)枚(以上|以下)(?:重ねて)?(?:あ)?$/))) return { c: 'underCount', cmp: m[2] === '以上' ? '>=' : '<=', n: +m[1] };
+  if (/^(?:この(?:クリーチャー|カード)|これ)の下にカードがあ$/.test(c)) return { c: 'underCount', cmp: '>=', n: 1 };
   if ((m = c.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であ|で)?$/))) return { c: 'manaAllCiv', civ: ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光'] };
   if ((m = c.match(/^自分の(手札|シールド)(?:の数|の枚数)?が相手(?:の(?:手札|シールド))?より多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield', self: true };
   if ((m = c.match(/^相手の(シールド|手札)(?:の数|の枚数)?が自分(?:の(?:手札|シールド)|のより|より)多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield' };
@@ -1926,10 +1928,26 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
 
   // ---- このクリーチャーの下にあるカード ----
-  if ((m = s.match(new RegExp(`^このクリーチャーの下にあるカードを(?:${N}枚(まで)?|すべて)、?(?:選び、?)?(.+)$`)))) {
-    const cnt: Count = m[1] ? { n: +m[1], upTo: !!m[2] } : { all: true };
-    const ops = verbOps(m[3], { ref: 'it' });
-    if (ops) return [{ op: 'choose', target: { ref: 'under', count: cnt }, purpose: 'neutral', prompt: '下にあるカードを選ぶ' }, ...ops];
+  if ((m = s.match(new RegExp(`^(?:このクリーチャー|これ)の下に(?:ある|重ねた|重ねてある|重ねてあった)([^、]*?)を(?:${N}(?:枚|体)(まで)?|すべて)、?(?:見ないで)?(?:選び、?|選んで)?(.+)$`)))) {
+    const cnt: Count = m[2] ? { n: +m[2], upTo: !!m[3] } : { all: true };
+    const sel = m[1] === 'カード' ? undefined : parseSel(m[1], { zones: ['underSelf'] });
+    const opt = /てもよい$/.test(m[4]);
+    const ops = verbOps(opt ? m[4].replace(/置いてもよい$/, '置く').replace(/戻してもよい$/, '戻す').replace(/加えてもよい$/, '加える').replace(/出してもよい$/, '出す') : m[4], { ref: 'it' });
+    if (ops && (m[1] === 'カード' || sel)) {
+      const body: Op[] = [{ op: 'choose', target: { ref: 'under', count: cnt, ...(sel ? { sel } : {}) }, purpose: 'neutral', prompt: '下にあるカードを選ぶ' }, ...ops];
+      return opt ? [{ op: 'optional', body, prompt: s0 }] : body;
+    }
+  }
+  // 「このクリーチャーの下にあるカードN枚につき、〜」
+  if ((m = s.match(/^(?:このクリーチャー|これ)の下に(?:ある|重ねた|重ねてある)カード(?:1枚につき|(\d+)枚につき)(?:(\d+)枚)?、(.+)$/)) && (!m[1] || m[1] === '1')) {
+    let rest = m[3];
+    if (m[2] && /^カードを引/.test(rest)) rest = rest.replace(/^カードを引/, `カードを${m[2]}枚引`);
+    const opt = /てもよい$/.test(rest) && !/選び/.test(rest);
+    const body = sentence(opt ? rest.replace(/引いてもよい$/, '引く') : rest, ctx);
+    if (body?.length) {
+      const ops: Op[] = [{ op: 'countSet', underSelf: true }, { op: 'repeatCount', body }];
+      return opt ? [{ op: 'optional', body: ops, prompt: s0 }] : ops;
+    }
   }
 
   // ---- 自分と相手のクリーチャーを1体ずつ選び、バトルさせる ----

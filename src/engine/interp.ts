@@ -274,6 +274,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return true;
     case 'underHas':
       return (s.cards[ex.src]?.under ?? []).some((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '').includes('タマシード'));
+    case 'underCount': {
+      const n = s.cards[ex.src]?.under.length ?? 0;
+      return c.cmp === '>=' ? n >= c.n : n <= c.n;
+    }
     case 'selfCardsGE':
       return 1 + (s.cards[ex.src]?.under.length ?? 0) >= c.n;
     case 'manaEveryCiv': {
@@ -561,7 +565,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           cands = ex.looked.filter((i) => s.cards[i].zone !== 'gone' && (!t.sel || ((t.sel.zones as string[]).includes(s.cards[i].zone) && matchesSel(s, L, i, t.sel))));
           cnt = t.count ?? { n: 1, upTo: false };
         } else if (t.ref === 'under') {
-          cands = [...(s.cards[ex.src]?.under ?? [])];
+          cands = [...(s.cards[ex.src]?.under ?? [])].filter((i) => !t.sel || matchesSel(s, L, i, t.sel));
           cnt = t.count;
         } else {
           ex.it = resolveRef(s, ex, t) ?? [];
@@ -1041,6 +1045,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           // 「そのクリーチャーに含まれるカード」: 下に重なったカードも数える
           const i = ex.it[0];
           ex.count = i != null && s.cards[i].zone === 'battle' ? 1 + s.cards[i].under.length : 0;
+        } else if (op.underSelf) {
+          ex.count = s.cards[ex.src]?.zone === 'battle' ? s.cards[ex.src].under.length : 0;
         } else if (op.civsOf) {
           const ids = op.civsOf === 'mana' ? s.players[ex.player].mana : s.players[ex.player].battle;
           ex.count = new Set(ids.flatMap((i) => L(s.cards[i].cid)?.civs ?? [])).size;
