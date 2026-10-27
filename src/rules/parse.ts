@@ -1716,6 +1716,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // 効果ではない注記・別の仕組みで処理するもの
   if (/^(ただし、)?その「S・トリガー」は使えない$/.test(s)) return [];
+  // 「(条件なら、)この呪文を唱えた後、墓地に置くかわりに手札に戻す」: 効果を解決する時には呪文はもう墓地にあるので、墓地から移す
+  // (山札の下・シャッフル・デュエリストの下は呪文を出す処理で行う)
+  {
+    const ac = s.match(/^(?:(この呪文|その呪文|それ)を、?)?唱えた後(?:で)?、?(?:その呪文を)?(?:自分の|持ち主の)?墓地(?:に置く)?の?かわりに、?(.+)$/);
+    if (ac) {
+      const handledByPlay = /^(?:自分の)?山札の(?:一番)?下に置く$|^(?:自分の)?山札に加えてシャッフルする$|^自分の《[^》]+》1?つ?の下に置く$/.test(ac[2]);
+      const target: Target = ac[1] === 'この呪文' || (!ac[1] && !ctx.chosen) ? { ref: 'self' } : { ref: 'it' };
+      if (handledByPlay && target.ref === 'self') return [];
+      const opt = /てもよい$/.test(ac[2]);
+      const ops = verbOps(opt ? ac[2].replace(/戻してもよい$/, '戻す').replace(/加えてもよい$/, '加える').replace(/置いてもよい$/, '置く') : ac[2], target);
+      if (ops) return opt ? [{ op: 'optional', body: ops, prompt: s0 }] : ops;
+    }
+  }
+  if (/^(?:(?:その|この)呪文を、?)?唱えた後、(?:持ち主の|自分の)?墓地に置く$/.test(s)) return [];
   if (/^(この呪文を(自分の手札から)?唱えた後、)?墓地(に置く)?のかわりに/.test(s) || /^(この呪文を(自分の手札から)?唱えた後、)?墓地に置くかわりに/.test(s)) return [];
 
   // ガチンコ・ジャッジ

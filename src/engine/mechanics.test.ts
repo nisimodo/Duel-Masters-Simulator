@@ -20,6 +20,7 @@ const db = buildDB(
     cr('vanilla', 1, 1000, []),
     cr('ulim', 1, 1000, ['相手のターンのはじめに、相手は自身のマナゾーンのカードを２枚までしかアンタップできない。']),
     { id: 'scrch', n: 'scrch', img: '', f: [{ n: 'scrch', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['このターン、次に自分が召喚するクリーチャーのコストを１少なくする。ただし、コストは０以下にはならない。そのクリーチャーが出た時、このターン、そのクリーチャーに「スピードアタッカー」を与える。', 'この呪文を唱えた後、墓地に置くかわりに山札に加えてシャッフルする。'] }] },
+    { id: 'backSp', n: 'backSp', img: '', f: [{ n: 'backSp', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['カードを１枚引く。自分の手札が３枚以上あれば、この呪文を唱えた後、墓地に置くかわりに手札に戻す。'] }] },
     { id: 'slock', n: 'slock', img: '', f: [{ n: 'slock', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手は、次の自身のターンにクリーチャーを召喚できず、呪文を唱えることもできない。'] }] },
     cr('lightHunter', 1, 1000, ['このクリーチャーは、タップされていない光のクリーチャーを攻撃できる。']),
     cr('lightMon', 1, 1000, [], 'L'),
@@ -299,6 +300,14 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 3) });
     expect(s.cards[b].zone).toBe('battle');
     expect(canAttackWith(s, L, b)).toBe(true);
+  });
+
+  it('条件つきの「唱えた後、墓地に置くかわりに手札に戻す」', () => {
+    let s = setup([{ p: 0, cid: 'backSp', zone: 'hand' }], 3);
+    const sp = find(s, 0, 'hand', 'backSp')!;
+    s = act(s, 0, { t: 'play', iid: sp, face: 0, pay: freeMana(s, 0, 1) });
+    while (s.pending.length) s = act(s, 0, { t: 'resolve' } as never);
+    expect(s.cards[sp].zone).toBe('hand');
   });
 
   it('相手は次の自身のターンにクリーチャーを召喚できない', () => {
