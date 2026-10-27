@@ -134,6 +134,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const onlineMembers = Object.entries(room.members).filter(([, m]) => m.online).map(([u]) => u).sort();
   const runner = room.members[room.hostUid]?.online ? room.hostUid : onlineMembers[0];
   const isRunner = !!user && runner === user.uid;
+  // CPU同士の対戦を観戦する時は、CPUの速さを変えられる
+  const [cpuDelay, setCpuDelay] = useState(650);
   const cpuBusy = useRef(false);
   const [cpuTick, setCpuTick] = useState(0);
   useEffect(() => {
@@ -169,9 +171,9 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         cpuBusy.current = false;
         setCpuTick((x) => x + 1);
       }
-    }, 650);
+    }, cpuDelay);
     return () => clearTimeout(t);
-  }, [s, isRunner, L, submit, cpuTick]);
+  }, [s, isRunner, L, submit, cpuTick, cpuDelay]);
 
   // ---- 結果の記録 ----
   useEffect(() => {
@@ -188,6 +190,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
 
   const pending = s.pending[0];
   const myPending = pending && pending.player === me ? pending : null;
+  /** CPU同士の対戦: 観戦者に手札を見せる */
+  const allCpu = s.players.every((p) => p.cpu);
   const isMyTurn = s.active === me && !pending && s.phase !== 'over';
   const L2 = L;
   const cardAt = (iid: number) => L2(s.cards[iid].cid)!;
@@ -519,7 +523,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const handNode = (
       <div className="zone hand" style={{ minHeight: pos === 'compact' ? 40 : undefined }}>
         {pl.hand.map((i) =>
-          self || s.cards[i].revealed ? (
+          self || s.cards[i].revealed || allCpu ? (
             renderCard(i)
           ) : (
             <CardBack key={i} sleeve={sleeve} width={pos === 'compact' ? 30 : 46} />
@@ -732,7 +736,23 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             </b>
             <span className="badge">{room.rules.mode === 'duema' ? `デュエマ ${room.rules.hof === 'zero' ? '殿堂ゼロ' : ''}${room.rules.format === 'original' ? ' オリジナル' : ''}` : 'デュエパ'}</span>
           </div>
-          {me < 0 && <div className="small muted">観戦中</div>}
+          {me < 0 && (
+            <div className="row small" style={{ gap: 6 }}>
+              <span className="muted grow">観戦中{allCpu ? ' (CPU同士の対戦・手札を表示)' : ''}</span>
+              {isRunner && allCpu && s.phase !== 'over' && (
+                <select value={cpuDelay} onChange={(e) => setCpuDelay(Number(e.target.value))} title="CPUの速さ">
+                  <option value={1500}>ゆっくり</option>
+                  <option value={650}>ふつう</option>
+                  <option value={200}>はやい</option>
+                </select>
+              )}
+              {room.hostUid === user?.uid && s.phase !== 'over' && (
+                <button className="small danger" onClick={() => confirm('対戦を中止してルームに戻りますか？') && onBackToLobby()}>
+                  中止
+                </button>
+              )}
+            </div>
+          )}
           {s.phase !== 'over' && pending && pending.player !== me && <div className="small warn">{waitingFor} の選択を待っています…</div>}
           {s.phase !== 'over' && !pending && s.active !== me && <div className="small muted">{waitingFor} のターンです</div>}
           {isMyTurn && (

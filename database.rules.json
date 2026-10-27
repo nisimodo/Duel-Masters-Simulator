@@ -15,6 +15,7 @@
       }
     },
     "rooms": {
+      ".read": "auth != null",
       "$room": {
         ".read": "auth != null",
         ".write": "auth != null"

@@ -53,6 +53,42 @@ export function deckThumb(deck: Pick<Deck, 'type' | 'main' | 'hyper' | 'gr' | 'p
 
 export const countOf = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
 
+export type DeckFormat = 'original' | 'advance';
+
+/**
+ * デュエマのデッキの区分。超次元・超GRゾーンやゲーム開始時に置かれるカードを使っていればアドバンス、
+ * なければオリジナル (オリジナルのデッキはアドバンスでも使える)。デュエパのデッキは null
+ */
+export function deckFormat(db: CardDB, deck: Pick<Deck, 'type' | 'main' | 'hyper' | 'gr' | 'partner'>): DeckFormat | null {
+  if (deck.type !== 'duema') return null;
+  if (countOf(deck.hyper) || countOf(deck.gr)) return 'advance';
+  const ids = [...Object.keys(deck.main), ...(deck.partner ? [deck.partner] : [])];
+  return ids.some((id) => db.byId.get(id)?.faces.some((f) => f.kw.startsInPlay)) ? 'advance' : 'original';
+}
+
+export const FORMAT_LABEL: Record<DeckFormat, string> = { original: 'オリジナル', advance: 'アドバンス' };
+
+/** デュエマのデッキをオリジナル / アドバンスに分ける */
+export function splitByFormat<T>(db: CardDB, items: T[], deckOf: (x: T) => Deck | null) {
+  const original: T[] = [];
+  const advance: T[] = [];
+  const other: T[] = [];
+  for (const x of items) {
+    const d = deckOf(x);
+    const f = d ? deckFormat(db, d) : null;
+    (f === 'original' ? original : f === 'advance' ? advance : other).push(x);
+  }
+  return { original, advance, other };
+}
+
+/** デッキに入っている文明 (メイン・超次元・超GR・パートナー) */
+export function deckCivs(db: CardDB, deck: Deck): Civ[] {
+  const set = new Set<Civ>();
+  for (const id of [...Object.keys(deck.main), ...Object.keys(deck.hyper), ...Object.keys(deck.gr), ...(deck.partner ? [deck.partner] : [])])
+    for (const c of db.byId.get(id)?.civs ?? []) set.add(c);
+  return (['L', 'W', 'D', 'F', 'N'] as Civ[]).filter((c) => set.has(c));
+}
+
 export function mainSize(deck: Deck) {
   return countOf(deck.main) + (deck.type === 'duepa' && deck.partner ? 1 : 0);
 }

@@ -121,8 +121,9 @@ export function CardDetail({ db, card, face }: { db: CardDB; card: Card | null; 
 }
 
 /** デッキのサムネイル (デュエパはパートナー、デュエマは選んだカード) */
-export function DeckThumb({ db, deck, width = 40 }: { db: CardDB; deck: Deck; width?: number }) {
+export function DeckThumb({ db, deck, width = 40 }: { db: CardDB; deck: Deck; width?: number | string }) {
   const id = deckThumb(deck);
   const card = id ? db.byId.get(id) : undefined;
-  return card ? <CardImg card={card} width={width} /> : <div className="deck-thumb-empty" style={{ width, height: Math.round(width * 1.4) }} />;
+  if (card) return <CardImg card={card} width={width} />;
+  return <div className="deck-thumb-empty" style={typeof width === 'number' ? { width, height: Math.round(width * 1.4) } : { width, aspectRatio: '5 / 7' }} />;
 }

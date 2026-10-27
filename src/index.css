@@ -890,3 +890,144 @@ button,
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---- デッキのグリッド表示 ---- */
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.deck-section {
+  gap: 6px;
+}
+.deck-section + .deck-section {
+  margin-top: 8px;
+}
+.deck-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+.deck-tile {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--bg3);
+  border: 2px solid transparent;
+  overflow: hidden;
+  min-width: 0;
+}
+.deck-tile.clickable:hover:not(.disabled) {
+  border-color: var(--accent2);
+}
+.deck-tile.selected {
+  border-color: var(--accent);
+}
+.deck-tile.disabled {
+  opacity: 0.55;
+}
+.deck-tile-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  white-space: normal;
+  min-width: 0;
+  flex: 1;
+}
+button.deck-tile-main:hover:not(:disabled) {
+  border-color: transparent;
+}
+.deck-tile-thumb {
+  display: flex;
+  justify-content: center;
+}
+.deck-tile-thumb > * {
+  max-width: 100%;
+}
+.deck-tile-random {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: var(--muted);
+}
+.deck-tile-name {
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-tile-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: center;
+}
+.deck-tile-civs {
+  display: inline-flex;
+}
+.deck-tile-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+.deck-tile-note {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.deck-tile-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+.deck-tile-actions > button {
+  flex: 1;
+}
+.badge.fmt-original {
+  background: #1d4d8f;
+  border-color: #4f8cff;
+}
+.badge.fmt-advance {
+  background: #7a4a00;
+  border-color: #f0b429;
+}
+.badge.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #222;
+}
+.deck-pick-grid {
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* ---- ルーム一覧 ---- */
+.room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg3);
+}

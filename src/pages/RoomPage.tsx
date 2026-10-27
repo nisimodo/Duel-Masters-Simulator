@@ -17,7 +17,8 @@ import {
 } from '../data/api';
 import GameView from '../game/GameView';
 import { DeckThumb } from '../components/CardView';
-import { expandDeck, presetToDeck, randomDeck, validateDeck, type Deck } from '../lib/deck';
+import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
+import { expandDeck, presetToDeck, randomDeck, splitByFormat, validateDeck, type Deck, type RoomRules } from '../lib/deck';
 import type { CardDB } from '../lib/cards';
 import type { GameInit } from '../engine/types';
 
@@ -53,39 +54,59 @@ async function backToLobby(room: Room) {
   await backend.update(`rooms/${room.key}`, updates);
 }
 
+/** オリジナルのルームではアドバンスのデッキは使えないことを見出しに書く */
+function formatNote(rules: RoomRules, f: 'original' | 'advance') {
+  if (rules.format === 'original' && f === 'advance') return 'このルーム (オリジナル) では使えません';
+  return f === 'original' ? '超次元・超GR・ゲーム開始時に置かれるカードなし' : '超次元・超GR・ゲーム開始時に置かれるカードあり';
+}
+
 function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
   const [sel, setSel] = useState('');
   const options = useMemo(() => {
-    const list: { id: string; label: string; deck: () => Deck; ok: boolean; preview?: Deck }[] = [];
+    const list: { id: string; group: 'mine' | 'preset' | 'random'; label: string; deck: () => Deck; issues: string[]; preview: Deck | null }[] = [];
     for (const d of myDecks.filter((x) => x.type === room.rules.mode)) {
-      list.push({ id: d.id, label: d.name, deck: () => d, ok: validateDeck(db, d, room.rules).length === 0, preview: d });
+      list.push({ id: d.id, group: 'mine', label: d.name, deck: () => d, issues: validateDeck(db, d, room.rules), preview: d });
     }
     if (room.rules.mode === 'duema')
       for (const p of db.presets) {
         const { deck } = presetToDeck(db, p.id);
-        list.push({ id: p.id, label: `[プリセット] ${p.name}`, deck: () => deck, ok: validateDeck(db, deck, room.rules).length === 0, preview: deck });
+        list.push({ id: p.id, group: 'preset', label: p.name, deck: () => deck, issues: validateDeck(db, deck, room.rules), preview: deck });
       }
-    list.push({ id: 'random', label: '[ランダム生成]', deck: () => randomDeck(db, room.rules.mode, room.rules), ok: true });
+    list.push({ id: 'random', group: 'random', label: 'ランダム生成', deck: () => randomDeck(db, room.rules.mode, room.rules), issues: [], preview: null });
     return list;
   }, [db, myDecks, room.rules]);
   const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
   const chosen = options.find((o) => o.id === sel);
+  const tile = (o: (typeof options)[number]) => (
+    <DeckTile key={o.id} db={db} deck={o.preview} title={o.label} issues={o.issues} selected={sel === o.id} showUpdated={o.group === 'mine'} onClick={() => setSel(sel === o.id ? '' : o.id)} />
+  );
+  const mine = options.filter((o) => o.group === 'mine');
+  const presets = options.filter((o) => o.group === 'preset');
+  const random = options.filter((o) => o.group === 'random');
+  const split = splitByFormat(db, mine, (o) => o.preview);
   return (
     <div className="col" style={{ gap: 6 }}>
-      <span className="small muted">CPUのデッキを選択</span>
-      <div className="deck-pick">
-        {options.map((o) => (
-          <button key={o.id} className={`deck-pick-row${sel === o.id ? ' selected' : ''}`} disabled={!o.ok} onClick={() => setSel(sel === o.id ? '' : o.id)}>
-            {o.preview ? <DeckThumb db={db} deck={o.preview} width={28} /> : <div className="deck-thumb-empty" style={{ width: 28, height: 39 }} />}
-            <span className="grow">
-              {o.label}
-              {!o.ok && <span className="small warn"> (レギュレーション違反)</span>}
-            </span>
-          </button>
-        ))}
-      </div>
+      {!full && <span className="small muted">CPUのデッキを選択</span>}
+      {!full && <div className="deck-pick-grid col" style={{ gap: 8 }}>
+        {room.rules.mode === 'duema' ? (
+          <>
+            <DeckSection title={<>マイデッキ <FormatBadge format="original" /></>} note={formatNote(room.rules, 'original')}>
+              {split.original.map(tile)}
+            </DeckSection>
+            <DeckSection title={<>マイデッキ <FormatBadge format="advance" /></>} note={formatNote(room.rules, 'advance')}>
+              {split.advance.map(tile)}
+            </DeckSection>
+          </>
+        ) : (
+          <DeckSection title="マイデッキ">{mine.map(tile)}</DeckSection>
+        )}
+        <DeckSection title="プリセット">{presets.map(tile)}</DeckSection>
+        <DeckSection title="ランダム" note="ルームのルールに合うデッキをその場で作ります">
+          {random.map(tile)}
+        </DeckSection>
+      </div>}
       <div className="row">
-        <button disabled={!chosen || full} onClick={() => chosen && addCpu(room, uid, chosen.deck()).then(() => setSel(''))}>
+        <button disabled={!chosen || full || chosen.issues.length > 0} onClick={() => chosen && addCpu(room, uid, chosen.deck()).then(() => setSel(''))}>
           CPUを追加
         </button>
         {full && <span className="small muted">満員です</span>}
@@ -117,6 +138,8 @@ export default function RoomPage() {
   const count = room ? playerCount(room) : 0;
   const enough = room ? (room.rules.mode === 'duema' ? count === 2 : count >= 2 && count <= 5) : false;
   const allReady = players.length > 0 && players.every(([, m]) => m.ready && m.deck);
+  /** 人間のプレイヤーがいない (CPU同士の対戦を観戦する) */
+  const cpuOnly = !!room && players.length === 0 && Object.keys(room.cpus).length > 0;
   useEffect(() => {
     if (!room || !isHost || room.status !== 'lobby' || !enough || !allReady) return;
     const t = setTimeout(() => startGame(room).catch((e) => setErr(String(e.message || e))), 900);
@@ -162,6 +185,17 @@ export default function RoomPage() {
   const max = MAX_PLAYERS[room.rules.mode];
   const canBecomePlayer = count < max;
   const myDeck = myDecks.find((d) => d.id === me?.deckId);
+  const deckTile = (d: Deck) => (
+    <DeckTile
+      key={d.id}
+      db={db}
+      deck={d}
+      issues={validateDeck(db, d, room.rules)}
+      okNote="このルームで使用可能"
+      selected={me?.deckId === d.id}
+      onClick={() => selectDeck(me?.deckId === d.id ? '' : d.id)}
+    />
+  );
   const myIssues = myDeck ? validateDeck(db, myDeck, room.rules) : [];
 
   return (
@@ -214,8 +248,25 @@ export default function RoomPage() {
               {room.rules.mode === 'duema' ? '2人そろうと対戦できます' : '2～5人そろうと対戦できます'} (CPUを追加することもできます)
             </div>
           )}
-          {enough && !allReady && <div className="small muted">全員が準備完了すると対戦が始まります</div>}
-          {enough && allReady && <div className="ok">まもなく対戦開始…</div>}
+          {cpuOnly && enough ? (
+            isHost ? (
+              <div className="row">
+                <button className="primary" onClick={() => startGame(room).catch((e) => setErr(String(e.message || e)))}>
+                  CPU同士の対戦を観戦する
+                </button>
+              </div>
+            ) : (
+              <div className="small muted">ホストが開始するとCPU同士の対戦を観戦できます</div>
+            )
+          ) : (
+            <>
+              {enough && !allReady && <div className="small muted">全員が準備完了すると対戦が始まります</div>}
+              {enough && allReady && <div className="ok">まもなく対戦開始…</div>}
+            </>
+          )}
+          {!players.length && !enough && (
+            <div className="small muted">全員が観戦にまわってCPUを{room.rules.mode === 'duema' ? '2体' : '2～5体'}追加すると、CPU同士の対戦を観戦できます</div>
+          )}
         </div>
 
         <div className="panel col" style={{ flex: '1 1 240px', minWidth: 0 }}>
@@ -246,20 +297,16 @@ export default function RoomPage() {
           </div>
           {me.role === 'player' && (
             <>
-              <div className="deck-pick">
-                {myDecks.map((d) => {
-                  const issues = validateDeck(db, d, room.rules);
-                  return (
-                    <button key={d.id} className={`deck-pick-row${me.deckId === d.id ? ' selected' : ''}`} disabled={issues.length > 0} onClick={() => selectDeck(me.deckId === d.id ? '' : d.id)}>
-                      <DeckThumb db={db} deck={d} width={36} />
-                      <span className="col grow" style={{ gap: 0, minWidth: 0 }}>
-                        <b>{d.name}</b>
-                        {issues.length > 0 && <span className="small warn">使用不可: {issues[0]}</span>}
-                      </span>
-                      {me.deckId === d.id && <span className="ok">選択中</span>}
-                    </button>
-                  );
-                })}
+              <div className="deck-pick-grid col" style={{ gap: 8 }}>
+                {room.rules.mode === 'duema' ? (
+                  (['original', 'advance'] as const).map((f) => (
+                    <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(room.rules, f)} empty="デッキがありません">
+                      {splitByFormat(db, myDecks, (d) => d)[f].map(deckTile)}
+                    </DeckSection>
+                  ))
+                ) : (
+                  <DeckSection title="デッキ">{myDecks.map(deckTile)}</DeckSection>
+                )}
               </div>
               <div className="row">
                 <button className={me.ready ? '' : 'primary'} disabled={!myDeck || myIssues.length > 0} onClick={toggleReady}>

@@ -8,6 +8,7 @@ import {
   copyLimit,
   countOf,
   DECK_SIZE,
+  deckFormat,
   deckSizeBonus,
   deckThumb,
   DEFAULT_RULES,
@@ -21,6 +22,7 @@ import {
 } from '../lib/deck';
 import { CARD_TYPES, emptyQuery, searchCards, type SearchQuery } from '../lib/search';
 import { Modal } from '../game/dialogs';
+import { FormatBadge } from '../components/DeckGrid';
 import { NARROW, useMedia } from '../lib/useMedia';
 
 const PAGE = 60;
@@ -288,6 +290,11 @@ export default function DeckEditor() {
           <input value={deck.name} onChange={(e) => update((d) => (d.name = e.target.value))} style={{ fontWeight: 'bold' }} />
           <div className="row">
             <span className="badge">{deck.type === 'duema' ? 'デュエマ' : 'デュエパ'}</span>
+            {deckFormat(db, deck) && (
+              <span title="超次元・超GRゾーンやゲーム開始時に置かれるカードを使うとアドバンス、使わなければオリジナル (アドバンスでも使えます)">
+                <FormatBadge format={deckFormat(db, deck)!} />
+              </span>
+            )}
             <b>
               {mainSize(deck)} / {DECK_SIZE[deck.type] + deckSizeBonus(db, deck)}
             </b>

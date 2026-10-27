@@ -218,6 +218,18 @@ export async function removeCpu(room: Room, id: string) {
   await backend.remove(`rooms/${room.key}/cpus/${id}`);
 }
 
+/** 開いているルームの一覧 (オンラインのメンバーがいて、古すぎないもの) */
+export function subscribeRooms(cb: (rooms: Room[]) => void) {
+  return backend.subscribe<Record<string, Partial<Room>>>('rooms', (v) => {
+    const now = Date.now();
+    const list = Object.entries(v || {})
+      .map(([k, r]) => decodeRoom(k, r))
+      .filter((r): r is Room => !!r && Object.values(r.members).some((m) => m.online) && now - r.createdAt < STALE_MS * 4);
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    cb(list);
+  });
+}
+
 export function subscribeRoom(key: string, cb: (r: Room | null) => void) {
   return backend.subscribe<Partial<Room>>(`rooms/${key}`, (v) => cb(decodeRoom(key, v)));
 }
