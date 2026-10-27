@@ -1739,21 +1739,26 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     return body ? [{ op: 'optional', body, prompt: s0, byOpp: /^(?:その後、)?相手は/.test(s0) || undefined }] : null;
   }
 
-  // 連用形で続く複文 「カードを1枚引き、自分の手札を1枚捨てる」
-  const comp = s.match(/^(.+?(?:引き|置き|戻し|加え|出し|破壊し|捨て|唱え|タップし|アンタップし|シャッフルし|見せ|表向きにし))、(.+)$/);
-  if (comp && !/選び$/.test(comp[1]) && !/^相手に見せ/.test(comp[2])) {
-    const first = comp[1]
+  // 連用形で続く複文 「カードを1枚引き、自分の手札を1枚捨てる」 (区切りの候補を前から順に試す)
+  const COMP = /(?:引き|置き|戻し|加え|出し|破壊し|捨て|唱え|タップし|アンタップし|シャッフルし|見せ|表向きにし|シールド化し|与え|ブレイクし|見て)$/;
+  for (let i = s.indexOf('、'); i >= 0; i = s.indexOf('、', i + 1)) {
+    const c1 = s.slice(0, i);
+    const c2 = s.slice(i + 1);
+    if (!COMP.test(c1) || /^相手に見せ/.test(c2)) continue;
+    const first = c1
       .replace(/引き$/, '引く')
       .replace(/置き$/, '置く')
       .replace(/戻し$/, '戻す')
       .replace(/加え$/, '加える')
+      .replace(/与え$/, '与える')
       .replace(/出し$/, '出す')
       .replace(/捨て$/, '捨てる')
       .replace(/唱え$/, '唱える')
       .replace(/見せ$/, '見せる')
-      .replace(/(破壊|タップ|アンタップ|シャッフル|表向きに)し$/, '$1する');
+      .replace(/見て$/, '見る')
+      .replace(/(破壊|タップ|アンタップ|シャッフル|表向きに|シールド化|ブレイク)し$/, '$1する');
     const a = sentence(first, ctx);
-    const b = a && sentence(comp[2], ctx);
+    const b = a && sentence(c2, ctx);
     if (a && b) return [...a, ...b];
   }
 
@@ -1965,7 +1970,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // ---- 見たカードから ----
   if ((m = s.match(new RegExp(`^(?:その中から|そのうち|その中の)、?(.+?)を${N}(?:体|枚)(まで)?選び、(.+)$`)))) {
-    const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana'] });
+    const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana', 'shield'] });
     const ops = sel && verbOps(m[4], { ref: 'it' });
     if (sel && ops)
       return [{ op: 'choose', target: { ref: 'looked', sel, count: count(m[2], m[3]) }, purpose: 'benefit', prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
@@ -1985,7 +1990,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (ops) return [{ op: 'choose', target: { ref: 'looked', count: count(m[1], m[2]) }, purpose: 'benefit', prompt: `${m[1]}枚選ぶ` }, ...ops];
   }
   if ((m = s.match(/^(?:その中から|その中の)、?(.+?)をすべて、?(.+)$/))) {
-    const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana'] });
+    const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana', 'shield'] });
     const ops = sel && verbOps(m[2], { ref: 'it' });
     if (sel && ops) return [{ op: 'choose', target: { ref: 'looked', sel, count: { all: true } }, purpose: 'benefit', prompt: 'all' }, ...ops];
   }
