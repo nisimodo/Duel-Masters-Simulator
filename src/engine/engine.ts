@@ -518,7 +518,7 @@ export function manaSummonLeft(s: GameState, L: Lookup, p: number, iid?: number)
   const cur = ms?.turn === s.turn ? ms : undefined;
   // 「ドラゴンをN体、マナゾーンから召喚してもよい」: 種族などの指定があれば、そのカードにだけ使える
   const fits = (sel?: import('../rules/ops').Sel) => !sel || (iid != null && matchesSel(s, L, iid, sel));
-  const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' && fits(x.spec.sel) ? x.spec.n : 0), 0) : 0;
+  const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' && fits(x.spec.sel) && (!x.spec.newOnly || s.cards[x.src].sick) ? x.spec.n : 0), 0) : 0;
   return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
 }
 
@@ -1008,7 +1008,7 @@ function startTurn(s: GameState, L: Lookup) {
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
     if (c.noUntap) c.noUntap = false;
-    else if (!(c.zone === 'battle' && (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noUntapStart'))) c.tapped = false;
+    else if (!(c.zone === 'battle' && (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noUntapStart' && staticCondOk(s, L, { src: iid, owner: c.owner, spec: x })))) c.tapped = false;
     c.sick = false;
   }
   for (const b of silent) {
@@ -1537,6 +1537,7 @@ function blockStep(s: GameState, L: Lookup) {
         if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB || limB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
+        if (power(s, L, b) < ap && activeStatics(s, L).some((x) => x.owner === a.owner && x.spec.s === 'ownUnblockableSmaller')) return false;
         return !ownStatics(s, L, a.attacker).some(
           (x) => x.s === 'unblockableBy' && ((x.vsCreature && a.targetCard != null) || (x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap) || (x.sel != null && matchesSel(s, L, b, x.sel))),
         );

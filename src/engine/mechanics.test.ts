@@ -22,6 +22,7 @@ const db = buildDB(
     { id: 'slock', n: 'slock', img: '', f: [{ n: 'slock', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手は、次の自身のターンにクリーチャーを召喚できず、呪文を唱えることもできない。'] }] },
     cr('lightHunter', 1, 1000, ['このクリーチャーは、タップされていない光のクリーチャーを攻撃できる。']),
     cr('lightMon', 1, 1000, [], 'L'),
+    cr('loneWB', 1, 1000, ['バトルゾーンに自分のクリーチャーが他になければ、このクリーチャーは「パワーアタッカー+3000」と「W・ブレイカー」を得る。']),
     cr('tapGuard', 1, 1000, ['このクリーチャーがタップしていれば、自分は攻撃されない。']),
     cr('dante', 1, 1000, ['このクリーチャーが破壊される時、かわりに自分の山札の上に置く。']),
     cr('bad', 4, 5000, ['B・A・D2(このクリーチャーを、コストを2少なくして召喚してもよい。そうしたら、このターンの終わりにこのクリーチャーを破壊する)']),
@@ -308,6 +309,17 @@ describe('named mechanics', () => {
     const t = attackTargets(s, L, h).cards;
     expect(t).toContain(find(s, 1, 'battle', 'lightMon'));
     expect(t).not.toContain(find(s, 1, 'battle', 'vanilla'));
+  });
+
+  it('他に自分のクリーチャーがなければ能力を得る (条件つきの付与)', () => {
+    const s = setup([{ p: 0, cid: 'loneWB', zone: 'battle' }]);
+    const w = find(s, 0, 'battle', 'loneWB')!;
+    expect(kwOf(s, L, w).breaker).toBe(2);
+    expect(kwOf(s, L, w).powerAttacker).toBe(3000);
+    const v = s.players[0].deck.pop()!;
+    s.cards[v].zone = 'battle';
+    s.players[0].battle.push(v);
+    expect(kwOf(s, L, w).breaker).toBeLessThan(2);
   });
 
   it('このクリーチャーがタップしていれば、自分は攻撃されない', () => {

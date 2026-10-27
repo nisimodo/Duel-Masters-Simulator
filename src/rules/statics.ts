@@ -48,6 +48,8 @@ export type StaticSpec =
   | { s: 'attackUntapped'; sel?: Sel }
   | { s: 'cantAttackCreatures' }
   | { s: 'unblockableBy'; maxPower?: number; smallerThanSelf?: boolean; sel?: Sel; vsCreature?: boolean }
+  /** 自分のクリーチャーは、それよりパワーが小さいクリーチャーにブロックされない */
+  | { s: 'ownUnblockableSmaller' }
   /** このクリーチャーは sel に攻撃されない */
   | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
@@ -147,7 +149,7 @@ export type StaticSpec =
   /** 破壊されない (inBattle: バトル中だけ) */
   | { s: 'indestructible'; inBattle?: boolean }
   /** 自分のターンのはじめにアンタップしない */
-  | { s: 'noUntapStart' }
+  | { s: 'noUntapStart'; cond?: StaticCond }
   /** 封印が付いていれば離れない */
   | { s: 'sealStay' }
   /** 可能であればブロックする */
@@ -159,7 +161,7 @@ export type StaticSpec =
   /** S・バック: その条件のカードがシールドから手札に加えられた時、それを捨ててこのクリーチャーを出せる */
   | { s: 'sBack'; sel: Sel }
   /** 自分のターン中、クリーチャーをN体、自分のマナゾーンから召喚してもよい */
-  | { s: 'manaSummonTurn'; n: number; sel?: Sel }
+  | { s: 'manaSummonTurn'; n: number; sel?: Sel; newOnly?: boolean }
   /** 攻撃の終わりにアンタップする */
   | { s: 'untapAfterAttack' }
   /** このクリーチャーの攻撃の終わりに、このクリーチャーを破壊する */
@@ -287,7 +289,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^バトルゾーンまたはマナゾーンに自分の(.+?)が合計(\d+)(?:枚|体|つ)以上あれば、(.+)$/)) && parseSel('自分の' + m[1])) {
     return { cond: { c: 'countAtLeast', sel: { ...parseSel('自分の' + m[1])!, zones: ['battle', 'mana'] }, n: +m[2] }, rest: m[3] };
   }
-  if ((m = t.match(/^自分のマナゾーンにあるカードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
+  if ((m = t.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であれば|なら)、(.+)$/))) return { cond: { c: 'manaAllCiv', civ: CIV_OF[m[1]] }, rest: m[2] };
   if ((m = t.match(/^(?:ラビリンス[:：])?自分のシールド(?:の数)?が相手(?:のシールド)?より多ければ、(.+)$/))) return { cond: { c: 'shieldsMore' }, rest: m[1] };
   if ((m = t.match(/^バトルゾーンに他に自分のクリーチャーがなければ、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手のシールドが(\d+)(?:つ|枚)以下(?:なら|であれば)、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] + 1 }, rest: m[2] };
@@ -295,6 +297,21 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出(?:た|した)ターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^自分の手札が(\d+)枚もない(?:時|なら)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] - 1 }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーがタップ(?:されて|して)(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
+  if ((m = t.match(/^相手の(マナゾーン|墓地)に(.+?)があれば、(.+)$/))) {
+    const z = m[1] === '墓地' ? 'grave' : 'mana';
+    const sel = parseSel(m[2], { zones: [z] });
+    if (sel) return { cond: { c: 'countAtLeast', sel: { ...sel, owner: 'opp', zones: [z], kind: /カード$/.test(m[2]) ? 'card' : sel.kind }, n: 1 }, rest: m[3] };
+  }
+  // 「バトルゾーンに自分の〇〇が他にN体でもあれば / もなければ / 他になければ」
+  if ((m = t.match(/^バトルゾーンに(タップされていない)?自分の(.+?)が他に(?:(\d+)体(でも|以上)あれば|(\d+)体以上出ているなら|(\d+)体もなければ|(な)ければ)、(.+)$/))) {
+    const sel = parseSel('自分の' + m[2]);
+    if (sel) {
+      const sl: Sel = { ...sel, other: true, ...(m[1] ? { tapped: false } : {}) };
+      const atLeast = m[3] ?? m[5];
+      if (atLeast) return { cond: { c: 'countAtLeast', sel: sl, n: +atLeast }, rest: m[8] };
+      return { cond: { c: 'countLess', sel: sl, n: m[6] ? +m[6] : 1 }, rest: m[8] };
+    }
+  }
   if ((m = t.match(/^自分のシールドゾーンに表向きのカードがあれば、(.+)$/))) return { cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^バトルゾーンにある自分のクリーチャーがこのクリーチャーだけ(?:なら|であれば)、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 }, rest: m[1] };
   if ((m = t.match(/^相手のターン(?:中)?に、?このクリーチャーがタップされて(?:いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped', oppTurn: true }, rest: m[1] };
@@ -358,6 +375,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     if (sel) return [{ s: 'sBack', sel: { ...sel, zones: ['hand'] } }];
   }
   if ((m = t0.match(/^自分のターン中、クリーチャーを(\d+)体、自分のマナゾーンから召喚してもよい$/))) return [{ s: 'manaSummonTurn', n: +m[1] }];
+  if ((m = t0.match(/^このクリーチャーが(?:バトルゾーンに)?出たターンの間、クリーチャーを(\d+)体、自分のマナゾーンから召喚してもよい$/))) return [{ s: 'manaSummonTurn', n: +m[1], newOnly: true }];
   if ((m = t0.match(/^自分のターン中、(.+?)を(\d+)体、自分のマナゾーンから召喚してもよい$/)) && parseSel(m[1], { zones: ['mana'] })) return [{ s: 'manaSummonTurn', n: +m[2], sel: { ...parseSel(m[1], { zones: ['mana'] })!, owner: 'self', zones: ['mana'] } }];
   if ((m = t0.match(/^このクリーチャーを召喚する時、自分の手札を(\d+)枚捨ててもよい。そうしたら、このクリーチャーの召喚コストを(\d+)少なくする/))) return [{ s: 'discardDiscount', n: +m[1], d: +m[2] }];
   if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/) ?? t0.match(/^自分のマナゾーンにある(.+?)(\d+)(?:体|枚)につき、このクリーチャーの召喚コストを(\d+)少なくする/))) {
@@ -585,7 +603,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^誰もターンを追加できない$/.test(t0)) return [{ s: 'noExtraTurn' }];
   if (/^相手の呪文を唱えるコストは無限のマナを必要とする$/.test(t0)) return [{ s: 'oppSpellLock' }];
   if (/^∞ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
-  if (/^このクリーチャーは、?自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
+  if (/^このクリーチャーは、?(?:自分のターンのはじめに)?アンタップしない$/.test(t0)) return [{ s: 'noUntapStart' }];
+  if (/^このクリーチャーはタップしてバトルゾーンに置かれ、自分のターンのはじめにアンタップしない$/.test(t0)) return [{ s: 'entersTapped' }, { s: 'noUntapStart' }];
   if ((m = t0.match(/^(光|水|闇|火|自然)のクリーチャーを召喚するコストと(?:光|水|闇|火|自然)の呪文を唱えるコストは、?それぞれ([+-])(\d+)される$/))) {
     const civ = CIV_OF[m[1]];
     const d = (m[2] === '-' ? -1 : 1) * +m[3];
@@ -613,6 +632,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^このクリーチャーは、?(?:タップされていない|アンタップしている|アンタップされている)(.+?クリーチャー)を攻撃できる$/)) && parseSel(m[1])) return [{ s: 'attackUntapped', sel: parseSel(m[1])! }];
   if (/^このクリーチャーは、?クリーチャーを攻撃できない$/.test(t0)) return [{ s: 'cantAttackCreatures' }];
   if ((m = t0.match(/^このクリーチャーは、?パワー(\d+)以下のクリーチャーにブロックされない$/))) return [{ s: 'unblockableBy', maxPower: +m[1] }];
+  if (/^自分のクリーチャーは(?:すべて)?、?それよりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'ownUnblockableSmaller' }];
   if (/^このクリーチャーは、?クリーチャーを攻撃する時(?:、)?ブロックされない$/.test(t0)) return [{ s: 'unblockableBy', vsCreature: true }];
   if ((m = t0.match(/^このクリーチャーは、?(.+?)に(攻撃(?:また|も)はブロック|攻撃|ブロック)されない$/)) && parseSel(m[1])) {
     const sel = parseSel(m[1])!;
@@ -704,6 +724,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
       if (action === 'cast') sel.kind = 'spell';
       return [{ s: 'cost', side: m[1] === '相手' ? 'opp' : m[1] === '自分' ? 'self' : 'any', sel, action, delta: (m[5] === '少なく' ? -1 : 1) * +m[4], floor: floorOf(full) }];
     }
+  }
+  // 条件つき: 条件を外した残りを解析し、条件に対応した能力 (パワー・能力の付与) なら条件を付ける
+  if (cond && t !== t0) {
+    const inner = parseStaticLine(t);
+    if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
   }
   return null;
 }

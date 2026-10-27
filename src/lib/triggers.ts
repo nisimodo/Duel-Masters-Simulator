@@ -164,7 +164,7 @@ export function isAutoEffect(effect: string, optional: boolean): boolean {
 export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
   for (const raw of rawLines) {
-    const line = stripReminder(normText(raw)).trim().replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、');
+    const line = stripReminder(normText(raw)).trim().replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、').replace(/^このクリーチャーの各ブレイクの前に、/, 'このクリーチャーがシールドをブレイクする時、');
     if (!line || SKIP_TRIG.test(line)) continue;
     // 「とどまる」「手札に加えるかわりに墓地に置く」は常在型能力として処理
     if (/(離れるかわりにとどまる|離れずにとどまる)$|^このクリーチャーがシールドをブレイクする時、相手は.*手札に加えるかわりに墓地に置く/.test(line.replace(/\s+/g, '').replace(/。$/, '')) && /^(相手の呪文(の効果で|によって))?(バトルゾーンに.+?があり、)?このクリーチャーが/.test(line)) continue;

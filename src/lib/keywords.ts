@@ -1,4 +1,4 @@
-import { normText } from '../rules/text';
+import { normText, stripReminder } from '../rules/text';
 
 // カードテキストからキーワード能力を抽出する。
 // ここで拾った能力はルールエンジンが自動処理する。それ以外の効果はプレイヤーが手動で処理する。
@@ -89,7 +89,14 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
   else if (has(lines, /^Q・ブレイカー/)) breaker = 4;
   else if (has(lines, /^T・ブレイカー/)) breaker = 3;
   else if (has(lines, /^W・ブレイカー/)) breaker = 2;
-  const paM = all.match(/パワーアタッカー\+(\d+)/);
+  // 条件つきの文 (「〜なければ、このクリーチャーは攻撃できない」) や注釈の中は除き、行の頭の文だけを見る
+  const heads = lines.flatMap((l) =>
+    stripReminder(l.replace(/^[^(（]*[)）]/, ''))
+      .split('。')
+      .map((x) => x.replace(/^(?:\s|ブロッカー|S・トリガー|スピードアタッカー|[WTQ]・ブレイカー)+/, '').trim()),
+  );
+  const head = (re: RegExp) => heads.some((l) => re.test(l));
+  const paM = heads.map((l) => l.match(/^パワーアタッカー\+(\d+)/)).find(Boolean);
 
   let revChange: CondSpec | null = null;
   const rcLine = lines.find((l) => /^革命チェンジ/.test(l));
@@ -121,16 +128,16 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
 
   return {
     blocker: has(lines, /^(ブロッカー|ハイパー化.*ブロッカー)/) || has(lines, /^ブロッカー/),
-    speedAttacker: has(lines, /^スピードアタッカー/) || /このクリーチャーは召喚酔いしない/.test(all),
+    speedAttacker: has(lines, /^スピードアタッカー/) || head(/^このクリーチャーは召喚酔いしない/),
     machFighter: has(lines, /^マッハファイター/),
     breaker,
     slayer: has(lines, /^スレイヤー/),
     shieldTrigger: has(lines, /^(S・トリガー|シールド・トリガー|スーパー・S・トリガー|S・トリガー・プラス)/),
     gStrike: has(lines, /^G・ストライク/),
     powerAttacker: paM ? Number(paM[1]) : 0,
-    cantAttack: /このクリーチャーは、?攻撃(することが)?できない/.test(all),
-    cantAttackPlayer: /このクリーチャーは、?(相手)?プレイヤーを攻撃できない/.test(all),
-    unblockable: /このクリーチャーは、?(相手に)?ブロックされない/.test(all),
+    cantAttack: head(/^このクリーチャーは、?攻撃(することが)?できない/),
+    cantAttackPlayer: head(/^このクリーチャーは、?(相手)?プレイヤーを攻撃(することが)?できない/),
+    unblockable: head(/^このクリーチャーは、?(相手に)?ブロックされない/),
     revChange,
     invasion,
     evoCond,
