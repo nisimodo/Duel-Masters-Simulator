@@ -1,5 +1,6 @@
 // 常在型能力 (パワー修正・キーワード付与・コスト増減・選ばれない 等) の解析
-import type { Civ, Sel } from './ops';
+import type { Civ, Cond, Sel } from './ops';
+import { parseCond } from './parse';
 
 const CIV_OF: Record<string, Civ> = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' };
 import { parseSel } from './selector';
@@ -7,6 +8,9 @@ import { normText, stripReminder } from './text';
 
 /** 誰に効くか (発生源のカードから見て) */
 export type StaticTarget = { t: 'self' } | { t: 'cross' } | { t: 'sel'; sel: Sel };
+
+export type ReplaceSubj = { t: 'self' } | { t: 'host' } | { t: 'sel'; sel: Sel; incSelf?: boolean };
+export type ReplaceZone = 'hand' | 'mana' | 'deckTop' | 'deckBottom' | 'deckShuffle' | 'shield' | 'underSrc';
 
 /** 効いている条件 */
 export type StaticWhen = 'battle' | 'attack' | 'block' | 'oppTurn' | 'ownTurn' | 'always';
@@ -140,6 +144,11 @@ export type StaticSpec =
   | { s: 'eternalK'; n: number }
   /** 水晶ソウルN: 召喚する時、裏向きのマナはN枚分になる */
   | { s: 'crystalSoul'; n: number }
+  /**
+   * 汎用の置換効果 「(主語)が破壊される/離れる時、(条件なら、)かわりに〜」
+   * act: stay=とどまる / redirect=墓地のかわりに zone へ / pay=effect を実行してとどまる
+   */
+  | { s: 'replaceMove'; subj: ReplaceSubj; on: 'destroy' | 'leave'; act: 'stay' | 'redirect' | 'pay'; zone?: ReplaceZone; effect?: string; cond?: Cond; oppTurn?: boolean; oppSpell?: boolean; fromHand?: boolean; oncePerTurn?: boolean }
   /** このクリーチャーが破壊される/離れる時、かわりに〜 (effect を実行してとどまる) */
   | { s: 'replaceLeave'; on: 'destroy' | 'leave'; effect: string; cross?: boolean }
   /** コストを支払うかわりに、自分の〇〇をN体タップして使う */
@@ -786,7 +795,80 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const inner = parseStaticLine(t);
     if (inner?.length && inner.every((x) => (x.s === 'grant' || x.s === 'power' || x.s === 'noUntapStart' || x.s === 'summonFrom') && !x.cond)) return inner.map((x) => ({ ...x, cond }) as StaticSpec);
   }
+  const rm = parseReplaceMove(t0);
+  if (rm) return [rm];
   return null;
+}
+
+/** 墓地に置くかわりの行き先 (「手札に戻す」「山札に戻してシャッフルする」) */
+function replaceZoneOf(v0: string): ReplaceZone | null {
+  const v = v0
+    .replace(/戻してもよい$/, '戻す')
+    .replace(/加えてもよい$/, '加える')
+    .replace(/置いてもよい$/, '置く')
+    .replace(/シャッフルしてもよい$/, 'シャッフルする')
+    .replace(/^(?:(?:この|その)(?:クリーチャー|ゴッド|カード)を)/, '')
+    .replace(/^(?:自分の|持ち主の)/, '');
+  if (/^手札に(?:戻す|加える)(?:かマナゾーンに置く)?$/.test(v)) return 'hand';
+  if (/^(?:タップして)?(?:自分の|持ち主の)?マナゾーンに置く$/.test(v)) return 'mana';
+  if (/^山札の(?:一番)?上に置く$/.test(v)) return 'deckTop';
+  if (/^山札の(?:一番)?下に置く$/.test(v)) return 'deckBottom';
+  if (/^山札に(?:戻して|加えて)、?シャッフルする$/.test(v)) return 'deckShuffle';
+  if (/^(?:裏向きにして|裏向きにし、|表向きにして、?)?(?:新しいシールドとして、?)?(?:自分の)?シールド(?:ゾーン)?に(?:裏向きにして)?(?:加える|置く)$/.test(v)) return 'shield';
+  if (/^このクリーチャーの下に置く$/.test(v)) return 'underSrc';
+  return null;
+}
+
+function parseReplaceMove(t1: string): StaticSpec | null {
+  // 「ただし、その「S・トリガー」は使えない」は無視する
+  let t = t1.replace(/^(?:マナ武装\d+|龍回避|龍魂回避)[:：―\-ー?]/, '').replace(/。ただし、.+$/, '');
+  const once = /^各ターンに(?:一|1)度、/.test(t);
+  t = t.replace(/^各ターンに(?:一|1)度、/, '');
+  // 「〜してもよい。そうした場合、このクリーチャーは墓地に置かれるかわりにバトルゾーンにとどまる」
+  t = t.replace(/^(.+?時、)(.+?てもよい)。(?:そうした場合|そうしたら|その場合)、(?:この|その)クリーチャーは(?:墓地に置かれる|バトルゾーンを離れる|離れる)かわりに(?:バトルゾーンに)?とどまる$/, '$1かわりに$2');
+  if (/。/.test(t)) return null;
+  const m = t.match(/^(相手のターン中に|相手の呪文によって)?(.+?)が(破壊される|バトルゾーンを離れる|離れる|バトルゾーンから自分の墓地に置かれる)(?:時|とき)、(.+)$/);
+  if (!m) return null;
+  let subj: ReplaceSubj | null = null;
+  const sp = m[2].replace(/^自分の、/, '自分の');
+  if (/^このクリーチャー$/.test(sp)) subj = { t: 'self' };
+  else if (/^これを(?:装備|付け|クロス)したクリーチャー$/.test(sp)) subj = { t: 'host' };
+  else {
+    const both = sp.match(/^このクリーチャーまたは(自分の.+)$/);
+    const ph = both ? both[1] : sp;
+    if (!/自分の/.test(ph) || /相手の/.test(ph)) return null;
+    const sel = parseSel(ph.replace(/^(.+?)自分の(.+)$/, '自分の$1$2').replace(/^自分の名前に/, '名前に'));
+    if (!sel) return null;
+    subj = { t: 'sel', sel: { ...sel, owner: 'self' }, incSelf: !!both };
+  }
+  const on: 'destroy' | 'leave' = /破壊|墓地/.test(m[3]) ? 'destroy' : 'leave';
+  let body = m[4];
+  let cond: Cond | undefined;
+  const cm = body.match(/^([^、]+?(?:れば|なら|ならば))、(.+)$/);
+  if (cm && !/かわりに/.test(cm[1])) {
+    const c = parseCond(cm[1].replace(/(?:であれば|ならば|なら|れば)$/, ''));
+    if (!c) return null;
+    cond = c;
+    body = cm[2];
+  }
+  const base = { s: 'replaceMove' as const, subj, on, ...(cond ? { cond } : {}), ...(once ? { oncePerTurn: true } : {}), ...(m[1] === '相手のターン中に' ? { oppTurn: true } : {}), ...(m[1] === '相手の呪文によって' ? { oppSpell: true } : {}) };
+  // とどまる
+  if (/^(?:(?:この|その)クリーチャーは)?(?:墓地に置(?:かれる|く)|バトルゾーンを離れる|離れる)?かわりに(?:バトルゾーンに)?とどまる$/.test(body)) return { ...base, act: 'stay' };
+  // 墓地のかわりに別の場所へ
+  const rd = body.match(/^(?:(?:この|その)(?:クリーチャー|ゴッド|カード)を)?(?:墓地に置く|墓地におく|破壊する)?かわりに、?(.+)$/);
+  // 主語が他のクリーチャーの時の「かわりにこのクリーチャーを〜」は、このクリーチャーが身代わりになる
+  if (rd && !(subj.t !== 'self' && /^このクリーチャーを/.test(rd[1]))) {
+    const z = replaceZoneOf(rd[1]);
+    if (z && (on === 'destroy' || z === 'hand')) return { ...base, act: 'redirect', zone: z };
+  }
+  // かわりに〜を支払って、とどまる
+  let eff: string | null = null;
+  const dm = body.match(/^(?!かわりに)(.+?)(?:を)?(?:(\d+)体)?、?かわりに破壊(する|してもよい)$/);
+  if (dm) eff = dm[1] === 'このクリーチャー' || dm[1] === 'このクリーチャーを' ? `このクリーチャーを破壊${dm[3]}` : `${dm[1].replace(/を?(\d+)体$/, '')}を${dm[2] ?? dm[1].match(/(\d+)体$/)?.[1] ?? 1}体破壊${dm[3]}`;
+  const pm = !eff && body.match(/^(?:(?:この|その)クリーチャーを)?(?:墓地に置く|墓地におく|離れる|バトルゾーンを離れる)?かわりに、?(.+)$/);
+  if (pm) eff = pm[1];
+  if (!eff) return null;
+  return { ...base, act: 'pay', effect: eff, ...(/^このカードを(?:自分の)?手札から捨て/.test(eff) ? { fromHand: true } : {}) };
 }
 
 /** 「自分のマナゾーンにあるカード」「自分の墓地にある火のカード」 */

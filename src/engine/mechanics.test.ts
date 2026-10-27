@@ -5,7 +5,7 @@ import { applyAction, attackTargets, breakCount, breakShields, canAttackWith, cr
 import { matchesSel, programOf, startExec } from './interp';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
-import { spellEffectLines } from '../lib/triggers';
+import { parseTriggers, spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
 const cr = (id: string, cost: number, power: number, text: string[], civ = 'F') => ({
@@ -192,6 +192,10 @@ const db = buildDB(
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
     { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
     cr('alienLord', 1, 1000, ['エイリアンを自分の墓地から召喚してもよい。']),
+    cr('rmHand', 1, 1000, ['このクリーチャーが破壊される時、バトルゾーンに自分のパワー6000以上のクリーチャーがあれば、このクリーチャーを墓地に置くかわりに手札に戻す。']),
+    cr('rmStay', 1, 1000, ['自分の光のタップしているクリーチャーが破壊される時、墓地に置かれるかわりにバトルゾーンにとどまる。']),
+    cr('rmSub', 1, 1000, ['自分の進化クリーチャーが破壊される時、かわりにこのクリーチャーを自分のマナゾーンに置く。']),
+    cr('rmOnce', 1, 1000, ['各ターンに一度、このクリーチャーが離れる時、かわりに自分のシールドを１つ手札に加えてもよい。']),
     { id: 'alien', n: 'alien', img: '', f: [{ n: 'alien', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['エイリアン'], x: [] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -1318,6 +1322,32 @@ describe('named mechanics', () => {
     expect(kwOf(s, L, o).cantAttack).toBe(true);
     for (const pl of s.players) while (pl.shield.length > 3) pl.shield.pop();
     expect(kwOf(s, L, o).cantAttack).toBeFalsy();
+  });
+
+  it('置換効果: 条件つきで墓地のかわりに手札へ / とどまる / 各ターンに一度', () => {
+    expect(parseTriggers([L('rmHand')!.faces[0].text[0]])).toEqual([]);
+    let s = setup([{ p: 0, cid: 'rmHand', zone: 'battle' }]);
+    const a = find(s, 0, 'battle', 'rmHand')!;
+    expect(moveCard(s, L, a, 'grave')).toBe('grave');
+    s = setup([
+      { p: 0, cid: 'rmHand', zone: 'battle' },
+      { p: 0, cid: 'big', zone: 'battle' },
+    ]);
+    expect(moveCard(s, L, find(s, 0, 'battle', 'rmHand')!, 'grave')).toBe('hand');
+    s = setup([
+      { p: 0, cid: 'rmStay', zone: 'battle' },
+      { p: 0, cid: 'lightMon', zone: 'battle', tapped: true },
+      { p: 0, cid: 'waterMon', zone: 'battle', tapped: true },
+    ]);
+    expect(moveCard(s, L, find(s, 0, 'battle', 'lightMon')!, 'grave')).toBe('battle');
+    expect(moveCard(s, L, find(s, 0, 'battle', 'waterMon')!, 'grave')).toBe('grave');
+    s = setup([{ p: 0, cid: 'rmOnce', zone: 'battle' }]);
+    const o = find(s, 0, 'battle', 'rmOnce')!;
+    const sh = s.players[0].shield.length;
+    expect(moveCard(s, L, o, 'hand')).toBe('battle');
+    // シールドを選ぶのを待っているか、もう手札に加えている
+    expect(s.players[0].shield.length < sh || s.pending.length > 0).toBe(true);
+    expect(moveCard(s, L, o, 'hand')).toBe('hand');
   });
 
   it('「AまたはB」 (種類が違う) はどちらかに合うものを選べる', () => {

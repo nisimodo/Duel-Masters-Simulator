@@ -4,7 +4,7 @@ import { CIV_NAME, type Card, type Civ, type Face } from '../lib/cards';
 import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
-import { matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
+import { condHolds, matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
 import { activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
@@ -147,6 +147,77 @@ function resetCard(c: CardInst) {
   c.revealed = false;
 }
 
+type ReplaceMoveSpec = Extract<import('../rules/statics').StaticSpec, { s: 'replaceMove' }>;
+
+/** iid がバトルゾーンを離れる時に効く汎用の置換効果を探して適用する。適用したら移動先 (とどまれば 'battle') */
+function applyReplaceMove(s: GameState, L: Lookup, iid: number, to: ZoneName, opts: Parameters<typeof moveCard>[4]): ZoneName | null {
+  const c = s.cards[iid];
+  const pl = s.players[c.owner];
+  const specsOf = (x: number) => (faceOf(s, L, x)?.statics ?? []).filter((sp): sp is ReplaceMoveSpec => sp.s === 'replaceMove');
+  const found: { src: number; spec: ReplaceMoveSpec }[] = [];
+  for (const sp of specsOf(iid)) if (sp.subj.t === 'self') found.push({ src: iid, spec: sp });
+  for (const u of c.under) for (const sp of (L(s.cards[u].cid)?.faces[s.cards[u].face]?.statics ?? []) as ReplaceMoveSpec[]) if (sp.s === 'replaceMove' && sp.subj.t === 'host') found.push({ src: u, spec: sp });
+  for (const b of [...pl.battle, ...pl.hand]) {
+    for (const sp of specsOf(b)) {
+      if (sp.subj.t !== 'sel' || (b === iid && !sp.subj.incSelf) || (pl.hand.includes(b) && !sp.fromHand)) continue;
+      if (sp.subj.sel.other && b === iid && !sp.subj.incSelf) continue;
+      if (b !== iid || !sp.subj.incSelf ? matchesSel(s, L, iid, sp.subj.sel) : true) found.push({ src: b, spec: sp });
+    }
+  }
+  for (const { src, spec } of found) {
+    if (spec.on === 'destroy' && to !== 'grave') continue;
+    if (spec.oppTurn && s.active === c.owner) continue;
+    if (spec.oppSpell && (s.curSpellBy == null || s.curSpellBy === c.owner)) continue;
+    const sc = s.cards[src];
+    if (spec.oncePerTurn && sc.replTurn === s.turn) continue;
+    if (REPLACING.has(src) || REPLACING.has(iid)) continue;
+    if (spec.cond && !condHolds(s, L, sc.owner, src, spec.cond, iid)) continue;
+    const name = nameOf(s, L, iid);
+    if (spec.act === 'stay') {
+      if (spec.oncePerTurn) sc.replTurn = s.turn;
+      log(s, c.owner, `${q(name)} は離れるかわりにバトルゾーンにとどまる`);
+      return 'battle';
+    }
+    if (spec.act === 'redirect') {
+      const z = spec.zone!;
+      if (z === 'hand' && to === 'hand') continue;
+      if (spec.oncePerTurn) sc.replTurn = s.turn;
+      const label = { hand: '手札', mana: 'マナゾーン', deckTop: '山札の上', deckBottom: '山札の下', deckShuffle: '山札', shield: 'シールド', underSrc: `${q(nameOf(s, L, src))} の下` }[z];
+      log(s, c.owner, `${q(name)} は墓地に置くかわりに${label}へ`);
+      const o = { ...opts, noReplace: true };
+      if (z === 'underSrc') {
+        const r = moveCard(s, L, iid, 'grave', o);
+        if (r === 'grave' && s.cards[src].zone === 'battle') startExec(s, L, sc.owner, src, [{ op: 'stackUnder', what: 'it' }], nameOf(s, L, src), undefined, iid);
+        return r;
+      }
+      if (z === 'deckShuffle') {
+        const r = moveCard(s, L, iid, 'deck', o);
+        shuffleArr(s, pl.deck);
+        return r;
+      }
+      if (z === 'deckTop' || z === 'deckBottom') return moveCard(s, L, iid, 'deck', { ...o, pos: z === 'deckTop' ? 'top' : 'bottom' });
+      if (z === 'shield') return moveCard(s, L, iid, 'shield', { ...o, faceUp: false });
+      return moveCard(s, L, iid, z, o);
+    }
+    const prog = programOf(spec.effect!);
+    const ops = prog.ops.length === 1 && prog.ops[0].op === 'optional' ? prog.ops[0].body : prog.ops;
+    if (!prog.complete || !canPay(s, L, sc.owner, iid, ops)) continue;
+    if (spec.oncePerTurn) sc.replTurn = s.turn;
+    log(s, c.owner, `${q(name)} は離れるかわりに「${spec.effect}」`);
+    REPLACING.add(iid);
+    REPLACING.add(src);
+    try {
+      startExec(s, L, sc.owner, src, ops, nameOf(s, L, src), undefined, iid);
+    } finally {
+      REPLACING.delete(iid);
+      REPLACING.delete(src);
+    }
+    // 身代わり (このクリーチャー自身が離れた) でも、主語のクリーチャーはとどまる
+    return s.cards[iid].zone === 'battle' ? 'battle' : s.cards[iid].zone;
+  }
+  return null;
+}
+
 /**
  * カードを移動する。進化元など下にあるカードも同じゾーンへ移動する。
  * サイキック/ドラグハートは超次元ゾーンへ、GRクリーチャーは超GRゾーンの一番下へ戻る。
@@ -258,6 +329,11 @@ export function moveCard(
         REPLACING.delete(iid);
       }
       return 'battle';
+    }
+    // 汎用の置換効果 「(主語)が破壊される/離れる時、(〜なら、)かわりに〜」
+    {
+      const r = applyReplaceMove(s, L, iid, to, opts);
+      if (r) return r;
     }
     // エターナル・Κ: 裏向きのマナをN枚表向きにして、とどまる
     const ek = own.find((x) => x.s === 'eternalK');

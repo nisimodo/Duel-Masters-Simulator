@@ -193,6 +193,11 @@ function noteChosen(s: GameState, L: Lookup, ex: Exec) {
   for (const i of ex.it) if (s.cards[i]?.zone === 'battle' && s.cards[i].owner !== ex.player) fireEvent(s, L, i, ['chosenByOpp']);
 }
 
+/** 効果の外で条件を調べる (置換効果の「〜なら」) */
+export function condHolds(s: GameState, L: Lookup, player: number, src: number, c: Cond, it?: number): boolean {
+  return evalCond(s, L, { player, src, ops: [], it: it != null ? [it] : [], looked: [], did: false, name: '' }, c);
+}
+
 function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
   const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : a === b);
   const me = s.players[ex.player];

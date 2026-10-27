@@ -53,6 +53,8 @@ export interface CardInst {
   wasUnderEvo?: boolean;
   /** 直前のゾーン移動がバトルゾーンからだった (「その直前にバトルゾーンにあれば」) */
   fromBattle?: boolean;
+  /** 「各ターンに一度」の置換効果を使ったターン */
+  replTurn?: number;
   /** エクストラEXライフの残りのシールド */
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */

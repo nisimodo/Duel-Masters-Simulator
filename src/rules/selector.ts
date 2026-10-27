@@ -55,7 +55,7 @@ export function parseSel(phrase: string, defaults: Partial<Sel> = {}): Sel | nul
 const KIND_WORD = /^(クリーチャー|呪文|カード|クロスギア|タマシード|オーラ|フィールド|城|ドラグハート|エレメント)$/;
 
 function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
-  let p = phrase.replace(/\s+/g, '').replace(/の、/g, 'の').replace(/^、/, '').trim();
+  let p = phrase.replace(/\s+/g, '').replace(/((?:光|水|闇|火|自然))、(または|か)(?=(?:光|水|闇|火|自然))/g, '$1$2').replace(/の、/g, 'の').replace(/^、/, '').trim();
   const sel: Sel = { owner: 'any', zones: ['battle'], kind: 'creature', ...defaults };
   let zoneSet = false;
 
