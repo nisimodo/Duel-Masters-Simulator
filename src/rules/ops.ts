@@ -163,7 +163,7 @@ export type Op =
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
   | { op: 'power'; target: Target; delta: number; until: 'turn' }
-  | { op: 'restrict'; target: Target; what: 'attack' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp' }
+  | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp' }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
   | { op: 'shuffle'; who?: 'opp' }
@@ -227,6 +227,7 @@ export type Op =
   | { op: 'noLose'; until: 'turn' | 'nextOwnTurn' }
   /** 自分はゲームに勝つ (相手全員が負ける) */
   | { op: 'winGame' }
+  | { op: 'loseGame' }
   /** 攻撃を中止する */
   | { op: 'cancelAttack' }
   /** 自分の山札の一番下のカードを to に置く */

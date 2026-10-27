@@ -189,6 +189,7 @@ const db = buildDB(
     { id: 'gale', n: 'gale', img: '', f: [{ n: 'gale', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: ['自分の手札にある生徒会組カードすべてに「シンパシー：自分のドラゴン」を与える。'] }] },
     { id: 'seito7', n: 'seito7', img: '', f: [{ n: 'seito7', t: 'クリーチャー', c: 'F', co: 7, p: '7000', r: ['生徒会組'], x: [] }] },
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
+    { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
   [],
@@ -1314,5 +1315,21 @@ describe('named mechanics', () => {
     expect(kwOf(s, L, o).cantAttack).toBe(true);
     for (const pl of s.players) while (pl.shield.length > 3) pl.shield.pop();
     expect(kwOf(s, L, o).cantAttack).toBeFalsy();
+  });
+
+  it('シビルカウント: free cast when enough civ creatures', () => {
+    const s = setup([
+      { p: 0, cid: 'lightMon', zone: 'battle' },
+      { p: 0, cid: 'civc', zone: 'hand' },
+    ]);
+    const h = find(s, 0, 'hand', 'civc')!;
+    expect(spellEffectLines(L('civc')!.faces[0].text)).toEqual(['カードを1枚引く。']);
+    expect(costOf(s, L, 0, h, 0)).toBe(5);
+    const s2 = setup([
+      { p: 0, cid: 'lightMon', zone: 'battle' },
+      { p: 0, cid: 'lightMon', zone: 'battle' },
+      { p: 0, cid: 'civc', zone: 'hand' },
+    ]);
+    expect(costOf(s2, L, 0, find(s2, 0, 'hand', 'civc')!, 0)).toBe(0);
   });
 });

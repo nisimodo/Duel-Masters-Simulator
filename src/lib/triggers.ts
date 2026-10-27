@@ -2,6 +2,7 @@
 import { hintsFromText, SIMPLE_KINDS } from '../engine/effects';
 import { MARKED_LINE, mergeModal, normText, stripReminder } from '../rules/text';
 import { parseSel } from '../rules/selector';
+import { parseStaticLine } from '../rules/statics';
 import type { Sel } from '../rules/ops';
 
 export type TrigEvent =
@@ -172,7 +173,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     // 「とどまる」「手札に加えるかわりに墓地に置く」は常在型能力として処理
     if (/(離れるかわりにとどまる|離れずにとどまる)$|^このクリーチャーがシールドをブレイクする時、相手は.*手札に加えるかわりに墓地に置く/.test(line.replace(/\s+/g, '').replace(/。$/, '')) && /^(相手の呪文(の効果で|によって))?(バトルゾーンに.+?があり、)?このクリーチャーが/.test(line)) continue;
     if (/^これをクロスしたクリーチャーが破壊される時、.*かわりに/.test(line.replace(/\s+/g, ''))) continue;
-    if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
+    if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     const m = line.match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
     if (!m) continue;
     let clause = m[1] + m[2];
@@ -308,5 +309,11 @@ export const RECAST = /^(xB)?\s*この呪文を自分の手札から唱えた後
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !/^この呪文を(自分の)?(マナゾーン|墓地)から唱えてもよい。?$/.test(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !/^この呪文を(自分の)?(マナゾーン|墓地)から唱えてもよい。?$/.test(l) && !isCastStatic(l));
+}
+
+/** 「〜あれば、この呪文に「S・トリガー」を与える」「〜あれば、この呪文をコストを支払わずに唱えてもよい」 (常在型として処理する) */
+function isCastStatic(l: string) {
+  if (!/「S・トリガー」を与える。?$|この呪文を(?:自分の手札から)?コストを支払わずに唱えてもよい。?$/.test(l)) return false;
+  return !!parseStaticLine(l)?.some((x) => (x.s === 'grant' && x.kws.includes('S・トリガー')) || x.s === 'selfCost');
 }

@@ -134,6 +134,18 @@ export function parseCond(c: string): Cond | null {
   let m: RegExpMatchArray | null;
   if ((m = c.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あ$/))) return { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +m[1] };
   if (/^(?:バトルゾーンにある)?自分のクリーチャーの数が相手(?:のクリーチャーの数)?より多(?:けれ|け|い)?$/.test(c)) return { c: 'oppMore', zone: 'battle', self: true };
+  // シビルカウント 「自分の光のクリーチャーまたは光のタマシードが合計N つ以上あ」
+  if ((m = c.match(/^自分の(光|水|闇|火|自然)のクリーチャーまたは(?:光|水|闇|火|自然)のタマシードが合計(\d+)つ以上あ$/)))
+    return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creatureOrTama', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] }, cmp: '>=', n: +m[2] };
+  // 「自分の光のクリーチャーと火のクリーチャーがそれぞれ1体以上あ」「自分の光と火のサイキック・クリーチャーがそれぞれ…」
+  if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(マナゾーンに)?(.+?)と(.+?)がそれぞれ${N}(?:体|枚|つ)以上あ$`)))) {
+    const noun = m[3].match(/^(?:光|水|闇|火|自然)(の.+)$/)?.[1] ?? '';
+    const a0 = /^(?:光|水|闇|火|自然)$/.test(m[2]) ? m[2] + noun : m[2];
+    const pre = m[1] ? '自分のマナゾーンに' : 'バトルゾーンに自分の';
+    const a = parseCond(`${pre}${a0}が${m[4]}${m[1] ? '枚' : '体'}以上あ`);
+    const b = parseCond(`${pre}${m[3]}が${m[4]}${m[1] ? '枚' : '体'}以上あ`);
+    if (a && b) return { c: 'and', a, b };
+  }
   if (!/^自分の(墓地|マナゾーン|手札)に/.test(c)) {
     if ((m = c.match(new RegExp(`^(?:バトルゾーンに)?自分の(.+?)が${N}${COUNT_UNIT}以上あ$`)))) {
       const sel = parseSel('自分の' + m[1]);
@@ -298,6 +310,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(.+?)はこのターン中、攻撃することができない$/, 'このターン、$1は攻撃できない')
     .replace(/^(龍?マナ武装|レインボーナス|水晶武装|ファイナル革命)\d*[:：]/, '')
     .replace(/^鬼タイム\s*[:：]\s*(?=自分と相手のシールド)/, '')
+    .replace(/^シビルカウント\s*\d+\s*[:：]\s*/, '')
     .replace(/^自分の次のターンが始まるまで、/, '次の自分のターンのはじめまで、')
     .replace(/(クリーチャー)はすべて、「/, '$1すべてに「')
     .replace(/^相手の手札を見て(?!、)/, '相手の手札を見て、')
@@ -395,6 +408,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^そのカードのコストが、?選んだ数(?:字)?と同じ(であれば|なら)、/, 'それが〈数字コスト〉のカード$1、')
     .replace(/につき(\d+)枚、カードを引(く|いてもよい)$/, 'につき、カードを$1枚引$2')
     .replace(/^自分はゲームに勝利する$/, '自分はゲームに勝つ')
+    .replace(/^((?:この|その)ターン|次の(?:自分|相手)のターンのはじめまで)、(.+?)は、?すべて、?(?=攻撃|ブロック)/, '$1、$2すべては')
+    .replace(/^次の相手のターン(?:中)?、(相手の[^、]+?)は(攻撃(?:もブロックも)?できない)$/, '次の自分のターンのはじめまで、$1は$2')
+    .replace(/^相手に手札を(\d+)枚捨てさせる$/, '相手は自身の手札を$1枚捨てる')
+    .replace(/^カードを(\d+)枚、マナゾーンから持ち主の手札に戻す$/, 'カードを$1枚、自分のマナゾーンから手札に戻す')
+    .replace(/^相手の次のターン、相手のクリーチャーはクリーチャーを攻撃することができない$/, '次の自分のターンのはじめまで、相手のクリーチャーはクリーチャーを攻撃できない')
+    .replace(/^自分の山札のカードを上から(\d+)枚見る$/, '自分の山札の上から$1枚を見る')
+    .replace(/^自分の山札の上から(\d+)枚まで見て、好きな順(?:番|序)で山札に戻す$/, '自分の山札の上から$1枚を見て、好きな順序で山札の上に戻す')
+    .replace(/^自分の(手札|マナゾーン|墓地)から(.+?)を(\d+)(体|枚)選び、バトルゾーンに(?:置|出)(いて|して)もよい$/, '$2を$3$4、自分の$1からバトルゾーンに出してもよい')
+    .replace(/^自分の(手札|マナゾーン|墓地)から(.+?)を(\d+)(体|枚)選び、バトルゾーンに(?:置く|出す)$/, '$2を$3$4、自分の$1からバトルゾーンに出す')
+    .replace(/^その中から「(.+?)」を持つカードを自分の手札に加え、他の\d+枚を好きな順(?:番|序)で自分の山札の一番下に戻す$/, 'その中から「$1」を持つカードを1枚、自分の手札に加え、残りを好きな順序で山札の一番下に置く')
+    .replace(/^バトルゾーンにあるパワーの一番小さいクリーチャーを/, 'バトルゾーンにあるパワーが一番小さいクリーチャーを')
+    .replace(/^相手は自身の手札から(.+?)をすべて捨てる$/, '相手の手札にある$1をすべて、持ち主の墓地に置く')
     .replace(/^相手の攻撃クリーチャーを破壊する$/, '攻撃しているクリーチャーを破壊する')
     .replace(/^このクリーチャーを(?:自分の)?墓地から(?:自分の)?手札に加える$/, 'このクリーチャーを手札に戻す')
     .replace(/^このクリーチャーを(?:自分の)?墓地から(?:自分の)?手札に加えてもよい$/, 'このクリーチャーを手札に戻してもよい')
@@ -404,7 +429,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^相手は、?自身の(手札|マナゾーン|墓地)から(.+?)を(\d+)(体|枚)(まで)?選んで、?/, '相手は自身の$1から$2を$3$4$5選び、')
     .replace(/自分の山札の上からさらに(\d+)枚、?(?:自分の)?マナゾーンに置く$/, '自分の山札の上から$1枚をマナゾーンに置く')
     .replace(/^自分のクリーチャーと相手のクリーチャーを1体(?:ずつ)?選(ぶ|んでもよい)$/, '自分と相手のクリーチャーを1体選$1')
-    .replace(/^(?:その選んだクリーチャー2体|その2体)を?バトルさせる$|^そうした場合、その2体はバトルする$|^その2体はバトルする$/, 'その2体をバトルさせる')
+    .replace(/^(?:その選んだクリーチャー2体|その2体|その選んだクリーチャー|選んだ2体)を?バトルさせる$|^そうした場合、その2体はバトルする$|^その2体はバトルする$/, 'その2体をバトルさせる')
     .replace(/、(?:そのカード|それら)を(?:相手に)?見せる$/, '')
     .replace(/^自分の山札の一番上のカードを、?(?:表にして、?)?(?:自分の)?マナゾーンに置/, '自分の山札の上から1枚目をマナゾーンに置')
     .replace(/^カード名を(?:ひとつ|1つ)選んで言う$/, 'カード名を1つ選ぶ')
@@ -608,6 +633,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^(?:自分は)?ゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  if (/^自分のシールドを(?:\d+枚(?:まで)?)?見る$/.test(s)) return [{ op: 'note', text: '自分のシールドを見た' }];
+  if (/^(?:自分は)?ゲームに負ける$/.test(s)) return [{ op: 'loseGame' }];
   if (/^その攻撃の後(?:で|、)このクリーチャーを破壊する$/.test(s)) return [{ op: 'grant', target: { ref: 'self' }, kws: ['攻撃後破壊'], until: 'turn' }];
   if (/^そのGRクリーチャーはタップしてバトルゾーンに出る$/.test(s)) return [{ op: 'tap', target: { ref: 'it' } }];
   if (/^相手はそれらを好きな順序で(?:自身の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
@@ -788,6 +815,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const oa = or2 && sentence(or2[1] + or2[2], ctx);
     const ob = or2 && sentence(or2[3], ctx);
     if (or2 && oa?.length && ob?.length) return [{ op: 'modal', pick: 1, options: [{ label: or2[1] + or2[2], body: oa }, { label: or2[3], body: ob }] }];
+    // 「カードを1枚引くか、相手に手札を1枚捨てさせる」: 動詞の終止形 + 「か、」で2つに分ける
+    const or4 = s.match(/^(.+?(?:引く|させる|置く|する|戻す|加える|捨てる))か、(.+)$/);
+    const qa = or4 && sentence(or4[1], ctx);
+    const qb = or4 && qa?.length && sentence(or4[2], ctx);
+    if (or4 && qa?.length && qb && qb.length) return [{ op: 'modal', pick: 1, options: [{ label: or4[1], body: qa }, { label: or4[2], body: qb }] }];
     const or3 = s.replace(/を(\d+(?:体|枚))、(?=(?:破壊する|持ち主の)[^、]*$)/, '$1を').match(/^(相手の.+?\d+(?:体|枚))(?:か、|、または、)(相手の.+?\d+(?:体|枚))を(破壊する|持ち主の手札に戻す|持ち主の墓地に置く)$/);
     const pa = or3 && sentence(`${or3[1].replace(/を?(\d+(?:体|枚))$/, 'を$1')}${or3[3]}`, ctx);
     const pb = or3 && sentence(`${or3[2].replace(/(\d+(?:体|枚))$/, 'を$1')}${or3[3]}`, ctx);
@@ -970,7 +1002,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 一時的な能力 「次の自分のターンのはじめまで、このクリーチャーは離れない/破壊されない/すべてのバトルに勝つ/相手に選ばれず、攻撃されない」
   {
-    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その|自分の|バトルゾーンにある自分の)クリーチャーは、?(?:すべて、?)?(.+)$/);
+    const nl = s.match(/^(次の(?:自分|相手)のターンのはじめまで|このターン)、(この|その|自分の|バトルゾーンにある自分の)クリーチャーは、?(?:すべて(?!の)、?)?(.+)$/);
     const map: [RegExp, string[]][] = [
       [/^(バトルゾーンを)?離れない$/, ['離れない']],
       [/^破壊されない$/, ['破壊されない']],
@@ -983,7 +1015,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const tgt: Target | null = nl ? (nl[2] === 'この' ? { ref: 'self' } : nl[2] === 'その' ? { ref: 'it' } : { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }) : null;
     if (nl && hit && tgt) return [{ op: 'grant', target: tgt, kws: hit[1], until: nl[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
     // 「次の相手のターン中、自分の〇〇は攻撃されない」など (種族つき)
-    const nr = s.match(/^(次の(?:自分|相手)のターン(?:のはじめまで|中)|このターン)、(自分の[^、]+?)は、?(?:すべて、?)?(.+)$/);
+    const nr = s.match(/^(次の(?:自分|相手)のターン(?:のはじめまで|中)|このターン)、(自分の[^、]+?)は、?(?:すべて(?!の)、?)?(.+)$/);
     const hr = nr && map.find(([re]) => re.test(nr[3]));
     const sel = nr && parseSel(nr[2]);
     if (nr && hr && sel) return [{ op: 'grant', target: { ref: 'sel', sel, count: { all: true }, chooser: 'self' }, kws: hr[1], until: nr[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
@@ -1912,6 +1944,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'attack' }];
   }
+  if ((m = s.match(/^次の(?:自分|相手)のターンのはじめまで、(.+?)は攻撃できない$/))) {
+    const t = refTarget(m[1]);
+    if (t) return [{ op: 'restrict', target: t, what: 'attackNext' }];
+  }
   if ((m = s.match(/^(.+?)は、?次の(?:相手|自分)のターンのはじめに(?:アンタップしない|アンタップされない)$/)) || (m = s.match(/^(.+?)はアンタップしない$/))) {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'untap' }];
@@ -2202,8 +2238,13 @@ export function parseEffect(text: string): Program {
     bonus = { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', evolution: true }, cmp: '>=', n: 1 };
     body = body.replace(/爆進ダブル(\s*[(（][^)）]*[)）])?。?/g, '');
   }
-  const both = normText(body).match(/(?:^|。)\s*(?:バトルゾーンに)?自分の(.+?)が(?:あれば|ある場合は)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
-  if (both) {
+  const both2 = normText(body).match(/(?:^|。)\s*([^。]+?)(?:れば|ならば|なら|であれば)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
+  const bothCond = both2 && parseCond(both2[1].replace(/\s+/g, ''));
+  const both = !bothCond && normText(body).match(/(?:^|。)\s*(?:バトルゾーンに)?自分の(.+?)が(?:あれば|ある場合は)、(?:この効果を)?両方(?:とも)?を?選んでもよい。?/);
+  if (both2 && bothCond) {
+    bonus = bothCond;
+    body = normText(body).replace(both2[0], both2[0].startsWith('。') ? '。' : '');
+  } else if (both) {
     const sel = parseSel('自分の' + both[1]);
     if (sel) {
       bonus = { c: 'count', sel, cmp: '>=', n: 1 };
@@ -2249,7 +2290,10 @@ function parseEffectRaw(text: string): Program {
   // 選択肢 「次のうちいずれかひとつを選ぶ。▼A ▼B」
   const modal = t.match(/^(.*?)次の(?:うちいずれか|中から)(ひとつ|1つ|\d+つ|\d+回)(?:を|まで)?選(?:ぶ|んでもよい)。?(.*)$/);
   if (modal) {
-    const pre: Program = modal[1].trim() ? parseEffect(modal[1]) : { ops: [], complete: true, unparsed: [] };
+    // 「〜してもよい。そうしたら、次のうちいずれか1つを選ぶ」
+    const did = /(?:そうした場合|そうしたら)、\s*$/.test(modal[1]);
+    const preText = modal[1].replace(/(?:そうした場合|そうしたら|その後)、\s*$/, '');
+    const pre: Program = preText.trim() ? parseEffect(preText) : { ops: [], complete: true, unparsed: [] };
     const pick = modal[2] === 'ひとつ' ? 1 : +modal[2].replace(/つ|回/, '');
     // 「(同じものを選んでもよい)」: 1つずつ選ぶのを pick 回くり返す
     const same = /同じものを(?:\d+回|２回)?選んでもよい/.test(text);
@@ -2258,13 +2302,11 @@ function parseEffectRaw(text: string): Program {
     const options = raw.map((x) => x.trim()).filter(Boolean);
     const parsed = options.map((o) => ({ label: o, prog: parseEffect(o) }));
     const ok = pre.complete && parsed.length >= 2 && parsed.every((p) => p.prog.complete);
+    const mods: Op[] = same
+      ? Array.from({ length: pick }, (): Op => ({ op: 'modal', pick: 1, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }))
+      : [{ op: 'modal' as const, pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })), optional: /選んでもよい/.test(t) || undefined }];
     return {
-      ops: [
-        ...pre.ops,
-        ...(same
-          ? Array.from({ length: pick }, (): Op => ({ op: 'modal', pick: 1, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })) }))
-          : [{ op: 'modal' as const, pick, options: parsed.map((p) => ({ label: p.label, body: p.prog.ops })), optional: /選んでもよい/.test(t) || undefined }]),
-      ],
+      ops: [...pre.ops, ...(did ? [{ op: 'if', cond: { c: 'did' }, body: mods } as Op] : mods)],
       complete: ok,
       unparsed: [...pre.unparsed, ...parsed.flatMap((p) => p.prog.unparsed)],
     };

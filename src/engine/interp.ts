@@ -615,6 +615,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           const c = s.cards[i];
           if (op.what === 'untap') c.noUntap = true;
           else if (op.what === 'attack') c.noAttack = true;
+          else if (op.what === 'attackNext') c.restrict = { attack: true, block: false, until: ex.player };
           else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
           else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: mainOpp(s, ex.player) };
           else c.restrict = { attack: true, block: true, until: ex.player };
@@ -1063,6 +1064,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'winGame': {
         for (let o = 0; o < s.players.length; o++) if (o !== ex.player && !s.players[o].lost) lose(s, o, `${ex.name} の効果`);
+        break;
+      }
+      case 'loseGame': {
+        if (!s.players[ex.player].lost) lose(s, ex.player, `${ex.name} の効果`);
         break;
       }
       case 'cancelAttack': {
