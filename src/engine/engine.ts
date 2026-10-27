@@ -1020,6 +1020,7 @@ function startTurn(s: GameState, L: Lookup) {
   s.usedOnce = [];
   s.turnTriggers = 0;
   for (const pl2 of s.players) if (pl2.spellLockUntil === p) pl2.spellLockUntil = undefined;
+  for (const pl2 of s.players) if (pl2.summonLockUntil === p) pl2.summonLockUntil = undefined;
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
@@ -2176,6 +2177,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
+  if (face.isCreature && !a.force && s.players[p].summonLockUntil != null) return '効果により、クリーチャーを召喚できません';
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');

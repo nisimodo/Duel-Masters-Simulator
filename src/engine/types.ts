@@ -113,6 +113,8 @@ export interface PlayerState {
   /** 呪文を唱えられない (このターン番号の間 / このプレイヤーの次のターンのはじめまで) */
   spellLockTurn?: number;
   spellLockUntil?: number;
+  /** このプレイヤーのターンが来るまでクリーチャーを召喚できない (効果の使用者) */
+  summonLockUntil?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */

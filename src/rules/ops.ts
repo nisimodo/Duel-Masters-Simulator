@@ -94,6 +94,7 @@ export type Target =
   | { ref: 'saved' } // 先に選んで保存しておいたカード
   | { ref: 'host' } // これを装備/クロスしたクリーチャー
   | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
+  | { ref: 'underIt' } // 選んだクリーチャーの下にあるカードすべて
   | { ref: 'leftBehind' } // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
@@ -264,6 +265,7 @@ export type Op =
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number; costRef?: boolean }
+  | { op: 'lockSummon' }
   /** it の枚数 + plus 枚引く */
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */

@@ -293,6 +293,8 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       const lb = s.cards[ex.src]?.leftBehind;
       return lb != null && s.cards[lb].zone === 'battle' ? [lb] : [];
     }
+    case 'underIt':
+      return ex.it.flatMap((i) => (s.cards[i].zone === 'battle' ? [...s.cards[i].under] : []));
     case 'blocker': {
       const b = s.attack?.blocked;
       return b != null && s.cards[b].zone === 'battle' ? [b] : [];
@@ -1196,6 +1198,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           others.sort((a, b) => power(s, L, b) - power(s, L, a));
           for (const b of others.slice(0, op.others)) push(b);
         }
+        break;
+      }
+      case 'lockSummon': {
+        for (const o of opps(s, ex.player)) s.players[o].summonLockUntil = ex.player;
+        log(s, ex.player, '次の自分のターンのはじめまで、相手はクリーチャーを召喚できない');
         break;
       }
       case 'lockSpells': {

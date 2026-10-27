@@ -328,6 +328,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(このターン、[^、]+?)は、/, '$1は')
     .replace(/^なければ、/, 'それ以外なら、')
     .replace(/^このターンが終わるまで、/, 'このターン、')
+    .replace(/、それ以外のカードを好きな順(?:序|番)?で/, '、残りを好きな順序で')
+    .replace(/^その中から好きな枚数を自分の山札の一番下に好きな順序で置く$/, 'その中からカードを99枚まで選び、自分の山札の一番下に置く')
+    .replace(/^(?:そのカード|見たシールド)を手札に加えなかった(?:場合|ら)、/, 'そうしなかった場合、')
+    .replace(/^相手は、?次の自身のターンに(クリーチャーを召喚できず|クリーチャーを召喚できない|呪文を唱えられない)/, '次の相手のターン、相手は$1')
+    .replace(/^次の相手のターン、相手は呪文を唱えられない$/, '次の自分のターンのはじめまで、相手は呪文を唱えられない')
+    .replace(/^(.+?)のコスト(?:の数)?と同じ枚数のカードを引く$/, '$1のコストと同じ枚数のカードを引く')
+    .replace(/^カードを(\d+)枚引き、そのカードを(?:相手に|すべてのプレイヤーに)?見せる$/, 'カードを$1枚引く')
+    .replace(/^その中に(.+?)があれば(\d+)(体|枚)手札に加え、/, 'その中から$1を$2$3手札に加え、')
     .replace(/をコストが大きいほうに裏返す$/, 'をコストの大きいほうに裏返す')
     .replace(/^(この|その)ターン、そのドラゴンのパワーは/, '$1ターン、そのクリーチャーのパワーは')
     .replace(/^(自分の[^、]+?)と同じ枚数のカードを、?自分の山札の上から(?:マナゾーンにタップして|タップしてマナゾーンに)置(く|いてもよい)$/, '$1 1枚につき、自分の山札の上から1枚目をタップしてマナゾーンに置$2')
@@ -625,7 +633,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     }
   }
   if (/^かわりにこのクリーチャー(?:にバトルさせる|がバトルする)$/.test(s)) return [{ op: 'battleInstead' }];
-  if (/^そのカードのコストと同じ枚数のカードを引く$/.test(s)) return [{ op: 'drawItCost' }];
+  if (/^(?:その|選んだ)(?:カード|クリーチャー)のコスト(?:の数)?と同じ枚数のカードを引(?:く|いてもよい)$/.test(s)) return [{ op: 'drawItCost' }];
   {
     const bb = s.match(/^自分の山札の一番下から(\d+)枚を(墓地|マナゾーン)に置く$/);
     if (bb) return Array.from({ length: +bb[1] }, (): Op => ({ op: 'deckBottomTo', to: bb[2] === '墓地' ? 'grave' : 'mana' }));
@@ -699,8 +707,29 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  // 「AをN体破壊するか、BをN体破壊する」「A N体か、B N体を破壊する」: どちらかを選ぶ
+  {
+    const or2 = s.match(/^(.+?)(破壊する|持ち主の手札に戻す|持ち主の墓地に置く)か、(.+)$/);
+    const oa = or2 && sentence(or2[1] + or2[2], ctx);
+    const ob = or2 && sentence(or2[3], ctx);
+    if (or2 && oa?.length && ob?.length) return [{ op: 'modal', pick: 1, options: [{ label: or2[1] + or2[2], body: oa }, { label: or2[3], body: ob }] }];
+    const or3 = s.replace(/を(\d+(?:体|枚))、(?=(?:破壊する|持ち主の)[^、]*$)/, '$1を').match(/^(相手の.+?\d+(?:体|枚))(?:か、|、または、)(相手の.+?\d+(?:体|枚))を(破壊する|持ち主の手札に戻す|持ち主の墓地に置く)$/);
+    const pa = or3 && sentence(`${or3[1].replace(/を?(\d+(?:体|枚))$/, 'を$1')}${or3[3]}`, ctx);
+    const pb = or3 && sentence(`${or3[2].replace(/(\d+(?:体|枚))$/, 'を$1')}${or3[3]}`, ctx);
+    if (or3 && pa?.length && pb?.length) return [{ op: 'modal', pick: 1, options: [{ label: or3[1], body: pa }, { label: or3[2], body: pb }] }];
+  }
   if (/^(?:その)?バトルは行われない$/.test(s)) return [{ op: 'noBattle' }];
   {
+    const ui = s.match(/^そのクリーチャーの下にある(?:カード)?をすべて、?(.+)$/);
+    const uiOps = ui && verbOps(ui[1], { ref: 'underIt' });
+    if (uiOps) return uiOps;
+    // 「バトルゾーン、またはいずれかのマナゾーンからカードをN枚選び、〜」
+    const zc = s.match(/^((?:バトルゾーン|(?:いずれかの)?マナゾーン)(?:、?(?:または|か)、?(?:いずれかの)?(?:バトルゾーン|マナゾーン))?)からカードを(\d+)枚選び、(.+)$/);
+    if (zc) {
+      const zones: SelZone[] = [...(/バトルゾーン/.test(zc[1]) ? ['battle' as const] : []), ...(/マナゾーン/.test(zc[1]) ? ['mana' as const] : [])];
+      const rest = verbOps(zc[3], { ref: 'it' });
+      if (rest) return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones, kind: 'card' }, count: { n: +zc[2], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: `カードを${zc[2]}枚選ぶ` }, ...rest];
+    }
     const bk = s.match(/^(?:その|この)?(?:攻撃を)?ブロックしたクリーチャーを(.+)$/);
     const ops = bk && verbOps(bk[1], { ref: 'blocker' });
     if (ops) return ops;
@@ -1380,6 +1409,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 呪文を唱えられない
   {
     const lk = s.match(/^(このターン|次の自分のターンのはじめまで)、相手は(?:コスト(\d+)以下の|(〈数字コスト〉の))?呪文を唱えられない$/);
+    const ls = s.match(/^(?:次の相手のターン|次の自分のターンのはじめまで)、相手はクリーチャーを召喚できず、呪文を唱えることも(?:でき|し)ない$/);
+    if (ls) return [{ op: 'lockSummon' }, { op: 'lockSpells', until: 'nextOwnTurn' }];
+    if (/^(?:次の相手のターン|次の自分のターンのはじめまで)、相手はクリーチャーを召喚できない$/.test(s)) return [{ op: 'lockSummon' }];
     if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined, costRef: lk[3] ? true : undefined }];
     // 「相手は〈数字コスト〉の呪文を唱えられず、〈数字コスト〉の相手のクリーチャーは攻撃もブロックもできない」
     const lk2 = s.match(/^次の自分のターンのはじめまで、相手は〈数字コスト〉の呪文を唱えられず、(?:同じコストを持つ|〈数字コスト〉の)相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
