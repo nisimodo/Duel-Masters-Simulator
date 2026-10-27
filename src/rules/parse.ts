@@ -720,9 +720,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  if (/^(?:その|この)ターン、相手がバトルゾーンにあるクリーチャーを選ぶ時、自分のクリーチャーは選ばれない$/.test(s))
+    return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['選ばれない'], until: 'turn' }];
   {
     const gr = s.match(/^そのクリーチャーは「([^」]+)」を得、(?:この)?ターンの終わりにバトルゾーンから(?:自分の|持ち主の)手札に戻す$/);
     if (gr) return [{ op: 'grant', target: { ref: 'it' }, kws: [gr[1]], until: 'turn' }, { op: 'atTurnEnd', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }];
+  }
+  // 「AをN体またはBをN枚、〜」: どちらかを選ぶ
+  {
+    const ab = s.match(/^((?:その後、)?)([^、]*?(?:クリーチャー|オーラ|呪文|タマシード|カード|フィールド))を?(\d+)(体|枚)(?:まで)?または([^、]*?(?:クリーチャー|オーラ|呪文|タマシード|カード|フィールド))を?(\d+)(体|枚)(まで)?(、?.+)$/);
+    if (ab && !/^その中から/.test(ab[2])) {
+      const pre = ab[2].match(/^(相手の|自分の)/)?.[1] ?? '';
+      const oa = sentence(`${ab[2]}を${ab[3]}${ab[4]}${ab[8] ?? ''}${ab[9]}`, ctx);
+      const ob = sentence(`${pre && !ab[5].startsWith(pre) ? pre : ''}${ab[5]}を${ab[6]}${ab[7]}${ab[8] ?? ''}${ab[9]}`, ctx);
+      if (oa?.length && ob?.length) return [{ op: 'modal', pick: 1, options: [{ label: `${ab[2]}を${ab[3]}${ab[4]}`, body: oa }, { label: `${ab[5]}を${ab[6]}${ab[7]}`, body: ob }] }];
+    }
   }
   // 「AをN体破壊するか、BをN体破壊する」「A N体か、B N体を破壊する」: どちらかを選ぶ
   {

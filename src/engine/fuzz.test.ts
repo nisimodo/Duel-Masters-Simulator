@@ -1,6 +1,8 @@
 // たくさんのランダムデッキでCPU同士を対戦させて、内部エラーや進行不能がないか調べる
 //   FUZZ=300 npx vitest run src/engine/fuzz.test.ts
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { expandDeck, randomDeck } from '../lib/deck';
@@ -20,7 +22,9 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
   for (let g = 0; g < N; g++) {
     const mode = g % 5 === 0 ? 'duepa' : 'duema';
     const n = mode === 'duepa' ? 3 : 2;
-    let s = createGame({ mode, seed: 7 + g * 13, createdAt: 0, players: Array.from({ length: n }, (_, i) => ({ uid: 'p' + i, name: 'P' + i, cpu: true, ...expandDeck(randomDeck(db, mode)) })) }, L);
+    const replay = process.env.FUZZ_REPLAY ? JSON.parse(fs.readFileSync(process.env.FUZZ_REPLAY, 'utf8')) : null;
+    const init = replay ?? { mode, seed: 7 + g * 13, createdAt: 0, players: Array.from({ length: n }, (_, i) => ({ uid: 'p' + i, name: 'P' + i, cpu: true, ...expandDeck(randomDeck(db, mode)) })) } as const;
+    let s = createGame(init, L);
     let k = 0;
     for (; k < 6000 && s.phase !== 'over'; k++) {
       const p = decider(s)!;
@@ -47,6 +51,8 @@ it.skipIf(!process.env.FUZZ)('fuzz', () => {
         if (!ok) {
           const errs = [...cpuPlan(s, p, L), ...fb].map((a) => `${a.t}: ${applyAction(s, p, a as never, L).error}`);
           console.log('STUCK', g, JSON.stringify(errs), JSON.stringify(s.attack), s.turnStep, s.phase, s.players[p].battle.map((b) => `${L(s.cards[b].cid)?.name}${s.cards[b].tapped ? '(T)' : ''}${s.cards[b].sick ? '(酔)' : ''}`));
+          // 再現用にゲームの初期設定を残す (FUZZ_REPLAY=ファイル で同じゲームを再生できる)
+          fs.writeFileSync(path.join(os.tmpdir(), `duema-fuzz-stuck-${g}.json`), JSON.stringify(init));
           stuck++;
           break;
         }
