@@ -1017,7 +1017,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (used.includes(ex.src)) {
           ex.did = false;
           log(s, ex.player, 'ゲーム中に一度だけの能力はもう使った');
-        } else used.push(ex.src);
+        } else {
+          used.push(ex.src);
+          ex.did = true;
+        }
         break;
       }
       case 'stackUnder': {

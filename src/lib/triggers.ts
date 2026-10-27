@@ -271,7 +271,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/(このカード|これ)から封印が外された時/.test(clause)) ev.add('unsealOne');
     if (/呪文を唱えた時/.test(clause)) {
       if (/相手が/.test(clause)) ev.add('spellOpp');
-      else if (/自分が|^自分の(?:手札|墓地)から/.test(clause)) ev.add('spellOwn');
+      else if (/自分が|^自分の(?:手札|墓地)から|^自分の[^、]+?呪文を唱えた時$/.test(clause)) ev.add('spellOwn');
       else ev.add('spellAny');
     }
     if (!ev.size) continue;
@@ -285,13 +285,19 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
         clause.match(/相手が(.+?)を(?:バトルゾーンに)?(?:出(?:した)?|召喚した)時/);
       if (sm && !/^クリーチャー$/.test(sm[1])) subject = parseSel(sm[1]) ?? undefined;
     }
+    // 「自分の魔導具呪文を唱えた時」: 唱えた呪文が条件に合う時だけ
+    const spellOf = ev.has('spellOwn') && clause.match(/^自分の([^、]+?)呪文を唱えた時$/);
+    if (spellOf && !/^(?:手札|墓地)から$/.test(spellOf[1])) {
+      const ss = parseSel(spellOf[1].replace(/の$/, '') + '呪文');
+      if (ss) subject = { ...ss, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
+    }
     if (manaPut && !/^カード$/.test(manaPut[1])) {
       const ms = parseSel(manaPut[1]);
       if (ms) subject = { ...ms, zones: ['mana'] };
     }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
-    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(コストを支払わずに)?唱え/.test(eff0);
+    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
     const howEnter = /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);
@@ -316,7 +322,7 @@ export const RECAST = /^(xB)?\s*この呪文を自分の手札から唱えた後
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
     .map((l) => stripReminder(normText(l)).trim())
-    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !/^この呪文を、?(自分の)?(マナゾーン|墓地)から唱えてもよい。?(そうしたら、唱えた後、墓地に置くかわりに(自分の)?山札の(一番)?下に置く。?)?$/.test(normText(l).replace(/\s+/g, '')) && !isCastStatic(l));
+    .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !(/時、/.test(l) && parseTriggers([l]).some((x) => x.fromHand)) && !/^この呪文を、?(自分の)?(マナゾーン|墓地)から唱えてもよい。?(そうしたら、唱えた後、墓地に置くかわりに(自分の)?山札の(一番)?下に置く。?)?$/.test(normText(l).replace(/\s+/g, '')) && !isCastStatic(l));
 }
 
 /** 「〜あれば、この呪文に「S・トリガー」を与える」「〜あれば、この呪文をコストを支払わずに唱えてもよい」 (常在型として処理する) */

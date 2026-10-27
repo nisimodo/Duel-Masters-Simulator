@@ -359,7 +359,7 @@ export function parseCond(c0: string): Cond | null {
   if ((m = c.match(/^これが(NEO)?進化クリーチャー(?:であ|で)?$/))) return { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature', self: true, evolution: true }, cmp: '>=', n: 1 };
   if ((m = c.match(/^自分のシールドが(\d+)(?:枚|つ)(?:であ|で)?$/))) return { c: 'shields', who: 'self', cmp: '==', n: +m[1] };
   if ((m = c.match(/^このクリーチャーにカードが(\d+)枚以上含まれてい$/))) return { c: 'selfCardsGE', n: +m[1] };
-  if ((m = c.match(/^(?:この(?:クリーチャー|カード)|これ)の下に(?:ある)?(?:カード)?が?(?:カードが)?(\d+)枚(以上|以下)(?:重ねて)?(?:あ)?$/))) return { c: 'underCount', cmp: m[2] === '以上' ? '>=' : '<=', n: +m[1] };
+  if ((m = c.match(/^(?:この(?:クリーチャー|カード)|これ)の下に(?:ある)?(?:カード)?が?(?:カードが)?(\d+)枚(以上|以下)(?:カードが)?(?:重ねて)?(?:あ)?$/))) return { c: 'underCount', cmp: m[2] === '以上' ? '>=' : '<=', n: +m[1] };
   if (/^(?:この(?:クリーチャー|カード)|これ)の下にカードがあ$/.test(c)) return { c: 'underCount', cmp: '>=', n: 1 };
   if ((m = c.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であ|で)?$/))) return { c: 'manaAllCiv', civ: ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光'] };
   if ((m = c.match(/^自分の(手札|シールド)(?:の数|の枚数)?が相手(?:の(?:手札|シールド))?より多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield', self: true };
@@ -1274,6 +1274,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // Dスイッチ 「このD2フィールドをゲーム中で一度上下逆さまにする」
   if (/^この(D2|DN|D)?フィールドをゲーム中で一度上下逆さまにする$/.test(s)) return [{ op: 'oncePerGame' }];
+  // 卍 新世壊 卍 「(唱えた呪文を) 唱えた後で墓地に置くかわりに、このフィールドの下に置いてカードを1枚引く」
+  if ((mm = s.match(/^唱えた後で?、?墓地に置くかわりに、?この(?:フィールド|クリーチャー|カード)の下に置いて、?カードを(\d+)枚引く$/)))
+    return [{ op: 'if', cond: { c: 'itMatches', sel: { owner: 'self', zones: ['grave'], kind: 'spell' } }, body: [{ op: 'stackUnder', what: 'it' }, { op: 'draw', n: +mm[1], who: 'self' }] }];
   // 超魂レイド 「その中からこのクリーチャーの進化元になれるカードを1枚、この下に置く」
   {
     const su = s.match(/^その中から(?:このクリーチャーの)?進化元になれるカードを(\d+)枚、?この(?:クリーチャーの)?下に置く$/);
@@ -1955,8 +1958,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     }
   }
 
+  // 「ゲーム中で一度、〜」: 使ったら同じカードではもう使えない
+  let m = s.match(/^ゲーム中(?:で|に)?(?:一|1)度(?:だけ)?、(.+)$/);
+  if (m) {
+    const body = sentence(m[1], ctx);
+    return body ? [{ op: 'oncePerGame' }, { op: 'if', cond: { c: 'did' }, body }] : null;
+  }
   // そうしたら / そうした場合 / そうしなければ
-  let m = s.match(/^(そうしたら|そうした場合|そうすれば)、(.+)$/);
+  m = s.match(/^(そうしたら|そうした場合|そうすれば)、(.+)$/);
   if (m) {
     const body = sentence(m[2], ctx);
     return body ? [{ op: 'if', cond: { c: 'did' }, body }] : null;
