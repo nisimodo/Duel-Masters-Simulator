@@ -275,6 +275,7 @@ export function presetToDeck(db: CardDB, presetId: string): { deck: Deck; notFou
     if (!c) notFound.push(name);
     else deck[c.zone === 'main' ? 'main' : c.zone][c.id] = ((deck[c.zone === 'main' ? 'main' : c.zone][c.id] ?? 0) + n);
   }
+  if (p.thumb) deck.thumb = findByName(db, p.thumb)?.id ?? null;
   return { deck, notFound };
 }
 

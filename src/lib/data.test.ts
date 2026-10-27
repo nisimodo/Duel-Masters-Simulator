@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { expect, it } from 'vitest';
 import { buildDB, findByName } from './cards';
-import { presetToDeck, validateDeck } from './deck';
+import { deckThumb, presetToDeck, validateDeck } from './deck';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8'));
 const reg = JSON.parse(fs.readFileSync('public/data/regulation.json', 'utf8'));
@@ -18,6 +18,8 @@ it('presets resolve and are legal', () => {
     const { deck, notFound } = presetToDeck(db, p.id);
     expect(notFound, p.name).toEqual([]);
     expect(validateDeck(db, deck), p.name).toEqual([]);
+    // サムネイルに指定したカードがデッキに入っていて、サムネイルになる
+    if (p.thumb) expect(db.byId.get(deckThumb(deck) ?? '')?.name, p.name).toBe(findByName(db, p.thumb)?.name);
   }
 });
 

@@ -199,6 +199,8 @@ export interface Regulation {
 export interface PresetDeck {
   id: string;
   name: string;
+  /** サムネイルにするカードの名前 */
+  thumb?: string;
   cards: [string, number][];
 }
 
