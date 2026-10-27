@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, attackTargets, battle, breakCount, breakShields, drawCards, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { applyAction, attackTargets, battle, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
@@ -197,6 +197,10 @@ const db = buildDB(
     cr('cipDraw', 1, 1000, ['このクリーチャーがバトルゾーンに出た時、カードを１枚引く。']),
     cr('qqq', 1, 9000, ['５.S.D.：このクリーチャーがシールドをブレイクする時、相手はそのシールドのカードを手札に加えるかわりに、自身の山札の上から４枚目の位置に、横向きに刺す。', '相手は、自身の山札の横向きのカードを手札に加えた時、ゲームに負ける。']),
     cr('oniSmax', 1, 9000, ['鬼S-MAX進化：自分がゲームに負ける時、またはこのクリーチャーが離れる時、かわりに自分の表向きのカードを３枚破壊してもよい。']),
+    cr('darkMon', 1, 1000, [], 'D'),
+    cr('gt5000', 1, 12000, ['誰もパワー5000以下のクリーチャーを召喚できず、サイキック・クリーチャーをバトルゾーンに出すことができない。']),
+    cr('giga', 1, 12000, ['自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない。']),
+    cr('handGuard', 1, 1000, ['自分がゲームに負ける時または相手がゲームに勝つ時、これが相手のターンで、自分のマナゾーンに闇のカードと火のカードがそれぞれ１枚以上あれば、かわりに自分の手札にあるこのカードを相手に見せ、山札の下に置いてもよい。']),
     cr('graveSym', 5, 5000, ['自分の墓地にある呪文１枚につき、このクリーチャーの召喚コストを１少なくする。ただし、コストは２より少なくならない。']),
     cr('rmFoe', 1, 5000, ['相手のクリーチャーがこのクリーチャーとのバトルによって破壊される時、そのクリーチャーを墓地に置くかわりに持ち主のマナゾーンに置く。']),
     cr('rmHand', 1, 1000, ['このクリーチャーが破壊される時、バトルゾーンに自分のパワー6000以上のクリーチャーがあれば、このクリーチャーを墓地に置くかわりに手札に戻す。']),
@@ -585,6 +589,36 @@ describe('named mechanics', () => {
     expect(s.players[0].battle).toEqual([o]);
     // もう払えないので離れる
     expect(moveCard(s, L, o, 'grave')).toBe('grave');
+  });
+
+  it('パワー5000以下は召喚できない / 自分よりパワーの小さいクリーチャーに攻撃されない', () => {
+    const s = setup([
+      { p: 1, cid: 'gt5000', zone: 'battle' },
+      { p: 0, cid: 'vanilla', zone: 'hand' },
+    ]);
+    const v = find(s, 0, 'hand', 'vanilla')!;
+    expect(applyAction(s, 0, { t: 'play', iid: v, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
+    const s2 = setup([
+      { p: 1, cid: 'giga', zone: 'battle' },
+      { p: 0, cid: 'sa', zone: 'battle' },
+    ]);
+    expect(attackTargets(s2, L, find(s2, 0, 'battle', 'sa')!).players).toEqual([]);
+  });
+
+  it('ゲームに負ける時、かわりに手札のこのカードを山札の下に置く', () => {
+    // player 1 のマナに火 (vanilla) しかない時は使えない
+    const s = setup([{ p: 1, cid: 'handGuard', zone: 'hand' }]);
+    lose(s, 1, 'テスト');
+    expect(s.players[1].lost).toBe(true);
+    // 闇と火があれば、相手 (player 0) のターン中なら負けるかわりに山札の下へ
+    const s2 = setup([
+      { p: 1, cid: 'handGuard', zone: 'hand' },
+      { p: 1, cid: 'darkMon', zone: 'mana' },
+    ]);
+    const g = find(s2, 1, 'hand', 'handGuard')!;
+    lose(s2, 1, 'テスト');
+    expect(s2.players[1].lost).toBeFalsy();
+    expect(s2.players[1].deck[0]).toBe(g);
   });
 
   it('効果でコストを支払わずにクロスする', () => {

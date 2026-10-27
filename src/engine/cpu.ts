@@ -9,7 +9,7 @@
 //  4. 攻撃: とどめを刺せるなら総攻撃。メタクリーチャーを倒せるなら優先して攻撃。
 //     シールドが少なく次の相手ターンで負けそうならブロッカーは守りに残す。勝てないブロッカーへの無駄な攻撃はしない。
 import { CIV_NAME, type Card, type Civ, type Face } from '../lib/cards';
-import { stripReminder } from '../lib/triggers';
+import { spellEffectLines, stripReminder } from '../lib/triggers';
 import { effectHints, hintsFromText, type EffectHint } from './effects';
 import {
   applyAction,
@@ -36,6 +36,29 @@ import type { Action, GameState } from './types';
 import type { Op } from '../rules/ops';
 
 const opps = (s: GameState, p: number) => s.players.map((_, i) => i).filter((i) => i !== p && !s.players[i].lost);
+
+/** 古い考え方で動かすプレイヤー (新旧のCPUを対戦させて強さを比べる時だけ使う) */
+let LEGACY = new Set<number>();
+/** 新しい考え方のうち使うもの (空ならすべて。比べる時だけ絞る) */
+let ONLY = new Set<string>();
+export function setCpuLegacy(players: number[], only: string[] = []) {
+  LEGACY = new Set(players);
+  ONLY = new Set(only);
+}
+/** その考え方を使うか */
+const on = (p: number, feat: 'spell' | 'element' | 'charge' | 'deck') => !LEGACY.has(p) && (!ONLY.size || ONLY.has(feat));
+
+/** 呪文の効果・タマシード等の「出た時」の効果を解釈した命令 (価値の見積もり用) */
+const faceOpsCache = new WeakMap<Face, Op[]>();
+function faceOps(f: Face): Op[] {
+  let ops = faceOpsCache.get(f);
+  if (!ops) {
+    if (f.isSpell) ops = programOf(spellEffectLines(f.text).join('\n')).ops;
+    else ops = (f.triggers ?? []).filter((t) => t.events.includes('enter')).flatMap((t) => programOf(t.effect).ops);
+    faceOpsCache.set(f, ops);
+  }
+  return ops;
+}
 
 // ---------- 評価 ----------
 
@@ -258,11 +281,18 @@ function chooseCharge(s: GameState, p: number, L: Lookup): number | null {
     const faces = card.faces;
     const maxCost = Math.max(...faces.map((f) => f.cost));
     const minCost = Math.min(...faces.map((f) => f.cost));
+    // 墓地・マナ・バトルゾーンの枚数でコストが下がっていくカード (あとで軽く出せる切り札)
+    const scaling = on(p, 'charge') && faces.some((f) => f.cost >= 7 && (f.statics ?? []).some((x) => x.s === 'sympathy'));
     const multi = card.civs.length > 1;
     const bringsCiv = card.civs.some((c) => !manaCivs.has(c));
     const isRemoval = faces.some((_f, fi) => effectHints(card, fi).some((h) => REMOVAL.includes(h.kind)));
     const holdForAttack = faces.some((f) => f.kw.revChange || f.kw.invasion);
     let sc = 0;
+    // コストが下がっていく切り札はマナに置かない (手札に2枚以上あれば1枚はマナへ置いてよい)
+    const dup = me.hand.filter((x) => s.cards[x].cid === s.cards[i].cid).length > 1;
+    if (scaling && !dup) sc -= 25;
+    // 相手のターンなどに手札から使える切り札 (鬼エンド・逆転撃 等) は手札に残す
+    if (on(p, 'charge') && !dup && faces.some((f) => (f.triggers ?? []).some((t) => t.fromHand))) sc -= 15;
     if (early) {
       // 序盤: 低コストを出すために、多色・高コスト・足りない文明をマナへ
       if (multi) sc += 8;
@@ -311,7 +341,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         const t = threatOf(s, L, targets[0]);
         v += 25 + t * 4;
         if (metaScore(faceOf(s, L, targets[0])) > 0) v += 60; // メタカードの除去は最優先
-      } else if (h.kind === 'draw' || h.kind === 'manaTop') v += 6 * h.n;
+      } else if (h.kind === 'draw' || h.kind === 'manaTop') v += (on(p, 'deck') && me.deck.length <= 8 ? -6 : 6) * h.n;
       else if (h.kind === 'shieldTop') v += defensive ? 15 : 6;
       else if (h.kind === 'discardRandom') v += 8;
       else if (h.kind === 'grSummon') v += 10;
@@ -516,8 +546,15 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         // クロスギア: クリーチャーがいる時だけジェネレート
         if (me.battle.some((b) => faceOf(s, L, b)?.isCreature)) cands.push({ a: { t: 'play', iid: h, face: fi, pay }, value: f.cost * 5 });
       } else if (f.isSpell) {
-        if (rv <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
-        cands.push({ a: { t: 'play', iid: h, face: fi, pay, alt: alt === 'tapCast' ? 'tapCast' : undefined, taps: alt === 'tapCast' ? taps : undefined }, value: f.cost * 6 + rv });
+        // 効果の価値: 効果アシストで分かる除去・ドローと、解釈した効果の見積もりの大きいほう
+        // ツインパクトの呪文側は、使うとクリーチャー側を失うので控えめに
+        const pv = on(p, 'spell') ? opsValue(s, p, L, faceOps(f)) - (card.faces.some((x) => x.isCreature) ? 8 : 0) : 0;
+        const v = Math.max(rv, pv);
+        if (v <= 0) return; // 効果を処理できない/対象がいない呪文は使わない
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, alt: alt === 'tapCast' ? 'tapCast' : undefined, taps: alt === 'tapCast' ? taps : undefined }, value: f.cost * 6 + v });
+      } else if (on(p, 'element') && /タマシード|フィールド/.test(f.type) && s.cards[h].zone === 'hand') {
+        // タマシード・フィールド: バトルゾーンに残って働くので、出た時の効果の価値を足して出す
+        cands.push({ a: { t: 'play', iid: h, face: fi, pay, evo: f.isEvolution ? [] : undefined }, value: f.cost * 6 + Math.max(4, opsValue(s, p, L, faceOps(f)) + rv) });
       }
     });
   }
@@ -565,8 +602,12 @@ function chooseAttack(s: GameState, p: number, L: Lookup): Action | null {
   }
   const defensive = underPressure(s, p, L);
 
+  // 山札が少ない時は、攻撃する時に自分の山札を減らすクリーチャーで攻撃しない (とどめを刺せる時は別)
+  const selfMill = (i: number) => (faceOf(s, L, i)?.triggers ?? []).some((t) => t.events.includes('attack') && programOf(t.effect).ops.some((o) => (o.op === 'top' && o.who === 'self') || (o.op === 'draw' && o.who === 'self')));
+  const deckLow = on(p, 'deck') && me.deck.length <= 6;
   for (const iid of attackers) {
     const f = faceOf(s, L, iid)!;
+    if (deckLow && !lethal && selfMill(iid)) continue;
     const myP = power(s, L, iid, true);
     const tg = attackTargets(s, L, iid);
     // 1. タップしているメタクリーチャー・強いクリーチャーを倒せるなら優先
@@ -610,8 +651,11 @@ function ownValue(s: GameState, L: Lookup, iid: number): number {
 /** 効果の選択肢 (opsの塊) のおおまかな価値 */
 function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
   let v = 0;
+  // 山札が少ない時は、自分の山札を減らす効果はマイナス (山札切れで負けないように)
+  const low = on(p, 'deck') && s.players[p].deck.length <= 8;
   for (const o of ops) {
-    if (o.op === 'draw') v += (o.who === 'self' ? 4 : -4) * o.n;
+    if (o.op === 'draw') v += (o.who === 'self' ? (low ? -6 : 4) : -4) * o.n;
+    else if (o.op === 'top' && o.who === 'self' && low && o.to !== 'look' && o.to !== 'reveal') v -= 6 * o.n;
     else if (o.op === 'top') v += o.to === 'mana' || o.to === 'manaTapped' ? 3 * o.n : o.to === 'shield' ? 4 * o.n : o.to === 'hand' ? 4 * o.n : 1;
     else if (o.op === 'choose' && o.target.ref === 'sel') {
       const sel = o.target.sel;

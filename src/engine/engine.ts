@@ -847,6 +847,12 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
   if (s.cards[iid].zone === 'battle' && (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
+  // 「相手のクリーチャーが出て、その能力がトリガーする時、かわりにその能力はトリガーしない」
+  if (events.includes('enter') && f.isCreature && activeStatics(s, L).some((x) => x.owner !== s.cards[iid].owner && x.spec.s === 'oppCipNull' && staticCondOk(s, L, x))) {
+    log(s, s.cards[iid].owner, `${q(f.name)} の出た時の能力はトリガーしない`);
+    events = events.filter((e) => e !== 'enter');
+    if (!events.length) return;
+  }
   for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
     const ev = spec.events.find((e) => events.includes(e));
     if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
@@ -1438,6 +1444,13 @@ function advance(s: GameState, L: Lookup): boolean {
       for (const ex of after) runExec(s, L, ex);
       // 「攻撃の終わりに、アンタップする」
       const ac = s.cards[a.attacker];
+      // 「このクリーチャーの攻撃の終わりに、自分のシールドがN以上あれば、自分はゲームに勝つ」
+      const wa = ac?.zone === 'battle' ? (faceOf(s, L, a.attacker)?.statics ?? []).find((x) => x.s === 'winAfterAttack') : undefined;
+      if (wa && wa.s === 'winAfterAttack' && s.players[a.owner].shield.length >= wa.shields) {
+        log(s, a.owner, `${q(nameOf(s, L, a.attacker))}: シールドが${wa.shields}つ以上あるので勝利`);
+        for (const o of opponentsOf(s, a.owner)) lose(s, o, '特殊勝利');
+        return true;
+      }
       if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack') || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
         ac.tapped = false;
         ac.grants = ac.grants?.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
@@ -1499,6 +1512,24 @@ export function lose(s: GameState, p: number, reason: string) {
   // 鬼S-MAX進化: ゲームに負けるかわりに、自分の表向きのカードを破壊する
   if (vividLookup) {
     const L = vividLookup;
+    // 「自分がゲームに負ける時、かわりに〜」
+    for (const b of [...pl.battle, ...pl.hand]) {
+      const lr = (L(s.cards[b].cid)?.faces ?? []).flatMap((f) => f.statics ?? []).find((x) => x.s === 'loseReplace');
+      if (!lr || lr.s !== 'loseReplace' || s.cards[b].zone !== lr.from) continue;
+      if (lr.oppTurn && s.active === p) continue;
+      if (lr.once && s.cards[b].replTurn === s.turn) continue;
+      if (lr.cond && !condHolds(s, L, p, b, lr.cond)) continue;
+      if (lr.pay === 'destroySelf') moveCard(s, L, b, 'grave');
+      else if (lr.pay === 'deckBottomSelf') moveCard(s, L, b, 'deck', { pos: 'bottom' });
+      else {
+        const pick = pl.battle.filter((x) => lr.sel && matchesSel(s, L, x, lr.sel)).sort((x, y) => (L(s.cards[x].cid)?.faces[0]?.cost ?? 0) - (L(s.cards[y].cid)?.faces[0]?.cost ?? 0))[0];
+        if (pick == null) continue;
+        moveCard(s, L, pick, 'grave');
+      }
+      s.cards[b].replTurn = s.turn;
+      log(s, p, `${q(nameOf(s, L, b))}: ゲームに負けるかわりに置き換えた (${reason})`);
+      return;
+    }
     for (const b of pl.battle) {
       const om = (faceOf(s, L, b)?.statics ?? []).find((x) => x.s === 'oniSmax');
       if (om && om.s === 'oniSmax' && payOniSmax(s, L, p, b, om.n, om.orShield)) {
@@ -1684,7 +1715,10 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'));
   // 「相手のクリーチャーは出たターン、自分を攻撃できない」
   const guarded = (o: number) =>
-    (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) || activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNoAttackMe' && staticCondOk(s, L, x));
+    (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) ||
+    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNoAttackMe' && staticCondOk(s, L, x)) ||
+    // 「自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない」
+    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && power(s, L, iid, true) < power(s, L, x.src));
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
@@ -2428,6 +2462,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     log(s, p, `${q(face.name)} はコストを支払わずに使えない (相手の能力)`);
     return a.force ? null : '相手の能力で、コストを支払わずに使えません';
   }
+  if (face.isCreature && !a.force && (face.power ?? 0) <= Math.max(-1, ...activeStatics(s, L).map((x) => (x.spec.s === 'summonPowerLock' ? x.spec.powerMax : -1)))) return '効果により、このパワーのクリーチャーは召喚できません';
   if (face.isCreature && !a.force && s.players[p].summonLockUntil != null && (s.players[p].summonLockCost == null || (face.cost ?? 0) <= s.players[p].summonLockCost)) return '効果により、クリーチャーを召喚できません';
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';

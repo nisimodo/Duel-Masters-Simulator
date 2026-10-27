@@ -219,6 +219,16 @@ export type StaticSpec =
   | { s: 'noBlockBattle'; blocking: boolean }
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
   | { s: 'breakToGrave' }
+  /** このクリーチャーの攻撃の終わりに、自分のシールドがN以上あればゲームに勝つ */
+  | { s: 'winAfterAttack'; shields: number }
+  /** 誰もパワーN以下のクリーチャーを召喚できない */
+  | { s: 'summonPowerLock'; powerMax: number }
+  /** 相手のクリーチャーが出て、その能力がトリガーする時、かわりにトリガーしない (cond: 条件) */
+  | { s: 'oppCipNull'; cond?: StaticCond }
+  /** 自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない */
+  | { s: 'protectPlayerLowPower' }
+  /** 自分がゲームに負ける時、かわりに〜 (from: このカードがある場所 / pay: 払うもの) */
+  | { s: 'loseReplace'; from: 'battle' | 'hand'; pay: 'destroySelf' | 'deckBottomSelf' | 'destroyOwn'; sel?: Sel; cond?: Cond; oppTurn?: boolean; once?: boolean }
   /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
   | { s: 'breakToDeck4' }
   /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
@@ -425,8 +435,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 「相手の墓地にある呪文1枚につき、このクリーチャーの召喚コストを1少なくする」
   if (
     (m =
-      t0.match(/^(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき、?この(?:クリーチャーの召喚|呪文を唱える)コスト(?:を|は)(\d+)少なく(?:する|なる|してもよい)/) ??
-      t0.match(/^このクリーチャーを召喚するコストを、?(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき(\d+)少なく(?:する|してもよい)/))
+      t0.match(/^(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)(?:にある|の))?)(.+?)1(?:体|枚)につき、?この(?:クリーチャーの召喚|呪文を唱える)コスト(?:を|は)(\d+)少なく(?:する|なる|してもよい)/) ??
+      t0.match(/^このクリーチャーを召喚するコスト(?:を|は)、?(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)(?:にある|の))?)(.+?)1(?:体|枚)につき(\d+)少なく(?:する|なる|してもよい)/))
   ) {
     const zone = m[3] === '墓地' ? 'grave' : m[3] === 'マナゾーン' ? 'mana' : 'battle';
     const sel = parseSel(m[4], { zones: [zone] });
@@ -538,6 +548,26 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     }
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:持ち主の)?墓地に置く$/.test(t0)) return [{ s: 'breakToGrave' }];
+  if ((m = t0.match(/^このクリーチャーの攻撃の終わりに、自分のシールドが(\d+)(?:つ|枚)?以上あれば、自分はゲームに勝つ$/))) return [{ s: 'winAfterAttack', shields: +m[1] }];
+  if ((m = t0.match(/^誰もパワー(\d+)以下のクリーチャーを召喚できず、/))) return [{ s: 'summonPowerLock', powerMax: +m[1] }];
+  if (/^相手のクリーチャーが(?:バトルゾーンに)?出て、(?:その|相手のクリーチャーの)能力がトリガーする時、かわりにその能力はトリガーしない$/.test(t0)) return [{ s: 'oppCipNull' }];
+  {
+    const mc = t0.match(/^相手のクリーチャーが(?:バトルゾーンに)?出て、その能力がトリガーする時、([^、]+?(?:あれば|なら))、かわりにその能力はトリガーしない$/);
+    const pc = mc && parseCondPrefix(mc[1] + '、_');
+    if (mc && pc?.cond) return [{ s: 'oppCipNull', cond: pc.cond }];
+  }
+  if (/^自分は、?このクリーチャーよりパワーが小さいクリーチャーに攻撃されない$/.test(t0)) return [{ s: 'protectPlayerLowPower' }];
+  // ゲームに負ける時の置換
+  if (/^自分がゲームに負ける時、?または相手が(?:ゲームに)?勝つ時、かわりにこのクリーチャーを破壊する$/.test(t0)) return [{ s: 'loseReplace', from: 'battle', pay: 'destroySelf' }];
+  if ((m = t0.match(/^各ターンに(?:一|1)度、自分がゲームに負ける時、かわりに自分の(.+?)を1つ破壊してもよい$/))) {
+    const sel = parseSel('自分の' + m[1]);
+    if (sel) return [{ s: 'loseReplace', from: 'battle', pay: 'destroyOwn', sel, once: true }];
+  }
+  {
+    const lh = t0.match(/^自分がゲームに負ける時(?:または相手がゲームに勝つ時)?、これが相手のターンで、([^、]+?)あれば、かわりに自分の手札にあるこのカードを相手に見せ、山札の下に置いてもよい$/);
+    const lc = lh && parseCond(lh[1] + 'あ');
+    if (lh && lc) return [{ s: 'loseReplace', from: 'hand', pay: 'deckBottomSelf', cond: lc, oppTurn: true }];
+  }
   if (/^(?:5\.S\.D\.[:：])?このクリーチャーがシールドをブレイクする時、相手はそのシールドのカードを手札に加えるかわりに、?自身の山札の上から4枚目の位置に、?横向きに刺す$/.test(t0)) return [{ s: 'breakToDeck4' }];
   // 「相手は、自身の山札の横向きのカードを手札に加えた時、ゲームに負ける」「相手は、自身の山札を見たり、順番を入れ替えたりできない」(横向きのカードは 5.S.D. の処理で扱う)
   if (/^相手は、?自身の山札の横向きのカードを手札に加えた時、ゲームに負ける$/.test(t0) || /^相手は、?自身の山札を見たり、?順番を入れ替えたりできない$/.test(t0)) return [{ s: 'note' }];
