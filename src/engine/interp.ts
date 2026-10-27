@@ -985,7 +985,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'countSet': {
-        if (op.cardsOfIt) {
+        if (op.aurasOf) {
+          // 「そのクリーチャーに付いているオーラ」
+          const host = op.aurasOf === 'it' ? ex.it[0] : (s.cards[ex.src]?.parent ?? undefined);
+          ex.count = host != null ? s.cards[host].under.filter((u) => /オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length : 0;
+        } else if (op.cardsOfIt) {
           // 「そのクリーチャーに含まれるカード」: 下に重なったカードも数える
           const i = ex.it[0];
           ex.count = i != null && s.cards[i].zone === 'battle' ? 1 + s.cards[i].under.length : 0;

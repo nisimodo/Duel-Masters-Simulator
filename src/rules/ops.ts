@@ -208,7 +208,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean }
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host' }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */

@@ -720,6 +720,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (body) return [{ op: 'afterBattle', body }];
   }
   if (/^これをアンタップする$/.test(s)) return [{ op: 'untap', target: { ref: 'self' } }];
+  if (/^(?:その|見た)(?:カード|クリーチャー)を(?:自分の)?手札に加えるか、タップして(?:自分の)?マナゾーンに置く$/.test(s))
+    return [{ op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'タップしてマナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'manaTapped' }] }] }];
   if (/^(?:その|この)ターン、相手がバトルゾーンにあるクリーチャーを選ぶ時、自分のクリーチャーは選ばれない$/.test(s))
     return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['選ばれない'], until: 'turn' }];
   {
@@ -2001,6 +2003,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
           ],
         },
       ];
+  }
+  // 「そのクリーチャーに付いているオーラ1枚につき、〜」
+  if ((m = s.match(/^(そのクリーチャー|それ|これを付けたクリーチャー)に付いて(?:いる|いた)オーラ1枚につき、(.+)$/))) {
+    const body = sentence(m[2], ctx);
+    if (body?.length) return [{ op: 'countSet', aurasOf: m[1] === 'これを付けたクリーチャー' ? 'host' : 'it' }, { op: 'repeatCount', body }];
   }
   // 「そのクリーチャーに含まれるカード1枚につき、〜」
   if ((m = s.match(/^そのクリーチャーに含まれるカード1枚につき、(.+)$/))) {
