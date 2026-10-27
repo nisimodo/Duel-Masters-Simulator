@@ -322,7 +322,7 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
     cost = sp.delta < 0 ? Math.max(Math.min(cost, sp.floor), cost + sp.delta) : cost + sp.delta;
   }
   // シンパシー (自分の〇〇1体につき1少なく / W・シンパシーは2少なく)
-  const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana'; each?: number }[] = [];
+  const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave'; each?: number; ofOpp?: boolean }[] = [];
   for (const sp of f.statics ?? []) if (sp.s === 'sympathy') syms.push(sp);
   // 他のカードから与えられたシンパシー (「自分の手札にある〇〇すべてに「シンパシー:〜」を与える」)
   if (c.zone === 'hand')
@@ -337,7 +337,7 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
       }
     }
   for (const sp of syms) {
-    const n = s.players[p][sp.zone ?? 'battle'].filter((b) => matchesSel(s, L, b, sp.sel)).length * (sp.each ?? 1);
+    const n = s.players[sp.ofOpp ? mainOpp(s, p) : p][sp.zone ?? 'battle'].filter((b) => matchesSel(s, L, b, sp.sel)).length * (sp.each ?? 1);
     if (n) cost = Math.max(Math.min(cost, sp.floor), cost - n);
   }
   return Math.max(0, cost);

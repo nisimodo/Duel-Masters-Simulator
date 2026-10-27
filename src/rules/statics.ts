@@ -61,7 +61,7 @@ export type StaticSpec =
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper'; cond?: StaticCond }
   /** 自分の〇〇を墓地・マナゾーンから召喚してもよい (バトルゾーンにある間) */
   | { s: 'summonFromSel'; sel: Sel; zone: 'mana' | 'grave' }
-  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana'; each?: number }
+  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave'; each?: number; ofOpp?: boolean }
   /** 出たターンに攻撃できないクリーチャー (全員) */
   | { s: 'newNoAttackSel'; sel: Sel }
   /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
@@ -414,6 +414,16 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^自分のマナゾーンにある(.+?)(\d+)体につき、このクリーチャーを召喚するコストは(\d+)少なくなる/) ?? t0.match(/^自分のマナゾーンにある(.+?)(\d+)(?:体|枚)につき、このクリーチャーの召喚コストを(\d+)少なくする/))) {
     const sel = parseSel(m[1], { zones: ['mana'] });
     if (sel && m[2] === '1' && m[3] === '1') return [{ s: 'sympathy', sel: { ...sel, owner: 'self', zones: ['mana'] }, floor: floorOf(full), zone: 'mana' }];
+  }
+  // 「相手の墓地にある呪文1枚につき、このクリーチャーの召喚コストを1少なくする」
+  if (
+    (m =
+      t0.match(/^(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき、?このクリーチャーの召喚コスト(?:を|は)(\d+)少なく(?:する|なる|してもよい)/) ??
+      t0.match(/^このクリーチャーを召喚するコストを、?(?:(バトルゾーンにある)?(自分|相手)の(?:(墓地|マナゾーン)にある)?)(.+?)1(?:体|枚)につき(\d+)少なく(?:する|してもよい)/))
+  ) {
+    const zone = m[3] === '墓地' ? 'grave' : m[3] === 'マナゾーン' ? 'mana' : 'battle';
+    const sel = parseSel(m[4], { zones: [zone] });
+    if (sel) return [{ s: 'sympathy', sel: { ...sel, owner: 'any', zones: [zone] }, floor: floorOf(full), zone, each: +m[5], ...(m[2] === '相手' ? { ofOpp: true } : {}) }];
   }
   // 「パワー3000以上のクリーチャーは攻撃できない」: 誰のクリーチャーでも
   if ((m = t0.match(/^((?!この|これ|自分|相手|その)[^、]*?クリーチャー)は(?:すべて)?、?(攻撃もブロックも|攻撃|ブロック)(?:することが)?できない$/)) && parseSel(m[1]))

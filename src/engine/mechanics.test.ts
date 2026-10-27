@@ -193,6 +193,7 @@ const db = buildDB(
     { id: 'kill', n: 'kill', img: '', f: [{ n: 'kill', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手のクリーチャーを1体破壊する。'] }] },
     { id: 'civc', n: 'civc', img: '', f: [{ n: 'civc', t: '呪文', c: 'L', co: 5, p: null, r: [], x: ['シビルカウント２：自分の光のクリーチャーまたは光のタマシードが合計２つ以上あれば、この呪文をコストを支払わずに唱えてもよい。', 'カードを１枚引く。'] }] },
     cr('alienLord', 1, 1000, ['エイリアンを自分の墓地から召喚してもよい。']),
+    cr('graveSym', 5, 5000, ['自分の墓地にある呪文１枚につき、このクリーチャーの召喚コストを１少なくする。ただし、コストは２より少なくならない。']),
     cr('rmFoe', 1, 5000, ['相手のクリーチャーがこのクリーチャーとのバトルによって破壊される時、そのクリーチャーを墓地に置くかわりに持ち主のマナゾーンに置く。']),
     cr('rmHand', 1, 1000, ['このクリーチャーが破壊される時、バトルゾーンに自分のパワー6000以上のクリーチャーがあれば、このクリーチャーを墓地に置くかわりに手札に戻す。']),
     cr('rmStay', 1, 1000, ['自分の光のタップしているクリーチャーが破壊される時、墓地に置かれるかわりにバトルゾーンにとどまる。']),
@@ -531,6 +532,17 @@ describe('named mechanics', () => {
     s = act(s, 0, { t: 'endTurn' });
     expect(s.active).toBe(1);
     expect(s.cards[v].zone).toBe('grave');
+  });
+
+  it('墓地にある呪文1枚につき召喚コストが少なくなる', () => {
+    const s = setup([
+      { p: 0, cid: 'graveSym', zone: 'hand' },
+      { p: 0, cid: 'scrch', zone: 'hand' },
+    ]);
+    const g = find(s, 0, 'hand', 'graveSym')!;
+    expect(costOf(s, L, 0, g, 0)).toBe(5);
+    moveCard(s, L, find(s, 0, 'hand', 'scrch')!, 'grave');
+    expect(costOf(s, L, 0, g, 0)).toBe(4);
   });
 
   it('効果でコストを支払わずにクロスする', () => {
