@@ -45,6 +45,8 @@ export interface Sel {
   faceDown?: boolean;
   /** 表向きのシールド */
   shieldFaceUp?: boolean;
+  /** 裏向きのシールド (表向きのカードを含まない) */
+  shieldFaceDown?: boolean;
   mono?: boolean;
   races?: string[];
   /** この種族ではない */
@@ -77,6 +79,8 @@ export interface Sel {
   costEqIt?: boolean;
   /** このターンにバトルゾーンを離れたカード */
   leftThisTurn?: boolean;
+  /** このクリーチャーと今バトルしている (バトルする時の) 相手のクリーチャー */
+  battleFoe?: boolean;
   /** そのカード (it) と同じカードタイプ (クリーチャー・呪文・タマシード・フィールド等) */
   sameTypeIt?: boolean;
   /** it と共通の文明を持つ */
@@ -132,6 +136,8 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }
+  /** このクリーチャーがこのターンに攻撃した */
+  | { c: 'selfAttacked' }
   /** 自分と相手のシールドの数の合計がN以下 */
   | { c: 'totalShieldsLE'; n: number }
   /** 相手の (手札/マナ/シールド) が自分より多い */
@@ -224,7 +230,7 @@ export type Op =
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
   | { op: 'power'; target: Target; delta: number; until: 'turn' }
-  | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp' }
+  | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp'; untilEnd?: boolean }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
   | { op: 'shuffle'; who?: 'opp' }
@@ -264,6 +270,8 @@ export type Op =
   | { op: 'useEnterOf'; exclude?: string }
   /** 相手は各ターンN度しか攻撃もブロックもできない (次の自分のターンのはじめまで) */
   | { op: 'actLimit'; n: number }
+  /** 次の相手のターン、相手はクリーチャーをN体しか出せない */
+  | { op: 'enterLimit'; n: number }
   /** バトルゾーンに同じ名前のクリーチャーがN体以上あるものを it にする */
   | { op: 'pickSameName'; n: number; ofIt?: boolean }
   /** 無月の門: 自分の魔導具を (バトルゾーンと墓地から each 個ずつ / 合計 total 個) 選び、その上にこのクリーチャーを召喚する */

@@ -114,6 +114,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.monocolor && civs.length >= 2) return false;
   if (sel.faceDown != null && !!s.cards[iid].manaDown !== sel.faceDown) return false;
   if (sel.shieldFaceUp && !(s.cards[iid].zone === 'shield' && s.cards[iid].faceUp)) return false;
+  if (sel.shieldFaceDown && !(s.cards[iid].zone === 'shield' && !s.cards[iid].faceUp)) return false;
   if (sel.civInMana) {
     const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
     if (!civs.every((x) => have.has(x))) return false;
@@ -158,7 +159,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   if (!card) return false;
   if (sel.leftThisTurn && c.leftBattleTurn !== s.turn) return false;
   if (sel.or) return sel.or.some((x) => matchesSel(s, L, iid, x, noStatic));
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.shieldFaceDown && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -183,6 +184,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.battleFoe && !isBattleFoe(s, ex.src, iid)) continue;
         if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
@@ -262,6 +264,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return opps(s, ex.player).some((o) => s.players[o].freePlayTurn === s.turn);
     case 'itFreeEntered':
       return !!s.cards[ex.it[0] ?? -1]?.enteredFree;
+    case 'selfAttacked':
+      return s.cards[ex.src]?.attackedTurn === s.turn;
     case 'itAttacked':
       return ex.it.some((i) => s.cards[i]?.attackedTurn === s.turn);
     case 'oppDrewGE':
@@ -454,6 +458,14 @@ function equipWeapon(s: GameState, L: Lookup, ex: Exec, w: number) {
 const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
 
 // ---------- 実行 ----------
+
+/** 攻撃中のバトルで、a と b がバトルの相手どうしか */
+function isBattleFoe(s: GameState, a: number, b: number): boolean {
+  const at = s.attack;
+  if (!at) return false;
+  const foe = at.blocked ?? at.targetCard;
+  return foe != null && ((at.attacker === a && foe === b) || (at.attacker === b && foe === a));
+}
 
 /** カードタイプ (クリーチャー・呪文・タマシード・フィールド・クロスギア等) が同じか (ツインパクトはどちらかの面) */
 function sameCardType(L: Lookup, a: string, b: string): boolean {
@@ -763,7 +775,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           else if (op.what === 'block') c.restrict = { attack: false, block: true, until: ex.player };
           else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
           else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: mainOpp(s, ex.player) };
-          else c.restrict = { attack: true, block: true, until: ex.player };
+          else c.restrict = { attack: true, block: true, until: ex.player, ...(op.untilEnd ? { untilEnd: s.turn } : {}) };
         }
         break;
       }
@@ -1130,9 +1142,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'faceDown':
       case 'faceUp': {
+        let shields = 0;
         for (const i of resolveRef(s, ex, op.target) ?? []) {
+          // シールドゾーンの表向きのカード
+          if (s.cards[i].zone === 'shield') {
+            s.cards[i].faceUp = op.op === 'faceUp';
+            shields++;
+            continue;
+          }
           if (s.cards[i].zone !== 'mana') continue;
           s.cards[i].manaDown = op.op === 'faceDown';
+        }
+        if (shields) {
+          log(s, ex.player, `シールドを${shields}つ${op.op === 'faceUp' ? '表向き' : '裏向き'}にした`);
+          break;
         }
         log(s, ex.player, `マナゾーンのカードを${op.op === 'faceUp' ? '表向き' : '裏向き'}にした`);
         break;
@@ -1481,6 +1504,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.cards[i].powerMod += Math.max(0, power(s, L, i));
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを2倍にした`);
         }
+        break;
+      }
+      case 'enterLimit': {
+        for (const o of opps(s, ex.player)) s.players[o].enterLimit = { until: ex.player, n: op.n };
+        log(s, ex.player, `次の相手のターン、相手はクリーチャーを${op.n}体しか出せない`);
         break;
       }
       case 'lockFreeEnter': {

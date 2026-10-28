@@ -60,7 +60,9 @@ export function num(s: string): number {
 export function mergeModal(lines: string[]): string[] {
   const out: string[] = [];
   let rep = false; // 直前の行が「次の能力をN回行う。」
-  for (const l of lines) {
+  for (const l0 of lines) {
+    // 古いカードの「次のうちいずれか1つを選ぶ。??A。??B。」(選択肢の記号が「??」「__」に化けている)
+    const l = /次のうちいずれか/.test(l0) ? normText(l0).replace(/\s*(?:\?\?|__)\s*/g, '▼') : l0;
     const t = normText(l);
     const prev = out.length ? normText(out[out.length - 1]) : '';
     // 「次の能力をN回行う。」の次の行がその能力
@@ -115,7 +117,7 @@ const SILENT_SKILL = /^サイレントスキル/;
  * カードのテキスト行を、常に有効な行・条件つき/共有の能力 (ウェーブストライカー・アクセル・超魂X・サバイバーのoS能力)・
  * タップ能力 (攻撃するかわりにタップして使う能力) に分ける
  */
-export const MARKED_LINE = /^(q|oP|oB|xB|P)\s+(.+)$|^(◇)\s*(.+)$/;
+export const MARKED_LINE = /^(q|oP|oB|xB|P)\s+(.+)$|^(◇|xB)\s*(.+)$/;
 
 export function splitAbilities(lines: string[]): {
   main: string[];
@@ -148,7 +150,11 @@ export function splitAbilities(lines: string[]): {
   let fortRace: string | undefined;
   let fortNext = false;
   let odrive = 0; // 0: なし / 1: 次の行を取る / 2: 「水:」で始まる行を取る
-  for (const raw of lines) {
+  for (const raw0 of lines) {
+    // 「次のw能力」「このクリーチャーのd能力を使う」などで指す記号 (w・g・d・i・k・*) は、行の頭から外す
+    // (q・t・xB などは記号つきの能力として下で扱う。o はキッカーの追加能力なので残す)
+    const icon = normText(raw0).trim().match(/^([a-np-su-z]|\*)\s*(?=[぀-ヿ一-鿿「])/);
+    const raw = icon && icon[1] !== 'q' ? normText(raw0).trim().slice(icon[0].length) : raw0;
     const t = normText(raw).trim();
     // O・ドライブ: 次の行と、「水:」「自然:」で始まる行が追加の支払いをした時の能力
     if (odrive) {
@@ -256,7 +262,14 @@ export function splitAbilities(lines: string[]): {
     const mk = t.match(MARKED_LINE);
     if (mk) {
       const key = mk[1] ?? mk[3];
-      (marked[key] ??= []).push((mk[2] ?? mk[4]).replace(/。$/, ''));
+      const body = (mk[2] ?? mk[4]).replace(/。$/, '');
+      // スーパー・S・トリガーの「唱えた後、墓地からもう一度唱えてもよい」は呪文を唱える処理で行う
+      if (key === 'xB' && /^この呪文を自分の手札から唱えた後、/.test(body)) {
+        main.push(raw);
+        continue;
+      }
+      // スーパー・S・トリガーで出したクリーチャーの「バトルゾーンに出た時、〜」は出た時にそのまま使う
+      (marked[key] ??= []).push(/^(xB|oB)$/.test(key) ? body.replace(/^このクリーチャーがバトルゾーンに出た時、/, '') : body);
       continue;
     }
     const head = GROUP_HEAD.find(([re]) => re.test(t));

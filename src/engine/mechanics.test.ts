@@ -229,6 +229,9 @@ const db = buildDB(
     cr('rmStay', 1, 1000, ['自分の光のタップしているクリーチャーが破壊される時、墓地に置かれるかわりにバトルゾーンにとどまる。']),
     cr('rmSub', 1, 1000, ['自分の進化クリーチャーが破壊される時、かわりにこのクリーチャーを自分のマナゾーンに置く。']),
     cr('rmOnce', 1, 1000, ['各ターンに一度、このクリーチャーが離れる時、かわりに自分のシールドを１つ手札に加えてもよい。']),
+    { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
+    cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
+    cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
     { id: 'alien', n: 'alien', img: '', f: [{ n: 'alien', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['エイリアン'], x: [] }] },
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -1964,6 +1967,34 @@ describe('named mechanics', () => {
       // 山札は全部クリーチャー (vanilla): 2枚選ぶとエラー、1枚ならよい
       expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 2) }, L).error).toMatch(/カードタイプが異なる/);
       expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 1) }, L).error).toBeFalsy();
+    });
+  });
+
+  describe('記号つきの能力・出せる数の制限', () => {
+    it('スペースのない「xB」能力は、スーパー・S・トリガーの追加能力として分けられ、ふだんは使わない', () => {
+      const f = L('superS')!.faces[0];
+      expect(f.marked?.xB).toBe('カードを10枚引いてもよい');
+      expect(f.triggers ?? []).toHaveLength(0);
+    });
+
+    it('行の頭の「w」記号を外して、ウェーブストライカーの能力として解釈する', () => {
+      const g = L('waveW')!.faces[0].groups?.find((x) => x.kind === 'wave');
+      expect(g?.statics.map((x) => x.s)).toEqual(['power', 'grant']);
+    });
+
+    it('「次の相手のターン、相手はクリーチャーを1体しか出せない」', () => {
+      let s = setup([
+        { p: 0, cid: 'oneEnter', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'hand' },
+      ]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'oneEnter')!, face: 0, pay: freeMana(s, 0, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      s = act(s, 0, { t: 'endTurn' });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      const hand = s.players[1].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      s = act(s, 1, { t: 'play', iid: hand[0], face: 0, pay: freeMana(s, 1, 1) });
+      expect(applyAction(s, 1, { t: 'play', iid: hand[1], face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/1体しか出せません/);
     });
   });
 });

@@ -325,6 +325,11 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} はマナゾーンのカードをタップせずには出せない`);
     return from as ZoneName;
   }
+  // 「次の相手のターン、相手はクリーチャーをN体しか出せない」
+  if (to === 'battle' && from !== 'battle' && enterLimitHit(s, c.owner) && card?.faces[opts.face ?? c.face]?.isCreature) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (このターンはクリーチャーを${s.players[c.owner].enterLimit!.n}体しか出せない)`);
+    return from as ZoneName;
+  }
   // 「相手のクリーチャーがバトルゾーンに出る時、かわりにマナゾーン/墓地へ」
   if (to === 'battle' && from !== 'battle' && !opts.noReplace) {
     const r = enterReplaceOf(s, L, iid, opts);
@@ -1099,6 +1104,12 @@ export function noteMove(s: GameState, iid: number, from: ZoneName | 'under' | '
   s.moves = list.length > 40 ? list.slice(-40) : list;
 }
 
+/** 「クリーチャーをN体しか出せない」の上限に達しているか (そのプレイヤーのターン中だけ) */
+function enterLimitHit(s: GameState, p: number): boolean {
+  const lim = s.players[p].enterLimit;
+  return !!lim && s.active === p && turnStat(s, p).enters >= lim.n;
+}
+
 /** そのプレイヤーのこのターンの記録 (ターンが変わっていれば数え直す) */
 export function turnStat(s: GameState, p: number): import('./types').TurnStat {
   const pl = s.players[p];
@@ -1337,6 +1348,7 @@ function startTurn(s: GameState, L: Lookup) {
   for (const pl2 of s.players) {
     if (pl2.execLock?.until === p) pl2.execLock = undefined;
     if (pl2.freeEnterLock?.until === p) pl2.freeEnterLock = undefined;
+    if (pl2.enterLimit?.until === p) pl2.enterLimit = undefined;
     if (pl2.leaveGuard?.until === p) pl2.leaveGuard = undefined;
   }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
@@ -1351,7 +1363,7 @@ function startTurn(s: GameState, L: Lookup) {
       c.hyperUntil = undefined;
     }
     if (c.justDive === p) c.justDive = undefined;
-    if (c.restrict && c.restrict.until === p) c.restrict = undefined;
+    if (c.restrict && c.restrict.until === p && c.restrict.untilEnd == null) c.restrict = undefined;
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
   }
   log(s, null, `── ターン${s.turn}: ${pl.name} ──`);
@@ -1396,6 +1408,8 @@ function finishEndTurn(s: GameState, L: Lookup) {
   const delayed = s.endTurnExecs ?? [];
   s.endTurnExecs = [];
   for (const ex of delayed) runExec(s, L, ex);
+  // 「次の自分のターンの終わりまで、〜は攻撃もブロックもできない」
+  for (const c of s.cards) if (c.restrict?.untilEnd != null && c.restrict.until === p && s.turn > c.restrict.untilEnd) c.restrict = undefined;
   // J・O・E: 山札の下に置いて1枚引く / B・A・D: 破壊する / アビスラッシュ・ウラ・ニンジャ: 山札の下へ
   for (const iid of s.players.flatMap((pl) => [...pl.battle])) {
     const c = s.cards[iid];
@@ -1822,7 +1836,9 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
     (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) ||
     activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNoAttackMe' && staticCondOk(s, L, x)) ||
     // 「自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない」
-    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && power(s, L, iid, true) < power(s, L, x.src));
+    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && power(s, L, iid, true) < power(s, L, x.src)) ||
+    // (効果で一時的に得たもの)
+    s.players[o].battle.some((b) => (s.cards[b].grants ?? []).some((g) => g.kws.includes('低パワーから守る')) && power(s, L, iid, true) < power(s, L, b));
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
@@ -2539,6 +2555,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
+  if (face.isCreature && enterLimitHit(s, p)) return `このターンはクリーチャーを${s.players[p].enterLimit!.n}体しか出せません`;
   // 「相手はその数字と同じコストのカードを実行できない」(効果で使う時も)
   if (s.players[p].execLock && (face.cost ?? 0) === s.players[p].execLock.cost) return `効果により、コスト${face.cost}のカードは実行できません`;
   const fromOk =
@@ -2791,7 +2808,9 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: `ナイト・マジック: ${effect}`, effect, optional: true, auto: false });
     }
     // 手札から唱えた後、墓地からもう一度唱えてもよい
-    if (lines.length && zone0 === 'hand' && kwLine(RECAST)) {
+    // (「xB」つきはスーパー・S・トリガーで、シールドが0の時に唱えた場合だけ)
+    const recast = face.text.find((l) => RECAST.test(normText(l)));
+    if (lines.length && zone0 === 'hand' && recast && (!/^xB/.test(normText(recast)) || (a.force && me.shield.length === 0))) {
       const effect = lines.join('\n');
       s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: `墓地からもう一度唱える: ${effect}`, effect, optional: true, auto: false });
     }
@@ -2997,7 +3016,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
           fireWatchers(s, L, p, null, null, 'oppSTrigger');
           const err = playCard(s, p, { t: 'play', iid: top.iid, face: card.faces.indexOf(face), pay: [], free: true, force: true }, L);
           if (err) return err;
-          const ob = face.marked?.oB;
+          const ob = face.marked?.oB ?? face.marked?.xB;
           if (ob && s.players[p].shield.length === 0) {
             log(s, p, `スーパー・S・トリガー: シールドが0なので追加の能力`);
             s.pending.push({ kind: 'ability', player: p, src: top.iid, cid: s.cards[top.iid].cid, face: card.faces.indexOf(face), event: 'spell', text: `oB ${ob}`, effect: ob, optional: false, auto: false });

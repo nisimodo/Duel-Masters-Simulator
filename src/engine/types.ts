@@ -40,7 +40,7 @@ export interface CardInst {
   /** パートナーが裏向きになったターン */
   downTurn?: number;
   /** 「次の○○のターンのはじめまで攻撃/ブロックできない」 (解除するプレイヤー) */
-  restrict?: { attack: boolean; block: boolean; until: number; noAttackPlayer?: number };
+  restrict?: { attack: boolean; block: boolean; until: number; noAttackPlayer?: number; /** 「次の自分のターンの終わりまで」: 効果を使ったターン (それより後の until のターンの終わりに外す) */ untilEnd?: number };
   /** シールドをさらにブレイクする数 (バトルゾーンを離れるまで) */
   breakBonus?: number;
   /** 次のアンタップを1回しない */
@@ -190,6 +190,8 @@ export interface PlayerState {
   execLock?: { cost: number; until: number };
   /** 「相手は自身のマナゾーンのカードをタップせずにクリーチャーを出せない」(until のプレイヤーのターンのはじめまで) */
   freeEnterLock?: { until: number };
+  /** 「次の相手のターン、相手はクリーチャーをN体しか出せない」(自分のターン中だけ数える) */
+  enterLimit?: { until: number; n: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */

@@ -878,9 +878,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (/^この(カード|クリーチャー)を(自分の)?墓地から(自分の)?山札の(一番)?上に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'deckTop' }];
     {
       // 「相手は、バトルゾーンかマナゾーンから自身のカードをN枚選び、持ち主の墓地に置く」
-      const oz = s.match(/^相手は、?(バトルゾーン(?:か|または)マナゾーン|マナゾーン(?:か|または)バトルゾーン)から自身のカードを(\d+)枚選び、(.+)$/);
-      const rest = oz && verbOps(oz[3], { ref: 'it' });
-      if (oz && rest) return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'mana'], kind: 'card' }, count: { n: +oz[2], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `カードを${oz[2]}枚選ぶ` }, ...rest];
+      // 魔王の傲慢 「相手は、バトルゾーンまたは手札にある自身のカードを合計7枚選び、墓地に置く」
+      const oz =
+        s.match(/^相手は、?(バトルゾーン(?:か|または)マナゾーン|マナゾーン(?:か|または)バトルゾーン|バトルゾーン(?:か|または)手札|手札(?:か|または)バトルゾーン)から自身のカードを(?:合計)?(\d+)枚選び、(.+)$/) ??
+        s.match(/^相手は、?(バトルゾーン(?:か|または)マナゾーン|マナゾーン(?:か|または)バトルゾーン|バトルゾーン(?:か|または)手札|手札(?:か|または)バトルゾーン)にある自身のカードを(?:合計)?(\d+)枚選び、(.+)$/);
+      const rest = oz && verbOps(oz[3].replace(/^墓地に置く$/, '持ち主の墓地に置く'), { ref: 'it' });
+      const oZones: SelZone[] = oz && /手札/.test(oz[1]) ? ['battle', 'hand'] : ['battle', 'mana'];
+      if (oz && rest) return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: oZones, kind: 'card' }, count: { n: +oz[2], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `カードを${oz[2]}枚選ぶ` }, ...rest];
     }
   }
   if (/^これを(?:自分の)?手札からそのクリーチャーに付け(る|てもよい)$/.test(s)) return [{ op: 'attachTo' }];
@@ -1379,6 +1383,55 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
       { op: 'powerDouble' },
       { op: 'grant', target: { ref: 'it' }, kws: ['パワード・ブレイカー', 'すべてのバトルに勝つ'], until: 'turn' },
+    ];
+  // 死神術士デスマーチ 「(バトルする時、)そのバトルの終わりまで、バトルしている相手クリーチャーのパワーは-4000される」
+  if ((mm = s.match(/^(?:そのバトルの終わりまで|このターン)、バトルしている相手(?:の)?クリーチャーのパワー(?:を-(\d+)する|は-(\d+)される)$/)))
+    return [{ op: 'power', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', battleFoe: true }, count: { all: true }, chooser: 'self' }, delta: -(mm[1] ?? mm[2]), until: 'turn' }];
+  // 鬼ヶ大王 ゴルファンタジスタ 「次の自分のターンのはじめまで、自分はこのクリーチャーよりパワーが小さいクリーチャーに攻撃されない」
+  if (/^次の自分のターンのはじめまで、自分はこのクリーチャーよりパワーが小さいクリーチャーに攻撃されない$/.test(s)) return [{ op: 'grant', target: { ref: 'self' }, kws: ['低パワーから守る'], until: 'nextOwnTurn' }];
+  // ボルメテウス・ソル 「自分の、表向きのカードを含まないシールドを1つ手札に加える」
+  if ((mm = s.match(/^自分の、?表向きのカードを含まないシールドを(\d+)つ(?:選び、)?手札に加える$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceDown: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に加える裏向きのシールドを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 「自分のシールドゾーンにある表向きのカードを1枚、裏向きにしてもよい」
+  if ((mm = s.match(/^自分のシールドゾーンにある表向きのカードを(\d+)枚(?:まで)?、裏向きにする$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '裏向きにするシールドを選ぶ' },
+      { op: 'faceDown', target: { ref: 'it' } },
+    ];
+  // オール・オーバー・ザ・ワールド 「相手はバトルゾーン、手札、マナゾーン、シールドゾーン、墓地から自身のカードを1枚ずつ選び、自身の山札に加えてシャッフルする」
+  {
+    const ZN: Record<string, SelZone> = { バトルゾーン: 'battle', 手札: 'hand', マナゾーン: 'mana', シールドゾーン: 'shield', 墓地: 'grave' };
+    const ez = s.match(/^相手は((?:バトルゾーン|手札|マナゾーン|シールドゾーン|墓地)(?:(?:、|と)(?:バトルゾーン|手札|マナゾーン|シールドゾーン|墓地))+)から自身のカードを(\d+)枚選び、(.+)$/);
+    const vops = ez && verbOps(ez[3], { ref: 'it' });
+    if (ez && vops) {
+      const body = vops.filter((o) => o.op !== 'shuffle');
+      const ops: Op[] = ez[1].split(/、|と/).flatMap((z): Op[] => [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: [ZN[z]], kind: 'card' }, count: { n: +ez[2], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `${z}からカードを${ez[2]}枚選ぶ` },
+        ...body,
+      ]);
+      return vops.some((o) => o.op === 'shuffle') ? [...ops, { op: 'shuffle', who: 'opp' }] : ops;
+    }
+  }
+  // 「その持ち主は選ばれたカードを好きな順序で山札の下に置く」
+  if (/^(?:その持ち主|相手)は(?:、)?(?:選ばれたカード|〈名前〉のカード)を(?:好きな順序で)?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
+  // 轟速 ザ・ゼット 「(自分のターンの終わりに、)そのターンこのクリーチャーが攻撃していたら、破壊する」
+  if (/^(?:その|この)ターン(?:、)?このクリーチャーが攻撃してい(?:たら|れば)、(?:このクリーチャーを)?破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'selfAttacked' }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
+  // キャンベロ 「次の相手のターン、相手はクリーチャーを1体しか出せない」
+  if ((mm = s.match(/^次の相手のターン(?:の終わりまで)?、相手はクリーチャーを(\d+)体しか(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterLimit', n: +mm[1] }];
+  // ホーンテッド・チョイス 「いずれかのプレイヤーの山札の上から1枚目を見る」: 自分か相手かを選ぶ
+  if ((mm = s.match(/^いずれかのプレイヤーの山札の上から(\d+)枚(?:目)?を見る$/)))
+    return [
+      {
+        op: 'modal',
+        pick: 1,
+        options: [
+          { label: '自分の山札', body: [{ op: 'top', n: +mm[1], to: 'look', who: 'self' }] },
+          { label: '相手の山札', body: [{ op: 'top', n: +mm[1], to: 'look', who: 'opp' }] },
+        ],
+      },
     ];
   // Dの頂点 ニルヴァーナ・ゼニシア 「そのクリーチャーは、このD2フィールドがある間アンタップしない」
   if (/^(?:その|選んだ)クリーチャーは、?この(?:D2|DG|DN)?(?:フィールド|クリーチャー|タマシード)がある間、?アンタップしない$/.test(s)) return [{ op: 'freezeWhile' }];
@@ -2149,7 +2202,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (lsm) return [{ op: 'lockSummon', ...(lsm[1] ? { costMax: +lsm[1] } : {}) }];
     if (lk) return [{ op: 'lockSpells', until: lk[1] === 'このターン' ? 'turn' : 'nextOwnTurn', costMax: lk[2] ? +lk[2] : undefined, costRef: lk[3] ? true : undefined }];
     // 「相手は〈数字コスト〉の呪文を唱えられず、〈数字コスト〉の相手のクリーチャーは攻撃もブロックもできない」
-    const lk2 = s.match(/^次の自分のターンのはじめまで、相手は〈数字コスト〉の呪文を唱えられず、(?:同じコストを持つ|〈数字コスト〉の)相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
+    const lk2 = s.match(/^次の自分のターンのはじめまで、相手は〈数字コスト〉の呪文を唱えられず、(?:同じコスト(?:を持つ|の)|〈数字コスト〉の)相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない$/);
     if (lk2)
       return [
         { op: 'lockSpells', until: 'nextOwnTurn', costRef: true },
@@ -2646,6 +2699,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = refTarget(m[1].replace(/のパワー$/, ''));
     if (t) return [{ op: 'power', target: t, delta: (m[2] === '-' ? -1 : 1) * +m[3], until: 'turn' }];
   }
+  // 堕呪 ギャプドゥ 「次の自分のターンの終わりまで、相手のクリーチャーは攻撃もブロックもできない」
+  if ((m = s.match(/^次の自分のターンの終わりまで、(.+?)は攻撃もブロックもできない$/))) {
+    const t = refTarget(m[1]);
+    if (t) return [{ op: 'restrict', target: t, what: 'attackBlock', untilEnd: true }];
+  }
   if ((m = s.match(/^(?:次の(?:自分|相手)の)?ターンのはじめまで、(.+?)は攻撃もブロックもできない$/)) || (m = s.match(/^このターン、(.+?)は攻撃もブロックもできない$/))) {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'attackBlock' }];
@@ -2714,7 +2772,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
 
   // 「(パワー|コスト)の合計がN以下になるように〜選ぶ」: その部分を外した文を解釈して、最初の選択に合計の上限を付ける
   {
-    const sm = s.match(/(パワー|コスト)の合計が(\d+)以下になるよう(?:に)?、?/);
+    // (零分後の世界 「コストの合計がその捨てた手札のコスト以下になるように」: 捨てたカードのコストが上限)
+    const sm = s.match(/(パワー|コスト)の合計が(\d+|その捨てた(?:手札|カード)のコスト)以下になるよう(?:に)?、?/);
     if (sm) {
       const rest = s
         .replace(sm[0], '')
@@ -2733,7 +2792,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       };
       const ch = ops && first(ops);
       if (ops && ch && ch.op === 'choose' && 'count' in ch.target && ch.target.count && 'n' in ch.target.count) {
-        ch.target.count = { ...ch.target.count, upTo: true, ...(sm[1] === 'パワー' ? { sumPowerMax: +sm[2] } : { sumCostMax: +sm[2] }) };
+        ch.target.count = { ...ch.target.count, upTo: true, ...(!/^\d+$/.test(sm[2]) ? { sumCostIt: true } : sm[1] === 'パワー' ? { sumPowerMax: +sm[2] } : { sumCostMax: +sm[2] }) };
         return ops;
       }
     }
