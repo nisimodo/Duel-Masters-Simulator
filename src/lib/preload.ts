@@ -1,5 +1,5 @@
 // カード画像を先に読み込んでおく (引いた・出した時にすぐ表示できるように)
-import { cardImage, type Card } from './cards';
+import { cardImageSmall, type Card } from './cards';
 
 const done = new Set<string>();
 
@@ -9,7 +9,7 @@ export function preloadCardImages(cards: Card[], concurrency = 6): () => void {
   for (const c of cards)
     c.faces.forEach((_, fi) => {
       // 裏面に別の画像があるカード (サイキック等) は両面とも
-      const u = cardImage(c, fi);
+      const u = cardImageSmall(c, fi);
       if (!done.has(u) && !urls.includes(u)) urls.push(u);
     });
   let stopped = false;

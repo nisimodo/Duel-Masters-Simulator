@@ -1,6 +1,6 @@
 // テストプレイの結果を1枚の画像 (横 16:9 / 縦 9:16) にする
 import type { SimStats } from '../engine/sim';
-import { cardImage, type CardDB, type Civ } from './cards';
+import { cardImageSmall, type CardDB, type Civ } from './cards';
 import { deckCivs, deckThumb, type Deck } from './deck';
 
 export type ImageShape = 'landscape' | 'portrait';
@@ -49,7 +49,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
     img.crossOrigin = 'anonymous';
     // (画面のカード画像と同じく、参照元を送らない)
     img.referrerPolicy = 'no-referrer';
-    const timer = setTimeout(() => resolve(null), 4000);
+    const timer = setTimeout(() => resolve(null), 10000);
     img.onload = () => {
       clearTimeout(timer);
       resolve(img);
@@ -270,7 +270,8 @@ export async function renderResultImage(db: CardDB, st: SimStats, decks: [Deck, 
     decks.map((d) => {
       const id = deckThumb(d);
       const card = id ? db.byId.get(id) : undefined;
-      return card ? loadImage(cardImage(card)) : Promise.resolve(null);
+      // (縮めた画像は別サイトからの読み込みが許されているので、画像に描ける)
+      return card ? loadImage(cardImageSmall(card)) : Promise.resolve(null);
     }),
   );
   const sides: Side[] = ([0, 1] as const).map((p) => {

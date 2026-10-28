@@ -107,6 +107,14 @@ export function cardImage(card: Card, face = 0): string {
   return IMG_BASE + card.img;
 }
 
+/**
+ * 小さくした画像 (幅300px・WebP)。画像を縮めて配信する無料サービス wsrv.nl が公式の画像を取りに行って縮める。
+ * 元の画像の約1/5の大きさで、別サイトからの読み込み (CORS) も許されている
+ */
+export function cardImageSmall(card: Card, face = 0): string {
+  return `https://wsrv.nl/?url=${encodeURIComponent(cardImage(card, face))}&w=300&output=webp&q=75`;
+}
+
 function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
   // 名前のある能力は定義 (注釈) に展開して解釈する
   const sp = splitAbilities(mergeModal(f.x));
