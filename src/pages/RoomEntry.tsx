@@ -80,7 +80,7 @@ export default function RoomEntry() {
   const nav = useNavigate();
   const [pw, setPw] = useState('');
   const [hof, setHof] = useState<RoomRules['hof']>('normal');
-  const [format, setFormat] = useState<RoomRules['format']>('advance');
+  const [format, setFormat] = useState<RoomRules['format']>('original');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   if (!user) return null;
