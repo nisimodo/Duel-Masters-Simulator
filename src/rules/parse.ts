@@ -373,6 +373,11 @@ export function parseCond(c0: string): Cond | null {
   if ((m = c.match(/^このクリーチャーにカードが(\d+)枚以上含まれてい$/))) return { c: 'selfCardsGE', n: +m[1] };
   if ((m = c.match(/^(?:この(?:クリーチャー|カード)|これ)の下に(?:ある)?(?:カード)?が?(?:カードが)?(\d+)枚(以上|以下)(?:カードが)?(?:重ねて)?(?:あ)?$/))) return { c: 'underCount', cmp: m[2] === '以上' ? '>=' : '<=', n: +m[1] };
   if (/^(?:この(?:クリーチャー|カード)|これ)の下にカードがあ$/.test(c)) return { c: 'underCount', cmp: '>=', n: 1 };
+  // 「自分のマナゾーンにあるカードがすべてアビス・カードなら」
+  if ((m = c.match(/^自分のマナゾーン(?:にある|の)カードがすべて([^、]+?)(?:・カード|のカード)(?:であ|で)?$/)) && !/^(光|水|闇|火|自然)$/.test(m[1])) {
+    const sel = parseSel(m[1]);
+    if (sel) return { c: 'manaAllSel', sel: { ...sel, kind: 'card' } };
+  }
   if ((m = c.match(/^自分のマナゾーン(?:にある|の)カードがすべて(光|水|闇|火|自然)のカード(?:であ|で)?$/))) return { c: 'manaAllCiv', civ: ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光'] };
   if ((m = c.match(/^自分の(手札|シールド)(?:の数|の枚数)?が相手(?:の(?:手札|シールド))?より多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield', self: true };
   if ((m = c.match(/^相手の(シールド|手札)(?:の数|の枚数)?が自分(?:の(?:手札|シールド)|のより|より)多(け|い)?$/))) return { c: 'oppMore', zone: m[1] === '手札' ? 'hand' : 'shield' };
@@ -1309,6 +1314,27 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // Dスイッチ 「このD2フィールドをゲーム中で一度上下逆さまにする」
   if (/^この(D2|DN|D)?フィールドをゲーム中で一度上下逆さまにする$/.test(s)) return [{ op: 'oncePerGame' }];
+  // 邪心臓の魔法陣 「自分の手札を1枚捨て、カードを3枚まで引き、もう一度自分の手札を1枚捨てる」
+  if ((mm = s.match(/^(自分の手札を\d+枚捨て)、(カードを\d+枚(?:まで)?引き)、(?:もう一度)?(自分の手札を\d+枚捨てる)$/))) {
+    const parts = [sentence(mm[1] + 'る', ctx), sentence(mm[2].replace(/引き$/, '引く'), ctx), sentence(mm[3], ctx)];
+    if (parts.every(Boolean)) return parts.flat() as Op[];
+  }
+  // ディザスター・チューン 「(見た)それらを1枚ずつ、手札、マナゾーン、墓地、山札の下に置く」
+  {
+    const each = s.match(/^(?:それら|その\d+枚|見たカード)を1枚(?:ずつ)?、(.+)に置く$/);
+    const DEST: Record<string, 'hand' | 'mana' | 'grave' | 'deckBottom' | 'deckTop' | 'shield'> = { 手札: 'hand', マナゾーン: 'mana', 墓地: 'grave', 山札の下: 'deckBottom', 山札の一番下: 'deckBottom', 山札の上: 'deckTop', シールドゾーン: 'shield' };
+    const dests = each?.[1].split('、').map((d) => DEST[d.replace(/^自分の/, '')]);
+    if (each && dests && dests.length >= 2 && dests.every(Boolean)) {
+      const label = each[1].split('、');
+      return [
+        ...dests.slice(0, -1).flatMap((to, k): Op[] => [
+          { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'card' }, count: { n: 1, upTo: false } }, purpose: 'benefit', prompt: `${label[k]}${label[k] === '手札' ? 'に加える' : 'に置く'}カードを選ぶ` },
+          { op: 'move', target: { ref: 'it' }, to },
+        ]),
+        { op: 'move', target: { ref: 'rest' }, to: dests[dests.length - 1] },
+      ];
+    }
+  }
   // 勝熱と弾丸と自由の決断 「このターン、自分のクリーチャー1体は相手プレイヤーを攻撃できる」
   if (/^このターン、自分のクリーチャー1体は(?:相手)?プレイヤーを攻撃できる$/.test(s))
     return [

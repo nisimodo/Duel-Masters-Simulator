@@ -1434,6 +1434,15 @@ function advance(s: GameState, L: Lookup): boolean {
     fireWatchers(s, L, p, null, 'ownDraw', 'oppDraw', dp[dp.length - 1]);
     return true;
   }
+  // 同時に誘発した能力: 処理するプレイヤーの能力が1つならそれを先頭へ。2つ以上ならそのプレイヤーが順番を選ぶのを待つ
+  const pk = abilityPick(s);
+  if (pk) {
+    if (pk.indices.length >= 2) return false;
+    if (pk.indices[0] !== 0) {
+      const [x] = s.pending.splice(pk.indices[0], 1);
+      s.pending.unshift(x);
+    }
+  }
   const top = s.pending[0];
   if (top) {
     if (top.kind === 'ability') {
@@ -1442,7 +1451,7 @@ function advance(s: GameState, L: Lookup): boolean {
       if (prog.complete) {
         s.pending.shift();
         const nm = L(top.cid)?.faces[top.face]?.name ?? '';
-        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined, top.subject);
+        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined, top.subject, top.activate);
         return true;
       }
       if (top.auto) {
@@ -2151,6 +2160,24 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
   if (!me || me.lost) return '操作できません';
   if (a.t === 'presence') return applyPresence(s, p, a);
   if (isManual(a)) return applyManual(s, p, a, L);
+  // 同時に誘発した自分の能力の順番を選ぶ
+  const pk = abilityPick(s);
+  const ordering = !!pk && pk.indices.length >= 2;
+  if (a.t === 'pickAbility') {
+    if (!ordering || pk.player !== p || !pk.indices.includes(a.index)) return '今は能力を選べません';
+    const x = s.pending[a.index];
+    if (x.kind !== 'ability') return '今は能力を選べません';
+    if (!a.use && !optionalAbility(x)) return 'この能力は必ず使います';
+    s.pending.splice(a.index, 1);
+    const nm = L(x.cid)?.faces[x.face]?.name ?? '';
+    if (!a.use) {
+      log(s, p, `使わなかった: ${q(nm)}`);
+      return null;
+    }
+    s.pending.unshift({ ...x, picked: true, ...(a.activate ? { activate: true } : {}) });
+    return null;
+  }
+  if (ordering) return pk.player === p ? '先に、処理する能力を選んでください' : '相手が能力の順番を選んでいます';
   // 「コストを支払わずに使う」は効果の処理中 (能力の解決待ち等) でも自分のカードなら使える
   if (a.t === 'play' && a.free) return playCard(s, p, a, L);
 
@@ -3142,5 +3169,46 @@ const zoneJa = (z: string) =>
 /** 現在、誰の入力待ちか */
 export function decider(s: GameState): number | null {
   if (s.phase === 'over') return null;
+  const pk = abilityPick(s);
+  if (pk && pk.indices.length >= 2) return pk.player;
   return s.pending[0]?.player ?? s.active;
+}
+
+/**
+ * 同時に誘発して処理を待っている能力 (先頭から続く 'ability') のうち、次に処理するプレイヤーとその能力。
+ * ターンのプレイヤーから順に (デュエパはターンの回る順)、1人ずつ自分の能力をすべて処理する。
+ * 2つ以上あればそのプレイヤーが順番を選ぶ (pickAbility)。
+ */
+export function abilityPick(s: GameState): { player: number; indices: number[] } | null {
+  // (呪文の効果・ガチャで使う能力などの 'spell' は誘発した能力ではないので、そのまま順に処理する)
+  const block: number[] = [];
+  for (let i = 0; i < s.pending.length; i++) {
+    const x = s.pending[i];
+    if (x.kind !== 'ability' || x.event === 'spell') break;
+    block.push(i);
+  }
+  if (!block.length) return null;
+  const top = s.pending[0];
+  if (top.kind === 'ability' && top.picked) return null;
+  const n = s.players.length;
+  for (let k = 0; k < n; k++) {
+    const p = (s.active + k) % n;
+    // 同じカードの同じ能力が何回か誘発した時 (バズレンダ等) は、順番を選ぶ意味がないので1つとして扱う
+    const seen = new Set<string>();
+    const idx = block.filter((i) => {
+      const x = s.pending[i];
+      if (x.kind !== 'ability' || x.player !== p) return false;
+      const key = `${x.src}|${x.effect}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (idx.length) return { player: p, indices: idx };
+  }
+  return null;
+}
+
+/** 使わないこともできる能力か (「〜してもよい」で始まる) */
+function optionalAbility(x: Extract<GameState['pending'][number], { kind: 'ability' }>): boolean {
+  return x.optional || programOf(x.effect).ops[0]?.op === 'optional';
 }

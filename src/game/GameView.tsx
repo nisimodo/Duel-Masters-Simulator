@@ -6,12 +6,12 @@ import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { preloadCardImages } from '../lib/preload';
-import { ActivationDialog } from './Activation';
-import { activationOf } from './activationOf';
+import { AbilityOrderDialog, ActivationDialog } from './Activation';
+import { activationOf, orderActivation } from './activationOf';
 import { MoveAnimator } from './MoveAnimator';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { AWAY_CPU_MS, attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
+import { AWAY_CPU_MS, abilityPick, attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { canPlayFromZone, costOf } from '../engine/statics';
@@ -233,8 +233,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
 
   const pending = s.pending[0];
   const myPending = pending && pending.player === me ? pending : null;
-  /** カードを押して発動する任意効果 (S・トリガー・革命チェンジ・「〜してもよい」) */
-  const activation = activationOf(s, myPending);
+  /** カードを押して発動する効果 (同時に誘発した能力の順番・S・トリガー・革命チェンジ・「〜してもよい」) */
+  const activation = orderActivation(s, me) ?? activationOf(s, myPending);
   /** CPU同士の対戦: 観戦者に手札を見せる */
   const allCpu = s.players.every((p) => p.cpu);
   const isMyTurn = s.active === me && !pending && s.phase !== 'over';
@@ -693,10 +693,12 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
 
   const order = s.players.map((_, i) => (viewerIdx + i) % s.players.length);
   const others = order.slice(1);
-  const ability = pending?.kind === 'ability' ? pending : null;
+  // (同時に誘発した能力の順番を選んでいる間は、選ばれた能力から処理する)
+  const ordering = (abilityPick(s)?.indices.length ?? 0) >= 2;
+  const ability = pending?.kind === 'ability' && !ordering ? pending : null;
   const hints = ability ? hintsFromText(ability.effect.split('\n')) : [];
   const queuedAbilities = s.pending.filter((x) => x.kind === 'ability').length;
-  const waitingFor = pending ? s.players[pending.player]?.name : s.players[s.active]?.name;
+  const waitingFor = s.players[decider(s) ?? s.active]?.name;
 
   // ビューア
   let viewerNode: ReactNode = null;
@@ -749,9 +751,11 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
                 <CardImg key={i} card={cardAt(i)} face={s.cards[i].zone === 'battle' ? s.cards[i].face : 0} width={34} glow onHover={hov(i)} onClick={() => setActOpen(i)} />
               ))}
             </span>
-            <button className="small" onClick={() => (setActOpen(null), act(activation.skip))}>
-              スキップ
-            </button>
+            {activation.skip && (
+              <button className="small" onClick={() => (setActOpen(null), activation.skip && act(activation.skip))}>
+                スキップ
+              </button>
+            )}
           </div>
         )}
         {(mode.kind !== 'none' || myPending?.kind === 'breakSel') && (
@@ -968,14 +972,25 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         )}
       </div>
 
-      {myPending && activation && actOpen != null && activation.cards.includes(actOpen) && (
+      {activation?.order && actOpen != null && activation.cards.includes(actOpen) && (
+        <AbilityOrderDialog
+          key={`${s.seq}-${actOpen}`}
+          s={s}
+          L={L}
+          iid={actOpen}
+          onHover={(c) => setHover(c ? { card: c } : null)}
+          onClose={() => setActOpen(null)}
+          onSubmit={(a) => (setActOpen(null), act(a))}
+        />
+      )}
+      {myPending && activation && !activation.order && activation.skip && actOpen != null && activation.cards.includes(actOpen) && (
         <ActivationDialog
           key={`${s.seq}-${actOpen}`}
           s={s}
           L={L}
           pending={myPending}
           iid={actOpen}
-          skip={activation.skip}
+          skip={activation.skip!}
           onHover={(c) => setHover(c ? { card: c } : null)}
           onClose={() => setActOpen(null)}
           onSubmit={(a) => (setActOpen(null), act(a))}

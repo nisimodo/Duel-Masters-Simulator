@@ -27,6 +27,7 @@ import {
   kwOf,
   power,
   untappedMana,
+  abilityPick,
   type Lookup,
 } from './engine';
 import { matchesCond } from './cond';
@@ -861,6 +862,17 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
 
 /** CPUの次の一手 (null = 何もしない) */
 export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
+  // 同時に誘発した自分の能力: 価値の高いものから処理する (「〜してもよい」を使うかは、処理する時にいつも通り判断する)
+  const pk = abilityPick(s);
+  if (pk && pk.indices.length >= 2) {
+    if (pk.player !== p) return null;
+    const val = (i: number) => {
+      const x = s.pending[i];
+      return x.kind === 'ability' ? opsValue(s, p, L, programOf(x.effect).ops) : 0;
+    };
+    const best = [...pk.indices].sort((a, b) => val(b) - val(a))[0];
+    return { t: 'pickAbility', index: best, use: true };
+  }
   const top = s.pending[0];
   if (top) {
     if (top.player !== p) return null;
@@ -1044,7 +1056,10 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
  */
 export function cpuPlan(s: GameState, p: number, L: Lookup): Action[] {
   const top = s.pending[0];
-  if (top?.kind === 'ability' && top.player === p) {
+  // (同時に誘発した能力の順番を選ぶのが先)
+  const pk = abilityPick(s);
+  const ordering = !!pk && pk.indices.length >= 2;
+  if (!ordering && top?.kind === 'ability' && top.player === p) {
     const out: Action[] = [];
     let cur = s;
     for (const h of hintsFromText(top.effect.split('\n'))) {

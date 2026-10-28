@@ -326,6 +326,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const have = new Set(me.mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
       return (['L', 'W', 'D', 'F', 'N'] as const).every((x) => have.has(x));
     }
+    case 'manaAllSel':
+      return me.mana.length > 0 && me.mana.every((m) => matchesSel(s, L, m, { ...c.sel, owner: 'any', zones: ['mana'] }));
     case 'manaAllCiv':
       return me.mana.length > 0 && me.mana.every((m) => {
         const cv = L(s.cards[m].cid)?.civs ?? [];
@@ -439,14 +441,29 @@ const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) =
 // ---------- 実行 ----------
 
 /** 効果プログラムの実行を開始する */
-export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number) {
-  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy });
+export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number, activated?: boolean) {
+  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy, ...(activated ? { activated } : {}) });
+}
+
+/** 続けて処理している「〜してもよい」を、何も選ばなかったので使わなかったことにする */
+function skipOptional(ex: Exec) {
+  const k = ex.ops.findIndex((o) => o.op === 'optEnd');
+  if (k >= 0) ex.ops.splice(0, k + 1);
+  ex.did = false;
+  ex.zeroOk = false;
 }
 
 /** 選択への回答を受けて再開する */
 export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: number[]; yes?: boolean; options?: number[] }) {
   const op = ex.ops[0];
   if (!op) return;
+  if (op.op === 'choose' && ex.zeroOk) {
+    ex.zeroOk = false;
+    if (!(answer.picks ?? []).length) {
+      skipOptional(ex);
+      return runExec(s, L, ex);
+    }
+  }
   if (op.op === 'choose' || op.op === 'discard' || op.op === 'breakShield') {
     ex.it = answer.picks ?? [];
     if (op.op === 'choose') noteChosen(s, L, ex);
@@ -460,6 +477,11 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.ops.shift();
     ex.did = !!answer.yes;
     if (answer.yes) ex.ops.unshift(...op.body);
+    // 使うと決めた能力の続きの「〜してもよい」は、カードを押し直さずに続けて処理する
+    if (answer.yes && !op.byOpp) {
+      ex.activated = true;
+      ex.optUsed = true;
+    }
   } else if (op.op === 'shieldStack') {
     ex.ops.shift();
     const host = (answer.picks ?? [])[0] ?? s.players[ex.player].shield[0];
@@ -621,6 +643,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         if (!cands.length) {
           ex.it = [];
+          // 続けて処理している「〜を選んでもよい」で選べるものがなければ、使わなかったことにする
+          if (ex.zeroOk) {
+            skipOptional(ex);
+            continue;
+          }
           break;
         }
         if (!cnt || 'all' in cnt) {
@@ -633,7 +660,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           break;
         }
         const n = Math.min(want, cands.length);
-        if (!cnt.upTo && cands.length <= want) {
+        if (!cnt.upTo && !ex.zeroOk && cands.length <= want) {
           ex.it = cands;
           noteChosen(s, L, ex);
           break;
@@ -643,7 +670,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           mode: 'cards',
           prompt: `${ex.name}: ${op.prompt}`,
           options: cands,
-          min: cnt.upTo ? 0 : n,
+          min: cnt.upTo || ex.zeroOk ? 0 : n,
           max: n,
           purpose: op.purpose,
           sumPowerMax: cnt.sumPowerMax,
@@ -802,6 +829,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'optional': {
+        // 使うと決めた能力: 最初の「〜してもよい」は使う。続きの「〜を選んでもよい」は、選ばないこともできる選択として続けて出す
+        const b0 = op.body[0];
+        const cnt0 = b0?.op === 'choose' && (b0.target.ref === 'sel' || b0.target.ref === 'looked' || b0.target.ref === 'under') ? b0.target.count : undefined;
+        const chooseFirst = !!cnt0 && !('all' in cnt0);
+        if (!op.byOpp && ex.activated && (!ex.optUsed || chooseFirst)) {
+          ex.ops.shift();
+          ex.did = true;
+          if (ex.optUsed) {
+            ex.zeroOk = true;
+            ex.ops.unshift(...op.body, { op: 'optEnd' });
+          } else ex.ops.unshift(...op.body);
+          ex.optUsed = true;
+          continue;
+        }
         ask(s, ex, { player: op.byOpp ? mainOpp(s, ex.player) : ex.player, mode: 'yesno', prompt: `${ex.name}: ${op.prompt}`, options: [], min: 0, max: 1, purpose: 'benefit' });
         return;
       }
@@ -1338,6 +1379,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, '次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない');
         break;
       }
+      case 'optEnd':
+        break;
       case 'setDid':
         ex.did = op.v;
         break;

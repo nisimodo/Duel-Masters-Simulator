@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, attackTargets, battle, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { abilityPick, applyAction, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
@@ -190,6 +190,10 @@ const db = buildDB(
     cr('rc', 5, 9000, ['革命チェンジ：火のクリーチャー（自分の火のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）']),
     cr('frA', 5, 5000, ['革命チェンジ：火のクリーチャー', 'ファイナル革命：このクリーチャーが「革命チェンジ」によって出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。その後、カードを１枚引く。']),
     cr('atkEnd', 1, 5000, ['スピードアタッカー', 'このクリーチャーの攻撃の終わりに、カードを１枚引く。']),
+    cr('ordA', 1, 1000, ['このクリーチャーが出た時、カードを１枚引く。']),
+    cr('ordB', 1, 1000, ['自分のクリーチャーが出た時、自分の山札の上から１枚目をマナゾーンに置く。']),
+    cr('ordOpp', 1, 1000, ['相手のクリーチャーが出た時、カードを１枚引く。']),
+    cr('chain', 1, 1000, ['このクリーチャーが出た時、自分の山札の上から２枚をマナゾーンに置いてもよい。その後、クリーチャーを１体、自分のマナゾーンから手札に戻してもよい。']),
     cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
@@ -950,6 +954,12 @@ describe('named mechanics', () => {
     ], 4);
     const resolveAll = () => {
       for (let k = 0; k < 8 && s.pending.length; k++) {
+        // 同時に誘発した能力は順番を選ぶ
+        const pk = abilityPick(s);
+        if (pk && pk.indices.length >= 2) {
+          s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+          continue;
+        }
         const top = s.pending[0];
         s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : { t: 'resolve', use: true });
       }
@@ -1702,6 +1712,60 @@ describe('named mechanics', () => {
       s2.cards[m2].sick = true;
       s2 = act(s2, 0, { t: 'attack', attacker: m2, player: 1, card: find(s2, 1, 'battle', 'vanilla')! });
       expect(s2.pending[0]?.kind).not.toBe('attackOpt');
+    });
+  });
+
+  describe('同時に誘発した能力の順番', () => {
+    it('自分の能力が2つ以上なら順番を選び、ターンのプレイヤーの能力をすべて処理してから相手の能力を処理する', () => {
+      let s = setup([
+        { p: 0, cid: 'ordA', zone: 'hand' },
+        { p: 0, cid: 'ordB', zone: 'battle' },
+        { p: 1, cid: 'ordOpp', zone: 'battle' },
+      ]);
+      const deck0 = s.players[0].deck.length;
+      const mana0 = s.players[0].mana.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'ordA')!, face: 0, pay: freeMana(s, 0, 1) });
+      // 自分 (ターンのプレイヤー) の2つの能力の順番を選ぶ。相手はまだ処理できない
+      const pk = abilityPick(s)!;
+      expect(pk.player).toBe(0);
+      expect(pk.indices.length).toBe(2);
+      expect(decider(s)).toBe(0);
+      expect(applyAction(s, 1, { t: 'pickAbility', index: pk.indices[0], use: true }, L).error).toBeTruthy();
+      // 必ず使う能力は使わないことにはできない
+      expect(applyAction(s, 0, { t: 'pickAbility', index: pk.indices[0], use: false }, L).error).toBeTruthy();
+      // マナの能力を先に選ぶ
+      const manaIdx = pk.indices.find((i) => s.pending[i].kind === 'ability' && s.cards[(s.pending[i] as { src: number }).src].cid === 'ordB')!;
+      s = act(s, 0, { t: 'pickAbility', index: manaIdx, use: true });
+      expect(s.players[0].mana.length).toBe(mana0 + 1);
+      // 残りの自分の能力 (1枚引く) を処理してから、相手の能力
+      expect(s.players[0].deck.length).toBe(deck0 - 2);
+      expect(s.pending.length).toBe(0);
+      expect(s.players[1].hand.length).toBeGreaterThan(0);
+    });
+
+    it('押して発動した「〜してもよい。その後、〜してもよい」は続けて処理し、選ばなければ使わない', () => {
+      let s = setup([
+        { p: 0, cid: 'chain', zone: 'hand' },
+        { p: 0, cid: 'ordA', zone: 'battle' },
+        { p: 0, cid: 'vanilla', zone: 'mana' },
+      ]);
+      // 自分のクリーチャーが出た時の能力 (ordA には無い) と並ばないよう、chain の能力だけにする
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'chain')!, face: 0, pay: freeMana(s, 0, 1) });
+      // 1つだけなら順番を選ばずに、最初の「〜してもよい」を聞く
+      let top = s.pending[0];
+      expect(top?.kind).toBe('choice');
+      expect(top?.kind === 'choice' && top.mode).toBe('yesno');
+      const mana0 = s.players[0].mana.length;
+      s = act(s, 0, { t: 'choose', yes: true });
+      expect(s.players[0].mana.length).toBe(mana0 + 2);
+      // 続きの「〜を手札に戻してもよい」は、はい/いいえを聞かずに、選ばないこともできる選択になる
+      top = s.pending[0];
+      expect(top?.kind === 'choice' && top.mode).toBe('cards');
+      expect(top?.kind === 'choice' && top.min).toBe(0);
+      const hand0 = s.players[0].hand.length;
+      s = act(s, 0, { t: 'choose', picks: [] });
+      expect(s.players[0].hand.length).toBe(hand0);
+      expect(s.pending.length).toBe(0);
     });
   });
 });

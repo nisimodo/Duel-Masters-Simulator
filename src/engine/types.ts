@@ -213,6 +213,10 @@ export type Pending =
       auto: boolean;
       /** 誘発させたカード (「そのクリーチャー」「そのカード」) */
       subject?: number;
+      /** 順番を選んで次に処理すると決めた能力 */
+      picked?: boolean;
+      /** プレイヤーが光ったカードを押して発動した (最初の「〜してもよい」は使うものとして続けて処理する) */
+      activate?: boolean;
     };
 
 /** 実行中の効果プログラム */
@@ -239,6 +243,12 @@ export interface Exec {
   wins?: number;
   /** 種族・文明・数字の選択肢 */
   valueLabels?: string[];
+  /** プレイヤーが使うと決めた能力 (「〜してもよい。その後〜してもよい」を続けて処理する) */
+  activated?: boolean;
+  /** 最初の「〜してもよい」をもう使うと決めた */
+  optUsed?: boolean;
+  /** 次の選択では「選ばない」もできる (選ばなければその「〜してもよい」を使わなかったことにする) */
+  zeroOk?: boolean;
 }
 
 export interface AttackState {
@@ -353,6 +363,8 @@ export interface GameState {
 
 export type Action =
   | { t: 'charge'; iid: number }
+  /** 同時に誘発した自分の能力のうち、次に処理するものを選ぶ (index は pending の位置。use: false は使わない。activate: 押して発動した) */
+  | { t: 'pickAbility'; index: number; use: boolean; activate?: boolean }
   /** プレイヤーの退出・CPUへの切り替え・復帰 (誰でも送れる。p は対象のプレイヤー) */
   | { t: 'presence'; state: 'left' | 'cpu' | 'back'; at?: number }
   | {

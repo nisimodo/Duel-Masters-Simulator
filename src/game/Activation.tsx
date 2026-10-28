@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Card } from '../lib/cards';
 import { normText } from '../rules/text';
 import { CardImg } from '../components/CardView';
-import { faceOf, nameOf, type Lookup } from '../engine/engine';
+import { abilityPick, faceOf, nameOf, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 import { Modal } from './dialogs';
 
@@ -116,3 +116,61 @@ export function ActivationDialog({
     </Modal>
   );
 }
+
+/** 同時に誘発した能力の順番を選ぶ: 押したカードの能力 (同じカードに複数あればそれぞれ) を次に処理する */
+export function AbilityOrderDialog({
+  s,
+  L,
+  iid,
+  onSubmit,
+  onClose,
+  onHover,
+}: {
+  s: GameState;
+  L: Lookup;
+  iid: number;
+  onSubmit: (a: Action) => void;
+  onClose: () => void;
+  onHover: (c: Card | null) => void;
+}) {
+  const pk = abilityPick(s);
+  const list = (pk?.indices ?? []).flatMap((i) => {
+    const x = s.pending[i];
+    return x.kind === 'ability' && x.src === iid ? [{ i, x }] : [];
+  });
+  const c = s.cards[iid];
+  const card = L(c.cid)!;
+  const faceIdx = c.zone === 'battle' ? c.face : 0;
+  const face = faceOf(s, L, iid) ?? card.faces[faceIdx];
+  const lines = face.text;
+  const lit = new Set(list.map(({ x }) => matchLine(lines, x.text)));
+  return (
+    <Modal title={`効果の発動: ${face.name}`} onClose={onClose}>
+      <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+        <CardImg card={card} face={faceIdx} width={110} onHover={onHover} />
+        <div className="col" style={{ gap: 6, minWidth: 0 }}>
+          <div className="effect-lines">
+            {lines.map((l, k) => (
+              <div key={k} className={lit.has(k) ? 'effect-line glow' : 'effect-line'}>
+                {l}
+              </div>
+            ))}
+          </div>
+          <span className="small muted">同時に発動する能力のうち、この能力を先に処理します。残りの能力は、この後に続けて選べます。</span>
+          {list.map(({ i, x }) => (
+            <div key={i} className="col" style={{ gap: 4 }}>
+              {list.length > 1 && <div className="effect-line glow">{x.text}</div>}
+              <div className="row">
+                <button className="gold glow-btn" onClick={() => onSubmit({ t: 'pickAbility', index: i, use: true, activate: true })}>
+                  ⚡ 発動
+                </button>
+                {x.optional && <button onClick={() => onSubmit({ t: 'pickAbility', index: i, use: false })}>使わない</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
