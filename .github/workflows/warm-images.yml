@@ -1,0 +1,22 @@
+# 毎週、wsrv.nl で縮めたカード画像を全カード分読み込み直す (使われていない画像が wsrv.nl から消えないように)
+name: Warm card images
+
+on:
+  schedule:
+    # 毎週月曜 3:00 (日本時間)
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/warm-images.mjs
