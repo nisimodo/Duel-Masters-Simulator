@@ -60,7 +60,7 @@ export function CardImg({ card, face = 0, width, tapped, selected, target, glow,
           {f.power != null && <span style={{ marginTop: 'auto', fontWeight: 'bold' }}>{f.powerText}</span>}
         </div>
       ) : (
-        <img src={cardImage(card, face)} alt={card.name} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} draggable={false} />
+        <img src={cardImage(card, face)} alt={card.name} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} draggable={false} />
       )}
       {children}
     </div>

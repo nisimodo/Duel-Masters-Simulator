@@ -5,6 +5,7 @@ import { useApp } from '../context';
 import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
 import { cpuPlan, hintActions } from '../engine/cpu';
+import { preloadCardImages } from '../lib/preload';
 import { ActivationDialog } from './Activation';
 import { activationOf } from './activationOf';
 import { MoveAnimator } from './MoveAnimator';
@@ -92,6 +93,16 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     peekPrev.current = peekCount;
   }, [peekCount]);
   const viewerIdx = me >= 0 ? me : 0;
+
+  // 対戦に使う全員のデッキのカード画像を先に読み込んでおく (自分のカードから)
+  const hasState = !!s;
+  useEffect(() => {
+    if (!s) return;
+    const ids = [...new Set([...s.cards].sort((a, b) => Number(b.owner === me) - Number(a.owner === me)).map((c) => c.cid))];
+    return preloadCardImages(ids.map((id) => db.byId.get(id)).filter((c): c is Card => !!c));
+    // (対戦ごとに1回だけ)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.gameId, hasState]);
 
   // スリーブ・プレイマットを読み込む
   const uids = useMemo(() => s?.players.filter((p) => !p.cpu).map((p) => p.uid).join(',') ?? '', [s?.players]);
