@@ -180,6 +180,31 @@ export default function TestPlay() {
     },
     [preview],
   );
+  // カード画像を読み込めなかった時は、裏で取得し続けて、読み込めたらプレビューを自動で作り直す
+  const autoTry = useRef(0);
+  const [autoTick, setAutoTick] = useState(0);
+  useEffect(() => {
+    if (!db || !preview || preview.missingThumbs === 0 || making || !stats || !resultDecks) return;
+    if (autoTry.current >= 10) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      autoTry.current++;
+      try {
+        const r = await renderResultImage(db, stats, resultDecks, preview.shape, 60000);
+        // (待っている間に閉じた・切り替えた時は何もしない)
+        if (!cancelled && r.missingThumbs < preview.missingThumbs) setPreview({ shape: preview.shape, blob: r.blob, url: URL.createObjectURL(r.blob), missingThumbs: r.missingThumbs });
+        // まだ読み込めなければ、もう一度試す
+        else if (!cancelled) setAutoTick((x) => x + 1);
+      } catch {
+        // 作り直せなくても今のプレビューのまま
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [preview, making, stats, resultDecks, db, autoTick]);
+
   const cancel = useRef(false);
   if (!db || !user) return null;
 
@@ -250,6 +275,7 @@ export default function TestPlay() {
     setMaking(reload ? 'reload' : shape);
     try {
       const { blob, missingThumbs } = await renderResultImage(db, stats, resultDecks, shape, reload ? 30000 : 10000);
+      autoTry.current = 0;
       setPreview({ shape, blob, url: URL.createObjectURL(blob), missingThumbs });
     } catch (e) {
       alert(`画像を作れませんでした: ${e instanceof Error ? e.message : e}`);
@@ -361,7 +387,7 @@ export default function TestPlay() {
           </div>
           {preview.missingThumbs > 0 && (
             <div className="small caution">
-              カード画像を読み込めなかったため、{preview.missingThumbs === 2 ? '両方のデッキ' : '一方のデッキ'}は文明の色で代わりに表示しています。「再読み込み」でカード画像の取得をもう一度試せます (初めて使うカードは取得に時間がかかることがあります)。
+              カード画像を読み込めなかったため、{preview.missingThumbs === 2 ? '両方のデッキ' : '一方のデッキ'}は文明の色で代わりに表示しています。読み込めたら自動でプレビューを更新します (「再読み込み」ですぐに取得し直すこともできます。初めて使うカードは時間がかかることがあります)。
             </div>
           )}
           <img className="result-preview" src={preview.url} alt="テストプレイの結果画像" style={preview.shape === 'landscape' ? { width: 'min(860px, 88vw)' } : { height: 'min(70vh, 1200px)' }} />
