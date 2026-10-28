@@ -137,6 +137,8 @@ export function detach(s: GameState, iid: number) {
 
 function resetCard(c: CardInst) {
   c.grants = undefined;
+  c.revChanged = undefined;
+  c.breakBonus = undefined;
   c.wasUnderEvo = undefined;
   c.manaDown = undefined;
   c.restrict = undefined;
@@ -301,7 +303,7 @@ export function moveCard(
   L: Lookup,
   iid: number,
   to: ZoneName,
-  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean } = {},
+  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean; revChange?: boolean } = {},
 ): ZoneName {
   const c = s.cards[iid];
   const card = L(c.cid);
@@ -551,6 +553,7 @@ export function moveCard(
   const pl = s.players[c.owner];
   resetCard(c);
   c.summoned = to === 'battle' ? !!opts.summoned : undefined;
+  if (to === 'battle' && opts.revChange) c.revChanged = true;
   c.under = [];
   c.zone = dest;
   noteMove(s, iid, from, dest);
@@ -670,7 +673,9 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
   const powered = (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'poweredBreaker') || staticKws(s, L, iid).includes('パワード・ブレイカー') || (s.cards[iid].grants ?? []).some((g) => g.kws.includes('パワード・ブレイカー'));
   if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noBreak')) return 0;
   if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'gBreaker')) return 99;
-  return powered ? k.breaker + Math.floor(power(s, L, iid, true) / 6000) : k.breaker;
+  const bonus = s.cards[iid].breakBonus ?? 0;
+  // (パワーがマイナスでもブレイク数は減らさない)
+  return (powered ? k.breaker + Math.max(0, Math.floor(power(s, L, iid, true) / 6000)) : k.breaker) + bonus;
 }
 
 /** 置換効果の支払い (最初の選択) ができるか */
@@ -815,6 +820,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
   const entering = subject ?? src;
   if (spec.howEnter === 'notSummon' && s.cards[entering]?.summoned) return;
   if (spec.howEnter === 'summon' && !s.cards[entering]?.summoned) return;
+  if (spec.howEnter === 'revChange' && !s.cards[entering]?.revChanged) return;
   if (spec.turn === 'own' && s.active !== s.cards[src].owner) return;
   if (spec.turn === 'opp' && s.active === s.cards[src].owner) return;
   if (spec.oncePerTurn) {
@@ -1257,6 +1263,7 @@ function startTurn(s: GameState, L: Lookup) {
       pl2.summonLockUntil = undefined;
       pl2.summonLockCost = undefined;
     }
+  for (const pl2 of s.players) if (pl2.summonLockCostEq != null && pl2.summonLockEqUntil === p) pl2.summonLockCostEq = pl2.summonLockEqUntil = undefined;
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
@@ -2465,6 +2472,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   }
   if (face.isCreature && !a.force && (face.power ?? 0) <= Math.max(-1, ...activeStatics(s, L).map((x) => (x.spec.s === 'summonPowerLock' ? x.spec.powerMax : -1)))) return '効果により、このパワーのクリーチャーは召喚できません';
   if (face.isCreature && !a.force && s.players[p].summonLockUntil != null && (s.players[p].summonLockCost == null || (face.cost ?? 0) <= s.players[p].summonLockCost)) return '効果により、クリーチャーを召喚できません';
+  if (face.isCreature && !a.force && s.players[p].summonLockCostEq != null && (face.cost ?? 0) === s.players[p].summonLockCostEq) return `効果により、コスト${s.players[p].summonLockCostEq}のクリーチャーは召喚できません`;
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');
@@ -2728,7 +2736,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       if (rc >= 0) {
         // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す
         moveCard(s, L, at.attacker, 'hand');
-        moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc });
+        moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc, revChange: true });
         s.cards[a.iid].sick = false;
         at.attacker = a.iid;
         log(s, p, `革命チェンジ！ ${q(oldName)} → ${q(card.faces[rc].name)}`);
@@ -2800,7 +2808,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       const def = s.players[top.target];
       const sel = [...new Set(a.shields)].filter((x) => def.shield.includes(x));
       // 選ぶ前に他の効果でシールドが減っていれば、残っている枚数まで
-      const need = Math.min(top.count, def.shield.length);
+      const need = Math.max(0, Math.min(top.count, def.shield.length));
       if (sel.length !== need) return `シールドを${need}枚選んでください`;
       s.pending.shift();
       breakShields(s, L, top.target, sel, p, s.attack?.attacker ?? null);

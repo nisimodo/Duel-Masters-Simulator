@@ -303,8 +303,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     case 'destroyedThisTurn':
       return (s.destroyedTurn?.turn === s.turn ? s.destroyedTurn.n : 0) - 1 >= c.n;
     case 'finalRev':
-      if (me.finalRevTurn === s.turn) return false;
+      // 「極限ファイナル革命」もファイナル革命の一つとして数える
+      if (me.finalRevTurn === s.turn || (c.game && me.finalRevUsed)) return false;
       me.finalRevTurn = s.turn;
+      me.finalRevUsed = true;
       return true;
     case 'underHas':
       return (s.cards[ex.src]?.under ?? []).some((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '').includes('タマシード'));
@@ -636,7 +638,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           max: n,
           purpose: op.purpose,
           sumPowerMax: cnt.sumPowerMax,
-          sumCostMax: cnt.sumCostMax,
+          // 「コストの合計がその選んだクリーチャーのコスト以下になるよう」
+          sumCostMax: cnt.sumCostIt ? (L(s.cards[ex.it[0] ?? -1]?.cid ?? '')?.faces[0]?.cost ?? 0) : cnt.sumCostMax,
         });
         return;
       }
@@ -1305,6 +1308,15 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'lockSummon': {
+        if (op.costRef) {
+          // 「相手はその数字と同じコストのカードを実行できない」(クリーチャーの側)
+          for (const o of opps(s, ex.player)) {
+            s.players[o].summonLockCostEq = s.chosenValue?.num ?? -1;
+            s.players[o].summonLockEqUntil = ex.player;
+          }
+          log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${s.chosenValue?.num ?? '?'}のクリーチャーを召喚できない`);
+          break;
+        }
         for (const o of opps(s, ex.player)) {
           const pl = s.players[o];
           // すでにすべて召喚できないなら、コストの制限で緩めない
@@ -1312,6 +1324,15 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           pl.summonLockUntil = ex.player;
         }
         log(s, ex.player, `次の自分のターンのはじめまで、相手は${op.costMax != null ? `コスト${op.costMax}以下の` : ''}クリーチャーを召喚できない`);
+        break;
+      }
+      case 'breakBonus': {
+        const sc = s.cards[ex.src];
+        const n = ex.it.length;
+        if (sc?.zone === 'battle' && n) {
+          sc.breakBonus = (sc.breakBonus ?? 0) + n;
+          log(s, ex.player, `${q(nameOf(s, L, ex.src))} はシールドをさらに${n}つブレイクする`);
+        }
         break;
       }
       case 'oncePerTurn': {

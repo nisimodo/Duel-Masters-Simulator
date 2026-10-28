@@ -143,7 +143,7 @@ export interface TriggerSpec {
   /** 「自分の〇〇が出た時」(「他の」がない) は、このカード自身が出た時も誘発する */
   includeSelf?: boolean;
   /** 「召喚以外の方法で出た時」 / 「召喚によって出た時」 */
-  howEnter?: 'notSummon' | 'summon';
+  howEnter?: 'notSummon' | 'summon' | 'revChange';
   /** 「自分のターン中に」「相手のターン中に」だけ誘発する */
   turn?: 'own' | 'opp';
 }
@@ -299,7 +299,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     const eff0 = effect.replace(/\s+/g, '');
     const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
-    const howEnter = /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
+    const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause) ? ('revChange' as const) : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);
     const turn = turnM ? (turnM[1] === '自分' ? ('own' as const) : ('opp' as const)) : undefined;
     const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;

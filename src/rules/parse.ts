@@ -629,6 +629,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^相手とガチンコ・ジャッジをする$/, '相手とガチンコ・ジャッジする')
     .replace(/マナゾーンの枚数以下のコスト/g, 'マナゾーンにあるカードの枚数以下のコスト')
     .replace(/^自分のクリーチャーを1体と、相手のクリーチャーを1体、バトルゾーンから選(?:んでもよい|ぶ)$/, '自分と相手のクリーチャーを1体ずつ選ぶ')
+    // ドギラゴールデン 「次のターン、相手のパワー1000000以下のクリーチャーは、自分を攻撃できない」
+    .replace(/^次の(?:相手の)?ターン、相手の(?:パワー\d+以下の)?クリーチャーは、?自分を攻撃できない$/, '次の自分のターンのはじめまで、相手のクリーチャーは自分を攻撃できない')
+    // ミラダンテSF 「光か水のコスト6以下の呪文を、自分の手札から〜唱える」
+    .replace(/(光|水|闇|火|自然)か(光|水|闇|火|自然)の(?=コスト)/g, '$1または$2の')
+    .replace(/の呪文を、自分の手札から(?=コストを支払わずに唱え)/, 'の呪文を1枚、自分の手札から')
     .replace(/^(そうしたら、)?次の自分のターンのはじめまで、自分はゲームに負けない$/, '$1次の自分のターンのはじめまで、自分はゲームに負けず、相手はゲームに勝てない')
     .replace(/^((?:この|その)ターン、)相手はクリーチャーで攻撃(?:することが)?できない$/, '$1相手のクリーチャーは攻撃できない')
     .replace(/選んだ相手の?クリーチャー/g, '選んだクリーチャー')
@@ -1201,6 +1206,23 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (/^このターン(?:中)?に一度、自分がゲームに負ける時、かわりに負けない$/.test(s)) return [{ op: 'noLose', until: 'turn' }];
     const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
     if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
+    // ドギラゴン逆 「自分はゲームに負けず、相手のカードの効果によって、自分のクリーチャーは離れない」 (今いる自分のクリーチャーに「離れない」を与える)
+    if (/^次の自分のターンのはじめまで、自分はゲームに負けず、(?:相手のカードの効果によって、)?自分のクリーチャーは(?:バトルゾーンを)?離れない$/.test(s))
+      return [{ op: 'noLose', until: 'nextOwnTurn' }, { op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['離れない'], until: 'nextOwnTurn' }];
+    // オーパーツ銃 「相手はその数字と同じコストのカードを実行できない」
+    if (/^次の自分のターンのはじめまで、相手は(?:(?:その|選んだ)数字と同じコスト|〈数字コスト〉)のカードを実行できない$/.test(s)) return [{ op: 'lockSpells', until: 'nextOwnTurn', costRef: true }, { op: 'lockSummon', costRef: true }];
+    // ドギラゴン・フォーエバー 「このクリーチャーは、こうしてマナゾーンに置いたカード1枚につきシールドをさらに1つブレイクする」
+    if (/^このクリーチャーは、?こうして(?:マナゾーンに置いた|捨てた|墓地に置いた)カード1枚につき(?:、)?シールドをさらに1つブレイクする$/.test(s)) return [{ op: 'breakBonus' }];
+    // ドギラゴン天 「コストの合計がその選んだクリーチャーのコスト以下になるよう、〇〇を2体まで、自分の手札から出す」
+    {
+      const sc = s.match(/^(?:その後、)?コストの合計が(?:その)?選んだクリーチャーのコスト以下になるよう(?:に)?、(.+?)を(\d+)体まで、自分の(手札|マナゾーン|墓地)から出す$/);
+      const sel = sc && parseSel(sc[1], { zones: [({ 手札: 'hand', マナゾーン: 'mana', 墓地: 'grave' } as const)[sc[3] as '手札']] });
+      if (sc && sel)
+        return [
+          { op: 'choose', target: { ref: 'sel', sel: { ...sel, owner: 'self' }, count: { n: +sc[2], upTo: true, sumCostIt: true }, chooser: 'self' }, purpose: 'benefit', prompt: s0 },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ];
+    }
     if (/^(?:そのカード|それ)を自分の手札またはマナゾーンに(?:加える|置く)$/.test(s))
       return [{ op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'マナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'mana' }] }] }];
     const ds = s.match(/^([^、]+?)をすべて、自分の(墓地|手札|マナゾーン)から(.+)$/);
@@ -2687,6 +2709,12 @@ function fixPurposes(ops: Op[]) {
 
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
+  // ファイナル革命・極限ファイナル革命: 効果全体をその条件で (後の文の「その中から〜」なども含めて)
+  const fr = normText(text).match(/^\s*(?:その|この)(ターン|ゲーム)(?:中)?に、?(?:自分が|自分の)?他の「ファイナル革命」を(?:まだ)?使っていなければ、([\s\S]*)$/);
+  if (fr) {
+    const inner = parseEffect(fr[2]);
+    return { ...inner, ops: inner.ops.length ? [{ op: 'if', cond: { c: 'finalRev', ...(fr[1] === 'ゲーム' ? { game: true } : {}) }, body: inner.ops }] : [] };
+  }
   // 「自分の手札から/墓地から呪文を唱えた時」(誘発の側で印を付ける): 効果全体をその条件で
   const castFrom = text.match(/^〈(手札|墓地)から唱えた〉([\s\S]*)$/);
   if (castFrom) {

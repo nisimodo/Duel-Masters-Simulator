@@ -185,6 +185,8 @@ const db = buildDB(
     cr('bp', 1, 1000, ['相手のターン中に、相手が召喚以外の方法でクリーチャーを出した時、そのクリーチャーを破壊する。']),
     cr('mach', 2, 3000, ['マッハファイター']),
     cr('rc', 5, 9000, ['革命チェンジ：火のクリーチャー（自分の火のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）']),
+    cr('frA', 5, 5000, ['革命チェンジ：火のクリーチャー', 'ファイナル革命：このクリーチャーが「革命チェンジ」によって出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。その後、カードを１枚引く。']),
+    cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
     cr('bakt', 1, 1000, ['自分の他のクリーチャーすべてに「ブロッカー」と「スピードアタッカー」を与える。']),
@@ -1550,5 +1552,63 @@ describe('named mechanics', () => {
     expect(applyAction(s, 0, { t: 'play', iid: va, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
     s = act(s, 0, { t: 'play', iid: al, face: 0, pay: freeMana(s, 0, 1) });
     expect(s.cards[al].zone).toBe('battle');
+  });
+
+  describe('ファイナル革命', () => {
+    const settle = (s: GameState) => {
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[1].shield.slice(0, top.count) } : top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+    const revChange = (s: GameState, attacker: number, rc: number) => {
+      s = act(s, 0, { t: 'attack', attacker, player: 1 });
+      expect(s.pending[0]?.kind).toBe('attackOpt');
+      return settle(act(s, 0, { t: 'attackOpt', iid: rc }));
+    };
+
+    it('「革命チェンジ」によって出た時だけ、1ターンに1回。後の文も条件に含める', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 0, cid: 'frA', zone: 'hand' },
+        { p: 0, cid: 'frA', zone: 'hand' },
+      ]);
+      const [v1, v2] = s.players[0].battle;
+      const [a1, a2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'frA');
+      let deck = s.players[0].deck.length;
+      s = revChange(s, v1, a1);
+      expect(s.cards[a1].zone).toBe('battle');
+      expect(deck - s.players[0].deck.length).toBe(2);
+      deck = s.players[0].deck.length;
+      // 同じターンの2回目は使えない (「その後」の文も含めて何も起きない)
+      s = revChange(s, v2, a2);
+      expect(s.cards[a2].zone).toBe('battle');
+      expect(s.players[0].deck.length).toBe(deck);
+    });
+
+    it('召喚して出た時は使えない', () => {
+      let s = setup([{ p: 0, cid: 'frA', zone: 'hand' }], 5);
+      const a = find(s, 0, 'hand', 'frA')!;
+      const deck = s.players[0].deck.length;
+      s = settle(act(s, 0, { t: 'play', iid: a, face: 0, pay: freeMana(s, 0, 5) }));
+      expect(s.cards[a].zone).toBe('battle');
+      expect(s.players[0].deck.length).toBe(deck);
+    });
+
+    it('極限ファイナル革命: このゲーム中に他のファイナル革命を使っていれば使えない', () => {
+      let s = setup([{ p: 0, cid: 'frB', zone: 'hand' }]);
+      const b = find(s, 0, 'hand', 'frB')!;
+      const deck = s.players[0].deck.length;
+      const used = structuredClone(s);
+      s = settle(act(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 1) }));
+      expect(deck - s.players[0].deck.length).toBe(1);
+      expect(s.players[0].finalRevUsed).toBe(true);
+      used.players[0].finalRevUsed = true;
+      used.players[0].finalRevTurn = -1;
+      const u = settle(act(used, 0, { t: 'play', iid: b, face: 0, pay: freeMana(used, 0, 1) }));
+      expect(u.players[0].deck.length).toBe(deck);
+    });
   });
 });

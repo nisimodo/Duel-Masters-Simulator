@@ -41,12 +41,16 @@ export interface CardInst {
   downTurn?: number;
   /** 「次の○○のターンのはじめまで攻撃/ブロックできない」 (解除するプレイヤー) */
   restrict?: { attack: boolean; block: boolean; until: number; noAttackPlayer?: number };
+  /** シールドをさらにブレイクする数 (バトルゾーンを離れるまで) */
+  breakBonus?: number;
   /** 次のアンタップを1回しない */
   noUntap?: boolean;
   /** ジャストダイバー (このプレイヤーの次のターンのはじめまで選ばれず攻撃されない) */
   justDive?: number;
   /** EXライフで置いたシールド */
   exShield?: number;
+  /** 「革命チェンジ」によってバトルゾーンに出た */
+  revChanged?: boolean;
   /** 召喚によってバトルゾーンに出た */
   summoned?: boolean;
   /** 墓地に置かれる直前に進化クリーチャーの下にあった */
@@ -139,6 +143,9 @@ export interface PlayerState {
   draws?: { turn: number; n: number };
   /** 召喚できないのはこのコスト以下のクリーチャーだけ */
   summonLockCost?: number;
+  /** 召喚できないクリーチャーのコスト (この値と同じもの) */
+  summonLockCostEq?: number;
+  summonLockEqUntil?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
@@ -149,6 +156,8 @@ export interface PlayerState {
   duelistTurn?: number;
   /** 「ファイナル革命」を使ったターン */
   finalRevTurn?: number;
+  /** このゲーム中に「ファイナル革命」を使った */
+  finalRevUsed?: boolean;
   /** このターンに唱えた呪文の数 */
   spellsCast?: { turn: number; n: number };
   /** このターンに攻撃した回数 */

@@ -51,7 +51,7 @@ export function setCpuOff(player: number, feats: string[]) {
   OFF = new Map(feats.length ? [[player, new Set(feats)]] : []);
 }
 /** その考え方を使うか */
-const on = (p: number, feat: 'spell' | 'element' | 'charge' | 'deck' | 'extra' | 'mass' | 'hand' | 'modal' | 'decline') => !LEGACY.has(p) && (!ONLY.size || ONLY.has(feat)) && !OFF.get(p)?.has(feat);
+const on = (p: number, feat: 'spell' | 'element' | 'charge' | 'deck' | 'extra' | 'mass' | 'hand' | 'modal' | 'decline' | 'rev') => !LEGACY.has(p) && (!ONLY.size || ONLY.has(feat)) && !OFF.get(p)?.has(feat);
 
 /** 呪文の効果・タマシード等の「出た時」の効果を解釈した命令 (価値の見積もり用) */
 const faceOpsCache = new WeakMap<Face, Op[]>();
@@ -83,6 +83,18 @@ function extraTurnAttacker(s: GameState, p: number, L: Lookup, iid: number): boo
   return castsOnAttack(f) && s.players[p].hand.some((h) => L(s.cards[h].cid)?.faces.some((x) => x.isSpell && givesExtraTurn(x)));
 }
 const noExtraTurn = (s: GameState, L: Lookup) => activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn');
+
+/** 革命チェンジで出した時の「出た時」の効果の価値 (使えないファイナル革命は数えない) */
+function revEnterValue(s: GameState, p: number, L: Lookup, f: Face): number {
+  const me = s.players[p];
+  const unwrap = (ops: Op[]): Op[] =>
+    ops.flatMap((o) => {
+      if (o.op !== 'if' || o.cond.c !== 'finalRev') return [o];
+      const ok = me.finalRevTurn !== s.turn && !(o.cond.game && me.finalRevUsed);
+      return ok ? unwrap(o.body) : [];
+    });
+  return (f.triggers ?? []).filter((t) => t.events.includes('enter') && t.howEnter !== 'summon').reduce((a, t) => a + opsValue(s, p, L, unwrap(programOf(t.effect).ops)), 0);
+}
 
 // ---------- 評価 ----------
 
@@ -718,6 +730,9 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
     } else if (o.op === 'discard') v += o.who === 'opp' ? 5 : -4;
     else if (o.op === 'grSummon') v += 6 * o.n;
     else if (o.op === 'extraTurn' && on(p, 'extra') && !noExtraTurn(s, L)) v += 40;
+    else if (on(p, 'rev') && (o.op === 'lockSummon' || o.op === 'noLose')) v += 8;
+    else if (on(p, 'rev') && o.op === 'lockSpells') v += 4;
+    else if (on(p, 'rev') && o.op === 'grant') v += 3;
     else if (o.op === 'breakShield') v += 3;
     else if (o.op === 'tap' || o.op === 'power' || o.op === 'restrict') v += 2;
     else if (o.op === 'optional' || o.op === 'if') v += opsValue(s, p, L, o.op === 'if' ? o.body : o.body) / 2;
@@ -834,6 +849,17 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         const cur = power(s, L, att, true);
         let best: number | null = null;
         let bestP = cur;
+        if (on(p, 'rev')) {
+          // 入れ替えた後のパワーと「出た時」(「革命チェンジ」によって出た時・ファイナル革命を含む) の効果で選ぶ
+          let bestV = 0;
+          for (const o of top.options) {
+            const card = L(s.cards[o].cid)!;
+            const f = card.faces.find((x) => x.isCreature) ?? card.faces[0];
+            const v = ((f.power ?? 0) - cur) / 2000 + revEnterValue(s, p, L, f) + (f.kw.invasion ? 5 : 0);
+            if (v > bestV) (best = o), (bestV = v);
+          }
+          return { t: 'attackOpt', iid: best };
+        }
         for (const o of top.options) {
           const card = L(s.cards[o].cid)!;
           const f = card.faces.find((x) => x.isCreature) ?? card.faces[0];

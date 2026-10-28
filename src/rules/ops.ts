@@ -96,7 +96,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; fromCount?: boolean } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; fromCount?: boolean } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -139,7 +139,7 @@ export type Cond =
   /** このクリーチャーの下にあるカードの数 */
   | { c: 'underCount'; cmp: '>=' | '<='; n: number }
   /** そのターン中に他の「ファイナル革命」をまだ使っていない (満たせば使ったことにする) */
-  | { c: 'finalRev' }
+  | { c: 'finalRev'; game?: boolean } // game: 「極限ファイナル革命」(このゲーム中に他の「ファイナル革命」を使っていない)
   /** 手札が1枚もないプレイヤーがいる */
   | { c: 'anyHandEmpty' }
   /** このカードに封印が1つもない */
@@ -315,7 +315,9 @@ export type Op =
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number; costRef?: boolean }
-  | { op: 'lockSummon'; costMax?: number }
+  | { op: 'lockSummon'; costMax?: number; costRef?: boolean }
+  /** このクリーチャーは、選んだカード1枚につきシールドをさらに1つブレイクする */
+  | { op: 'breakBonus' }
   /** it の枚数 + plus 枚引く */
   | { op: 'drawItPlus'; plus: number; mult?: number }
   /** このターンの終わりに body を実行する (it はその時点の it) */
