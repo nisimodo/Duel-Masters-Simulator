@@ -18,13 +18,8 @@ import { canPlayFromZone, costOf } from '../engine/statics';
 import { useGameSync } from './useGameSync';
 import { GachaRoulette, type GachaSpin } from './GachaRoulette';
 import { NARROW, useMedia } from '../lib/useMedia';
+import { ContextMenu, type MenuItem } from './ContextMenu';
 
-interface MenuItem {
-  label: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  sep?: boolean;
-}
 
 type Mode =
   | { kind: 'none' }
@@ -41,6 +36,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const { state: s, submit, L, error } = useGameSync(room.gameId, db);
   const [hover, setHover] = useState<{ card: Card; face?: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   // Esc でメニューを閉じる
   useEffect(() => {
     if (!menu) return;
@@ -245,7 +241,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     e.preventDefault();
     e.stopPropagation();
     if (!items.length) return;
-    setMenu({ x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 40), title, items });
+    setMenu({ x: e.clientX, y: e.clientY, title, items });
   };
 
   const startPlay = (iid: number, face: number) => {
@@ -1057,27 +1053,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
           <CardDetail db={db} card={detailModal.card} face={detailModal.face} />
         </Modal>
       )}
-      {menu && (
-        <div className="ctx" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <div className="head">{menu.title}</div>
-          {menu.items.map((it, i) =>
-            it.sep ? (
-              <div key={i} className="sep" />
-            ) : (
-              <button
-                key={i}
-                disabled={it.disabled}
-                onClick={() => {
-                  setMenu(null);
-                  it.onClick?.();
-                }}
-              >
-                {it.label}
-              </button>
-            ),
-          )}
-        </div>
-      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} title={menu.title} items={menu.items} onClose={closeMenu} />}
       {s.phase === 'over' && (
         <Modal title="対戦結果">
           <h2 style={{ color: 'var(--accent)' }}>{s.winners.length ? `${s.winners.map((w) => s.players[w].name).join('、')} の勝利！` : '引き分け'}</h2>

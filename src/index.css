@@ -472,9 +472,36 @@ input[type='radio'] {
   cursor: pointer;
   animation: pulse 1s infinite;
 }
-.ctx {
+/* カードの操作メニュー (吹き出し)。位置と高さは ContextMenu で画面に収まるように決める */
+.ctx-pop {
   position: fixed;
   z-index: 200;
+  max-width: calc(100vw - 16px);
+}
+/* 吹き出しの矢印 (クリックした位置を指す) */
+.ctx-pop::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--arrow-x, 20px) - 7px);
+  width: 12px;
+  height: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  transform: rotate(45deg);
+  z-index: 1;
+}
+.ctx-pop.below::before {
+  top: -6px;
+  border-right: none;
+  border-bottom: none;
+}
+.ctx-pop.above::before {
+  bottom: -6px;
+  border-left: none;
+  border-top: none;
+}
+.ctx {
+  position: relative;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -482,9 +509,13 @@ input[type='radio'] {
   display: flex;
   flex-direction: column;
   min-width: 190px;
-  max-height: 80vh;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+/* 高さが足りない時は縮めずにスクロールする */
+.ctx > * {
+  flex-shrink: 0;
 }
 .ctx button {
   text-align: left;
