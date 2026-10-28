@@ -75,6 +75,10 @@ export interface Sel {
   costLtIt?: boolean;
   /** it と同じコスト */
   costEqIt?: boolean;
+  /** このターンにバトルゾーンを離れたカード */
+  leftThisTurn?: boolean;
+  /** そのカード (it) と同じカードタイプ (クリーチャー・呪文・タマシード・フィールド等) */
+  sameTypeIt?: boolean;
   /** it と共通の文明を持つ */
   civShareIt?: boolean;
   /** コストが数えた数より小さい */
@@ -330,6 +334,12 @@ export type Op =
   | { op: 'lockExec' }
   /** 次の相手のターン中、相手は自身のマナゾーンのカードをタップせずにクリーチャーを出せない */
   | { op: 'lockFreeEnter' }
+  /** 相手の、コストが一番小さいクリーチャーをすべて破壊する */
+  | { op: 'destroyMinCost' }
+  /** 選んだカードは、このカードがバトルゾーンにある間アンタップしない */
+  | { op: 'freezeWhile' }
+  /** このターン、選んだクリーチャーのパワーを2倍にする */
+  | { op: 'powerDouble' }
   /** 次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない */
   | { op: 'leaveGuard' }
   /** 選んだカード (it) のうちまだバトルゾーンにあるものを山札の下に置き、その数だけ引く */

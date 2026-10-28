@@ -149,7 +149,9 @@ export interface TriggerSpec {
   /** 「自分の〇〇が出た時」(「他の」がない) は、このカード自身が出た時も誘発する */
   includeSelf?: boolean;
   /** 「召喚以外の方法で出た時」 / 「召喚によって出た時」 */
-  howEnter?: 'notSummon' | 'summon' | 'revChange' | 'free';
+  howEnter?: 'notSummon' | 'summon' | 'revChange' | 'free' | 'freeExec' | 'exec' | 'ddd';
+  /** 「プレイヤーを攻撃する時」「クリーチャーを攻撃する時」 */
+  attackWhat?: 'player' | 'creature';
   /** 「自分のターン中に」「相手のターン中に」だけ誘発する */
   turn?: 'own' | 'opp';
 }
@@ -168,9 +170,22 @@ export function isAutoEffect(effect: string, optional: boolean): boolean {
   return hints.length > 0 && hints.every((h) => SIMPLE_KINDS.includes(h.kind));
 }
 
-export function parseTriggers(rawLines: string[]): TriggerSpec[] {
+export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
+  // 「〜時、」で切れている行 (ツッコミ英雄 マトモくん) は次の行とつなげる
+  const rawLines: string[] = [];
+  for (const l of rawLines0) {
+    const prev = rawLines[rawLines.length - 1];
+    if (prev != null && /時、\s*$/.test(normText(prev))) rawLines[rawLines.length - 1] = prev.trimEnd() + l;
+    else rawLines.push(l);
+  }
   for (const raw of rawLines) {
+    // スマッシュ・バースト: 攻撃する時、このカードの呪文側をバトルゾーンに置いたまま唱えてもよい
+    if (/^スマッシュ・バースト/.test(normText(raw).trim())) {
+      const effect = 'このカードの呪文側を、バトルゾーンに置いたままコストを支払わずに唱えてもよい。';
+      out.push({ events: ['attack'], text: raw, effect, optional: true, auto: false });
+      continue;
+    }
     const line = stripReminder(normText(raw)).trim().replace(/^(?:侵略ZERO|リベンジ・チャンス)\s*[:：\-－ー―]\s*/, '').replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、').replace(/^このクリーチャーの各ブレイクの前に、/, 'このクリーチャーがシールドをブレイクする時、')
       // 古い表記: 「このクリーチャーがバトルゾーンにある間、〜たびに」
       .replace(/^このクリーチャーがバトルゾーンにある間(?:に)?、(?=.{1,80}?(?:時|たびに?|はじめに|終わりに)、)/, '')
@@ -181,7 +196,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^これをクロスしたクリーチャーが破壊される時、.*かわりに/.test(line.replace(/\s+/g, ''))) continue;
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     // 汎用の置換効果 (「〜が破壊される時、かわりに〜」「〜が出る時、かわりに〜」・鬼S-MAX進化・5.S.D.) は常在型能力として処理
-    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant'].includes(x.s))) continue;
+    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant', 'destroyTo'].includes(x.s))) continue;
     // S・トリガー・プラスで与えられる {x+} 能力は、効果の側に印を残す (条件は効果を解釈する時に付ける)
     const stPlus = /^\{x\+\}/.test(line);
     const m = line.replace(/^\{x\+\}\s*/, '').match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
@@ -198,7 +213,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       clause += more[1];
       effect = more[2];
     }
-    const self = /この(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
+    const self = /この\s*(?:D2|DG|DN)?(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
     const opp = /相手/.test(clause);
     const own = /自分/.test(clause);
     const ev = new Set<TrigEvent>();
@@ -217,6 +232,10 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       else if (/いずれかのプレイヤーが|誰かが/.test(clause)) (ev.add('otherOwnEnter'), ev.add('oppEnter'));
       else if (opp) ev.add('oppEnter');
       else if (own) ev.add('otherOwnEnter');
+    }
+    if (/カードを実行した時/.test(clause)) {
+      if (opp) (ev.add('oppEnter'), ev.add('spellOpp'));
+      else if (own) (ev.add('otherOwnEnter'), ev.add('spellOwn'));
     }
     if (/ブロックされなかった時/.test(clause)) {
       if (self) ev.add('unblocked');
@@ -302,6 +321,12 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       const ss = parseSel(spellOf[1].replace(/の$/, '') + '呪文');
       if (ss) subject = { ...ss, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
     }
+    // 「自分がクリーチャーではないカードを実行した時」
+    const ex = clause.match(/(?:自分|相手)が(.+?)を実行した時$/);
+    if (ex && !/^(?:自身の)?(?:マナゾーン(?:にある|の)カードをタップせずに、?)?カード$/.test(ex[1])) {
+      const es = parseSel(ex[1].replace(/^(?:自身の)?マナゾーン(?:にある|の)カードをタップせずに、?/, ''));
+      if (es) subject = { ...es, kind: es.kind === 'creature' && !/クリーチャー/.test(ex[1]) ? 'card' : es.kind, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
+    }
     const lv = ev.has('otherOwnLeave') && clause.match(/自分の他の([^、]+?)が(?:バトルゾーンを)?離れた時$/);
     if (lv && !/^クリーチャー$/.test(lv[1])) {
       const ls = parseSel(lv[1]);
@@ -321,11 +346,22 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       /この(?:クリーチャー|D2フィールド|フィールド|タマシード)を(?:自分の)?手札から(?:バトルゾーンに)?出してもよい/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
     const freeClause = /コストを支払わずに|マナゾーン(?:にある|の)カードをタップせずに/.test(clause);
-    const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause) ? ('revChange' as const) : freeClause ? ('free' as const) : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
+    const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause)
+      ? ('revChange' as const)
+      : /「D・D・D」によって(?:バトルゾーンに)?出た時/.test(clause)
+        ? ('ddd' as const)
+        : freeClause && /実行した時/.test(clause)
+          ? ('freeExec' as const)
+          : /実行した時/.test(clause)
+            ? ('exec' as const)
+            : freeClause
+            ? ('free' as const)
+            : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);
     const turn = turnM ? (turnM[1] === '自分' ? ('own' as const) : ('opp' as const)) : undefined;
     const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined, includeSelf, howEnter, turn });
+    const attackWhat = /プレイヤーを攻撃する時/.test(clause) ? ('player' as const) : /クリーチャーを攻撃する時/.test(clause) ? ('creature' as const) : undefined;
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined, includeSelf, howEnter, turn, attackWhat });
   }
   return out;
 }

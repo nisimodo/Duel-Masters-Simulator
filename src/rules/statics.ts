@@ -104,8 +104,10 @@ export type StaticSpec =
   | { s: 'release' }
   /** クロスする時のコスト軽減 */
   | { s: 'crossDiscount'; sel: Sel; n: number }
-  /** G・リンク: 指定の名前のゴッド (names) か、左/右/中央 G・リンクを持つゴッドとリンクする */
-  | { s: 'glink'; names?: string[]; side?: 'L' | 'R' | 'C' }
+  /** G・リンク: 指定の名前のゴッド (names) か、左/右/中央 G・リンクを持つゴッドとリンクする。partnerSides: G・リンク・ガルドでリンクできる相手の G・リンク */
+  | { s: 'glink'; names?: string[]; side?: 'L' | 'R' | 'C'; partnerSides?: ('L' | 'R' | 'C')[] }
+  /** 「〇〇とのバトル中、このクリーチャーのパワーをN倍にする」 */
+  | { s: 'battleMul'; vs: Sel; mul: number }
   /** ギャラクシールド: コストNを支払って表向きのシールドとして置く */
   | { s: 'galaxy'; cost: number }
   /** フシギバース: 自分のクリーチャー1体をマナに置き、N - そのコスト を支払って墓地から召喚 */
@@ -667,6 +669,15 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     return sel ? [{ s: 'crossDiscount', sel, n: +m[2] }] : null;
   }
   if ((m = t0.match(/^(左|右|中央)G・リンク$/))) return [{ s: 'glink', side: m[1] === '左' ? 'L' : m[1] === '右' ? 'R' : 'C' }];
+  // G・リンク・ガルド 「右G・リンク・ガルド:《龍神ヘヴィ》、《破壊神デス》、「中央G・リンク」または「左G・リンク」を持つゴッドの右側」
+  if ((m = t0.match(/^(左|右|中央)G・リンク・ガルド[:：](.+)$/))) {
+    const side = (w: string) => (w === '左' ? 'L' : w === '右' ? 'R' : 'C') as 'L' | 'R' | 'C';
+    return [{ s: 'glink', side: side(m[1]), names: [...m[2].matchAll(/《([^》]+)》/g)].map((x) => x[1]), partnerSides: [...m[2].matchAll(/「(左|右|中央)G・リンク」/g)].map((x) => side(x[1])) }];
+  }
+  if ((m = t0.match(/^(.+?)とのバトル中、このクリーチャーのパワーを(\d+)倍にする$/))) {
+    const vs = parseSel(m[1]);
+    if (vs) return [{ s: 'battleMul', vs, mul: +m[2] }];
+  }
   if (/^G・リンク/.test(t0)) {
     const names = [...t0.matchAll(/《([^》]+)》/g)].map((x) => x[1]);
     return names.length ? [{ s: 'glink', names }] : null;

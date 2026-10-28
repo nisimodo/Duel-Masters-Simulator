@@ -104,6 +104,9 @@ export function power(s: GameState, L: Lookup, iid: number, attacking = false, c
   if (ctx.inBattle) for (const g of c.grants ?? []) for (const k of g.kws) if (/^バトル中パワー[+-]\d+$/.test(k)) p += +k.slice(7);
   if (attacking && f) p += kwOf(s, L, iid).powerAttacker;
   if (c.zone === 'battle') p += staticPower(s, L, iid, { ...ctx, attacking: attacking || ctx.attacking });
+  // 「多色クリーチャーとのバトル中、このクリーチャーのパワーを3倍にする」
+  if (ctx.inBattle && ctx.foe != null && f)
+    for (const x of f.statics ?? []) if (x.s === 'battleMul' && matchesSel(s, L, ctx.foe, { ...x.vs, owner: 'any' })) p *= x.mul;
   return p;
 }
 
@@ -137,6 +140,7 @@ export function detach(s: GameState, iid: number) {
 
 function resetCard(c: CardInst) {
   c.grants = undefined;
+  c.frozenBy = undefined;
   c.revChanged = undefined;
   c.breakBonus = undefined;
   c.wasUnderEvo = undefined;
@@ -583,6 +587,10 @@ export function moveCard(
     }
   }
   if (from === 'battle' && dest !== 'battle' && card?.faces[prevFace]?.isCreature) turnStat(s, c.owner).left++;
+  if (from === 'battle' && dest !== 'battle') {
+    c.leftBattleTurn = s.turn;
+    for (const u of under) s.cards[u].leftBattleTurn = s.turn;
+  }
   if (dest === 'grave' && from !== 'grave') turnStat(s, c.owner).toGrave++;
   if (dest === 'shield' && from === 'deck') turnStat(s, c.owner).shieldAdds++;
   if (from === 'shield' && dest === 'hand') turnStat(s, c.owner).shieldsToHand++;
@@ -811,8 +819,11 @@ function gLink(s: GameState, L: Lookup, iid: number) {
   const ok = (top: number) => {
     if (top === iid || !faceOf(s, L, top)?.isCreature) return false;
     const g = group(top);
-    if (gl.names) return g.some((i) => gl.names!.some((n) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.name.includes(n)));
     const sides = g.map((i) => glOf(i)).map((x) => (x && x.s === 'glink' ? x.side : undefined));
+    const named = !!gl.names?.length && g.some((i) => gl.names!.some((n) => L(s.cards[i].cid)?.faces[s.cards[i].face]?.name.includes(n)));
+    // G・リンク・ガルド: 指定の名前のゴッドか、指定の G・リンクを持つゴッドの、空いている側にリンクする
+    if (gl.partnerSides) return !(gl.side && sides.includes(gl.side)) && (named || sides.some((x) => x && gl.partnerSides!.includes(x)));
+    if (gl.names) return named;
     if (sides.includes(gl.side)) return false;
     return sides.some((x) => x && x !== gl.side);
   };
@@ -847,6 +858,13 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
   if (spec.howEnter === 'revChange' && !s.cards[entering]?.revChanged) return;
   // 「コストを支払わずに出た時」「マナゾーンのカードをタップせずに呪文を唱えた時」
   if (spec.howEnter === 'free' && !(event.startsWith('spell') ? s.cards[entering]?.castFree : s.cards[entering]?.enteredFree)) return;
+  // 「マナゾーンのカードをタップせずにカードを実行した時」: 召喚・唱えた時だけ (効果で出しただけでは実行ではない)
+  if (spec.howEnter === 'freeExec' && !(event.startsWith('spell') ? s.cards[entering]?.castFree : s.cards[entering]?.enteredFree && s.cards[entering]?.summoned)) return;
+  if (spec.howEnter === 'ddd' && s.dddPlaying !== entering) return;
+  // 「カードを実行した時」: 召喚・唱えた・ジェネレートした時 (効果で出しただけでは実行ではない)
+  if (spec.howEnter === 'exec' && !event.startsWith('spell') && !s.cards[entering]?.summoned) return;
+  // 「プレイヤーを攻撃する時」「クリーチャーを攻撃する時」
+  if (spec.attackWhat && s.attack && (spec.attackWhat === 'player') !== (s.attack.targetCard == null)) return;
   if (spec.turn === 'own' && s.active !== s.cards[src].owner) return;
   if (spec.turn === 'opp' && s.active === s.cards[src].owner) return;
   if (spec.oncePerTurn) {
@@ -1289,6 +1307,12 @@ function startTurn(s: GameState, L: Lookup) {
   }
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
+    // 「このD2フィールドがある間アンタップしない」
+    if (c.frozenBy != null && s.cards[c.frozenBy]?.zone !== 'battle') c.frozenBy = undefined;
+    if (c.frozenBy != null) {
+      c.sick = false;
+      continue;
+    }
     if (c.noUntap) c.noUntap = false;
     else if (!(c.zone === 'battle' && (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noUntapStart' && staticCondOk(s, L, { src: iid, owner: c.owner, spec: x })))) c.tapped = false;
     c.sick = false;

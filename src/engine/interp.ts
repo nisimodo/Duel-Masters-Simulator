@@ -156,6 +156,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   const c = s.cards[iid];
   const card = L(c.cid);
   if (!card) return false;
+  if (sel.leftThisTurn && c.leftBattleTurn !== s.turn) return false;
   if (sel.or) return sel.or.some((x) => matchesSel(s, L, iid, x, noStatic));
   if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
@@ -182,6 +183,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
@@ -450,6 +452,14 @@ function equipWeapon(s: GameState, L: Lookup, ex: Exec, w: number) {
 const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
 
 // ---------- 実行 ----------
+
+/** カードタイプ (クリーチャー・呪文・タマシード・フィールド・クロスギア等) が同じか (ツインパクトはどちらかの面) */
+function sameCardType(L: Lookup, a: string, b: string): boolean {
+  const kinds = (cid: string) =>
+    (L(cid)?.faces ?? []).map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : /タマシード/.test(f.type) ? 'タマシード' : /フィールド/.test(f.type) ? 'フィールド' : f.type));
+  const kb = kinds(b);
+  return kinds(a).some((k) => kb.includes(k));
+}
 
 /** 効果プログラムの実行を開始する */
 export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number, activated?: boolean) {
@@ -939,7 +949,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         for (const m of pay) s.cards[m].tapped = true;
         log(s, ex.player, `${q(card.faces[fi].name)} をコスト${op.cost}で手札から使う`);
+        s.dddPlaying = ex.src;
         playCard(s, c.owner, { t: 'play', iid: ex.src, face: fi, pay: [], free: true, force: true }, L);
+        s.dddPlaying = undefined;
         break;
       }
       case 'swap': {
@@ -1383,6 +1395,27 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const cost = s.chosenValue?.num ?? -1;
         for (const o of opps(s, ex.player)) s.players[o].execLock = { cost, until: ex.player };
         log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${cost}のカードを実行できない`);
+        break;
+      }
+      case 'freezeWhile': {
+        for (const i of ex.it) if (s.cards[i]?.zone === 'battle') s.cards[i].frozenBy = ex.src;
+        break;
+      }
+      case 'destroyMinCost': {
+        const cs = opps(s, ex.player).flatMap((o) => s.players[o].battle).filter((b) => faceOf(s, L, b)?.isCreature);
+        const min = Math.min(...cs.map((b) => faceOf(s, L, b)?.cost ?? 0));
+        for (const b of cs.filter((x) => (faceOf(s, L, x)?.cost ?? 0) === min)) {
+          log(s, ex.player, `${q(nameOf(s, L, b))} を破壊`);
+          moveCard(s, L, b, 'grave');
+        }
+        break;
+      }
+      case 'powerDouble': {
+        for (const i of ex.it) {
+          if (s.cards[i]?.zone !== 'battle') continue;
+          s.cards[i].powerMod += Math.max(0, power(s, L, i));
+          log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを2倍にした`);
+        }
         break;
       }
       case 'lockFreeEnter': {

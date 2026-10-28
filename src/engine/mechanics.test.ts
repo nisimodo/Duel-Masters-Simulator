@@ -196,6 +196,13 @@ const db = buildDB(
     cr('chain', 1, 1000, ['このクリーチャーが出た時、自分の山札の上から２枚をマナゾーンに置いてもよい。その後、クリーチャーを１体、自分のマナゾーンから手札に戻してもよい。']),
     cr('gaiash', 6, 9000, ['相手のターンの終わりに、相手がそのターン中、マナゾーンのカードをタップせずに、クリーチャーを出すか呪文を唱えていれば、このクリーチャーをコストを支払わずに召喚してもよい。']),
     cr('freeHunter', 1, 1000, ['相手のクリーチャーがコストを支払わずに出た時、それを破壊する。']),
+    cr('shinobiLord', 1, 1000, ['自分のクリーチャーがプレイヤーを攻撃する時、相手の手札を１枚見ないで選び、捨てさせる。']),
+    cr('multi', 1, 3000, [], 'FN'),
+    cr('triple', 1, 2000, ['多色クリーチャーとのバトル中、このクリーチャーのパワーを３倍にする。']),
+    cr('minKill', 1, 1000, ['このクリーチャーが出た時、相手の、コストが一番小さいクリーチャーをすべて破壊する。']),
+    cr('carrot', 1, 1000, ['このクリーチャーが出た時、このターン中にバトルゾーンから、墓地またはマナゾーンに置かれた自分のカードを好きな枚数、手札に戻す。']),
+    cr('tsukkomi', 1, 1000, ['相手のターン中、相手が自身のマナゾーンのカードをタップせずにクリーチャーを出した時、', '「マナコストはちゃんと払えよ！」とツッコんでもよい。そうしたら、相手はそれを山札の下に置く。']),
+    cr('obli', 1, 1000, ['相手のターンに、相手が自身のマナゾーンのカードをタップせずにカードを実行した時、相手は自身のクリーチャーを１体選び、破壊する。']),
     cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
@@ -1819,6 +1826,93 @@ describe('named mechanics', () => {
       const [r] = parseTriggers(['リベンジ・チャンス-各ターンの終わりに、相手がそのターン、クリーチャーを3体以上バトルゾーンに出していた場合、このクリーチャーをコストを支払わずに召喚してもよい。']);
       expect(r?.fromHand).toBe(true);
       expect(programOf(r!.effect).complete).toBe(true);
+    });
+  });
+
+  describe('テキスト通りの挙動 (攻撃先・コストが一番小さい・このターンに離れたカード・バトル中の倍率・行をまたぐ誘発・実行)', () => {
+    const drain = (s: GameState) => {
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : top.kind === 'trigger' ? { t: 'trigger', use: false } : top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, top.max) }) : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+
+    it('「プレイヤーを攻撃する時」はクリーチャーを攻撃する時には誘発しない', () => {
+      let s = setup([
+        { p: 0, cid: 'shinobiLord', zone: 'battle' },
+        { p: 0, cid: 'sa', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'hand' },
+      ]);
+      const a = find(s, 0, 'battle', 'sa')!;
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      s.cards[v].tapped = true;
+      // (クリーチャーを攻撃した時は手札を捨てさせない。墓地に行くのはバトルで負けたクリーチャーだけ)
+      const handOf1 = (x: GameState) => x.players[1].grave.filter((i) => x.cards[i].cid === 'vanilla' && i !== v).length;
+      let c = drain(act(s, 0, { t: 'attack', attacker: a, player: 1, card: v }));
+      expect(handOf1(c)).toBe(0);
+      c = drain(act(s, 0, { t: 'attack', attacker: a, player: 1 }));
+      expect(handOf1(c)).toBe(1);
+    });
+
+    it('相手の、コストが一番小さいクリーチャーをすべて破壊する', () => {
+      let s = setup([
+        { p: 0, cid: 'minKill', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'big', zone: 'battle' },
+      ]);
+      s = drain(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'minKill')!, face: 0, pay: freeMana(s, 0, 1) }));
+      expect(s.players[1].battle.map((i) => s.cards[i].cid)).toEqual(['big']);
+    });
+
+    it('このターン中にバトルゾーンから墓地・マナゾーンに置かれた自分のカードを手札に戻す', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 0, cid: 'carrot', zone: 'hand' },
+      ]);
+      const v = find(s, 0, 'battle', 'vanilla')!;
+      moveCard(s, L, v, 'grave');
+      const oldGrave = s.players[0].deck[0];
+      moveCard(s, L, oldGrave, 'grave');
+      s = drain(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'carrot')!, face: 0, pay: freeMana(s, 0, 1) }));
+      expect(s.cards[v].zone).toBe('hand');
+      // 山札から墓地に置かれたカードは戻せない
+      expect(s.cards[oldGrave].zone).toBe('grave');
+    });
+
+    it('多色クリーチャーとのバトル中はパワー3倍', () => {
+      const s = setup([
+        { p: 0, cid: 'triple', zone: 'battle' },
+        { p: 1, cid: 'multi', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const t3 = find(s, 0, 'battle', 'triple')!;
+      expect(power(s, L, t3, false, { inBattle: true, foe: find(s, 1, 'battle', 'multi')! })).toBe(6000);
+      expect(power(s, L, t3, false, { inBattle: true, foe: find(s, 1, 'battle', 'vanilla')! })).toBe(2000);
+    });
+
+    it('行の途中で切れている誘発もつなげて処理する・「実行した時」は効果で出しただけでは誘発しない', () => {
+      const [m] = parseTriggers(['相手のターン中、相手が自身のマナゾーンのカードをタップせずにクリーチャーを出した時、', '「マナコストはちゃんと払えよ！」とツッコんでもよい。そうしたら、相手はそれを山札の下に置く。']);
+      expect(m?.events).toEqual(['oppEnter']);
+      expect(programOf(m!.effect).complete).toBe(true);
+      // マトモくん: 相手 (ターンのプレイヤー) が効果でクリーチャーを出したら、山札の下へ
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'hand' },
+        { p: 1, cid: 'tsukkomi', zone: 'battle' },
+      ]);
+      const v = find(s, 0, 'hand', 'vanilla')!;
+      s = drain(act(s, 0, { t: 'move', iid: v, to: 'battle' }));
+      expect(s.cards[v].zone).toBe('deck');
+      // オブリ＆レイト: 効果で出しただけ (実行ではない) なら誘発しない
+      let o = setup([
+        { p: 0, cid: 'vanilla', zone: 'hand' },
+        { p: 1, cid: 'obli', zone: 'battle' },
+      ]);
+      const ov = find(o, 0, 'hand', 'vanilla')!;
+      o = drain(act(o, 0, { t: 'move', iid: ov, to: 'battle' }));
+      expect(o.cards[ov].zone).toBe('battle');
     });
   });
 });

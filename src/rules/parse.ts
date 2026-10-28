@@ -455,6 +455,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   let s = s0
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
+    .replace(/^プレイヤー1人につき、(?:自分は)?カードを(\d+)枚引く$/, 'このゲームに参加しているプレイヤー1人につき、カードを$1枚引く')
+    // 漲る混沌 ハッポウマントラ 「(攻撃された)そのプレイヤーの手札を1枚見ないで選び、捨てさせる」
+    .replace(/^そのプレイヤーの手札を(\d+)枚見ないで選び、捨てさせる$/, '相手の手札を$1枚見ないで選び、捨てさせる')
     // (「このようにして山札を見ていた場合、シャッフルする」は後の決まった書き方で処理する)
     .replace(/^(?!このようにして山札を見て)([^。]{4,120}?(?:て|で))い(?:たら|た場合)、/, '$1いれば、')
     .replace(/^(?:この|その)?ターンの終わりまで、/, 'このターン、')
@@ -1352,7 +1355,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 侵略ZERO・手札から出す能力 「このD2フィールドを自分の手札からバトルゾーンに出す」
   if (/^この(?:D2フィールド|DGフィールド|フィールド|タマシード)を(?:自分の)?手札から(?:バトルゾーンに)?出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }];
   // 「そのクリーチャー以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい」(出たクリーチャーのコストまで)
-  if ((mm = s.match(/^(?:自分の(手札|マナゾーン|墓地)から)?その(?:クリーチャー|エレメント)以下のコストの(.+?)を(\d+)(?:体|つ)、?(?:自分の(手札|マナゾーン|墓地)から)?出す$/)) && (mm[1] || mm[4])) {
+  if ((mm = s.match(/^(?:自分の(手札|マナゾーン|墓地)から)?その(?:選んだ)?(?:クリーチャー|エレメント)以下のコストの、?(.+?)を(\d+)(?:体|つ)、?(?:自分の(手札|マナゾーン|墓地)から)?出す$/)) && (mm[1] || mm[4])) {
     const zone = ({ 手札: 'hand', マナゾーン: 'mana', 墓地: 'grave' } as const)[(mm[1] || mm[4]) as '手札'];
     const sel = parseSel('自分の' + mm[2], { zones: [zone] });
     if (sel)
@@ -1361,6 +1364,47 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'play', target: { ref: 'it' }, mode: 'put' },
       ];
   }
+  // 幼夢妖精プロフェッサー・キャロット 「このターン中にバトルゾーンから、墓地またはマナゾーンに置かれた自分のカードを好きな枚数、手札に戻す」
+  if (/^このターン中に、?バトルゾーンから、?墓地またはマナゾーンに置かれた自分のカードを(?:好きな枚数|99枚まで)、?手札に戻す$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave', 'mana'], kind: 'card', leftThisTurn: true }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'このターンにバトルゾーンから墓地・マナゾーンに置かれた、手札に戻すカードを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 漲る混沌 ハッポウマントラ 「このターン、その攻撃クリーチャーに「スレイヤー」を与え、そのクリーチャーはバトル中、破壊されない」
+  if (/^このターン、その攻撃クリーチャーに「スレイヤー」を与え、そのクリーチャーはバトル中、?破壊されない$/.test(s)) return [{ op: 'grant', target: { ref: 'it' }, kws: ['スレイヤー', 'バトル中破壊されない'], until: 'turn' }];
+  // アセビ with 9OD-2 「このターン、自分のクリーチャーすべてのパワーを2倍にし、「パワード・ブレイカー」を与え、それらはすべてのバトルに勝つ」
+  if (/^このターン、自分のクリーチャーすべてのパワーを2倍にし、「パワード・ブレイカー」を与え、それらはすべてのバトルに勝つ$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'powerDouble' },
+      { op: 'grant', target: { ref: 'it' }, kws: ['パワード・ブレイカー', 'すべてのバトルに勝つ'], until: 'turn' },
+    ];
+  // Dの頂点 ニルヴァーナ・ゼニシア 「そのクリーチャーは、このD2フィールドがある間アンタップしない」
+  if (/^(?:その|選んだ)クリーチャーは、?この(?:D2|DG|DN)?(?:フィールド|クリーチャー|タマシード)がある間、?アンタップしない$/.test(s)) return [{ op: 'freezeWhile' }];
+  // 俳句爵 Drache der'Bande 「このターン、このクリーチャーはブロックされず、パワーを+3000する」
+  if ((mm = s.match(/^このターン、このクリーチャーはブロックされず、パワーを\+(\d+)する$/)))
+    return [
+      { op: 'grant', target: { ref: 'self' }, kws: ['ブロックされない'], until: 'turn' },
+      { op: 'power', target: { ref: 'self' }, delta: +mm[1], until: 'turn' },
+    ];
+  // 仙界の麒麟児 ミロク 「(相手が実行したカードと) 同じカードタイプのカードを1枚、自分の手札からコストを支払わずに実行してもよい」
+  if ((mm = s.match(/^(?:自分の手札から)?、?同じカードタイプのカードを(\d+)枚、?(?:自分の手札から)?、?コストを支払わずに実行する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', sameTypeIt: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '同じカードタイプの、コストを支払わずに実行するカードを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'use' },
+    ];
+  // 新空のプラズマ ジョンジョ・ジョン 「相手の、コストが一番小さいクリーチャーをすべて破壊する」
+  if (/^相手の、?コストが一番小さいクリーチャーをすべて破壊する$/.test(s)) return [{ op: 'destroyMinCost' }];
+  // 「アサルト!やっちまいな!」 「各相手のクリーチャーを、相手1人につきパワーの合計が9000以下になるよう、それぞれ2体まで選び、破壊する」
+  if ((mm = s.match(/^各相手のクリーチャーを、相手1人につきパワーの合計が(\d+)以下になるよう(?:に)?、それぞれ(\d+)体まで選び、破壊する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: +mm[2], upTo: true, sumPowerMax: +mm[1] }, chooser: 'self' }, purpose: 'hostile', prompt: `パワーの合計が${mm[1]}以下になるように、破壊する相手のクリーチャーを${mm[2]}体まで選ぶ` },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
+  // ツッコミ英雄 マトモくん 「「マナコストはちゃんと払えよ!」とツッコんでもよい。そうしたら、相手はそれを山札の下に置く」
+  if ((mm = s.match(/^「([^」]+)」と(?:ツッコ|言|叫)(?:む|ぶ|う)$/))) return [{ op: 'note', text: `「${mm[1]}」` }];
+  if ((mm = s.match(/^「([^」]+)」と(?:ツッコんで|言って|叫んで)もよい$/))) return [{ op: 'optional', body: [{ op: 'note', text: `「${mm[1]}」` }], prompt: s0 }];
+  if (/^相手はそれを(?:自身の)?山札の(?:一番)?下に置く$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }];
   // 邪心臓の魔法陣 「自分の手札を1枚捨て、カードを3枚まで引き、もう一度自分の手札を1枚捨てる」
   if ((mm = s.match(/^(自分の手札を\d+枚捨て)、(カードを\d+枚(?:まで)?引き)、(?:もう一度)?(自分の手札を\d+枚捨てる)$/))) {
     const parts = [sentence(mm[1] + 'る', ctx), sentence(mm[2].replace(/引き$/, '引く'), ctx), sentence(mm[3], ctx)];

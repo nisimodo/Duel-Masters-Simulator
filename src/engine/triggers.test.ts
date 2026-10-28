@@ -23,9 +23,9 @@ describe('parseTriggers', () => {
   });
   it('ignores keyword reminder text and replacement effects', () => {
     expect(ev('ブロッカー(相手クリーチャーが攻撃する時、このクリーチャーをタップしてその攻撃を阻止してもよい。その後、その相手クリーチャーとバトルする)')).toEqual([]);
-    // 置換効果は発生後に提示する (自動実行はしない)
-    expect(ev('このクリーチャーが破壊される時、かわりに手札に戻す。')).toEqual(['destroyed']);
-    expect(parseTriggers(['このクリーチャーが破壊される時、かわりに手札に戻す。'])[0].auto).toBe(false);
+    // 「破壊される時、かわりに手札に戻す」は常在型の置換効果として処理するので、誘発させない
+    expect(ev('このクリーチャーが破壊される時、かわりに手札に戻す。')).toEqual([]);
+    expect(ev('このクリーチャーが破壊される時、墓地に置くかわりに手札に戻す。')).toEqual([]);
     expect(ev('革命チェンジ:火または自然のコスト5以上のドラゴン(自分の火または自然のコスト5以上のドラゴンが攻撃する時、そのクリーチャーと手札のこのクリーチャーと入れ替えてもよい)')).toEqual([]);
   });
   it('marks simple mandatory effects as auto', () => {

@@ -57,6 +57,10 @@ export interface CardInst {
   wasUnderEvo?: boolean;
   /** 直前のゾーン移動がバトルゾーンからだった (「その直前にバトルゾーンにあれば」) */
   fromBattle?: boolean;
+  /** 「このD2フィールドがある間アンタップしない」: このカードがバトルゾーンにある間 */
+  frozenBy?: number;
+  /** バトルゾーンを離れたターン (「このターン中にバトルゾーンから墓地に置かれた自分のカード」) */
+  leftBattleTurn?: number;
   /** マナを支払わずに唱えた呪文 */
   castFree?: boolean;
   /** 「各ターンに一度」の置換効果を使ったターン */
@@ -356,6 +360,8 @@ export interface GameState {
   ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number; iid?: number }[];
   /** 今実行している効果のプレイヤー (カードの効果でない移動では undefined) */
   effBy?: number;
+  /** 「D・D・D」で出しているカード (「D・D・Dによって出た時」) */
+  dddPlaying?: number;
   /** 最近のカードの移動 (画面のアニメーション用。n は通し番号) */
   moves?: { n: number; iid: number; owner: number; from: ZoneName | 'under' | 'gone'; to: ZoneName | 'under' | 'gone' }[];
   moveSeq?: number;
