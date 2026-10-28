@@ -79,8 +79,8 @@ export interface Sel {
   costEqIt?: boolean;
   /** このターンにバトルゾーンを離れたカード */
   leftThisTurn?: boolean;
-  /** このクリーチャーと今バトルしている (バトルする時の) 相手のクリーチャー */
-  battleFoe?: boolean;
+  /** いまバトルしているクリーチャー (「バトルしている相手クリーチャー」は owner: 'opp' と組み合わせる) */
+  battling?: boolean;
   /** そのカード (it) と同じカードタイプ (クリーチャー・呪文・タマシード・フィールド等) */
   sameTypeIt?: boolean;
   /** it と共通の文明を持つ */
@@ -229,7 +229,7 @@ export type Op =
   | { op: 'move'; target: Target; to: Dest; reveal?: boolean }
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
-  | { op: 'power'; target: Target; delta: number; until: 'turn' }
+  | { op: 'power'; target: Target; delta: number; until: 'turn' | 'battle' }
   | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp'; untilEnd?: boolean }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }

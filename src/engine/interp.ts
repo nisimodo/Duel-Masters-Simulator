@@ -184,7 +184,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
-        if (sel.battleFoe && !isBattleFoe(s, ex.src, iid)) continue;
+        if (sel.battling && !(s.battleNow && (s.battleNow.att === iid || s.battleNow.def === iid))) continue;
         if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
@@ -458,14 +458,6 @@ function equipWeapon(s: GameState, L: Lookup, ex: Exec, w: number) {
 const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
 
 // ---------- 実行 ----------
-
-/** 攻撃中のバトルで、a と b がバトルの相手どうしか */
-function isBattleFoe(s: GameState, a: number, b: number): boolean {
-  const at = s.attack;
-  if (!at) return false;
-  const foe = at.blocked ?? at.targetCard;
-  return foe != null && ((at.attacker === a && foe === b) || (at.attacker === b && foe === a));
-}
 
 /** カードタイプ (クリーチャー・呪文・タマシード・フィールド・クロスギア等) が同じか (ツインパクトはどちらかの面) */
 function sameCardType(L: Lookup, a: string, b: string): boolean {
@@ -760,7 +752,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
         for (const i of ids) {
           if (s.cards[i].zone !== 'battle') continue;
-          s.cards[i].powerMod += op.delta;
+          // 「そのバトルの終わりまで」はバトル中だけ (バトルの外で使われたらこのターン)
+          if (op.until === 'battle' && s.battleNow) s.cards[i].battleMod = (s.cards[i].battleMod ?? 0) + op.delta;
+          else s.cards[i].powerMod += op.delta;
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワー${op.delta >= 0 ? '+' : ''}${op.delta}`);
         }
         break;

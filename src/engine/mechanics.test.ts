@@ -229,6 +229,9 @@ const db = buildDB(
     cr('rmStay', 1, 1000, ['自分の光のタップしているクリーチャーが破壊される時、墓地に置かれるかわりにバトルゾーンにとどまる。']),
     cr('rmSub', 1, 1000, ['自分の進化クリーチャーが破壊される時、かわりにこのクリーチャーを自分のマナゾーンに置く。']),
     cr('rmOnce', 1, 1000, ['各ターンに一度、このクリーチャーが離れる時、かわりに自分のシールドを１つ手札に加えてもよい。']),
+    cr('dolfal', 1, 30000, ['スピードアタッカー', 'このクリーチャーが攻撃する時、相手のクリーチャーをすべて破壊する。', 'クリーチャーが破壊された時、自分はカードを１枚引いてもよい。', '自分がカードを引いた時、相手のマナゾーンにあるカードを１枚選び、タップする。次の自分のターンのはじめまで、それはアンタップしない。']),
+    cr('deathMarch', 1, 3000, ['このクリーチャーがバトルする時、そのバトルの終わりまで、バトルしている相手クリーチャーのパワーは－4000される。']),
+    cr('big9', 1, 9000, []),
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -1967,6 +1970,68 @@ describe('named mechanics', () => {
       // 山札は全部クリーチャー (vanilla): 2枚選ぶとエラー、1枚ならよい
       expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 2) }, L).error).toMatch(/カードタイプが異なる/);
       expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 1) }, L).error).toBeFalsy();
+    });
+  });
+
+  describe('能力の連鎖の順番', () => {
+    it('Dol-Fal: 1つの能力 (■) の処理が終わってから、それで誘発した能力を待たせる', () => {
+      let s = setup([
+        { p: 0, cid: 'dolfal', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const hand0 = s.players[0].hand.length;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'dolfal')!, player: 1 });
+      // 攻撃する時の能力で2体破壊 → 破壊された時の能力が2つ待つ (1つ目の「引いてもよい」を選んでいる)
+      expect(s.players[1].battle).toHaveLength(0);
+      expect(s.pending.filter((x) => x.kind === 'ability').map((x) => x.kind === 'ability' && x.text.slice(0, 8))).toEqual(['クリーチャーが破']);
+      let sawTapWaiting = false;
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        if (top.kind === 'breakSel') break;
+        if (s.pending.some((x) => x.kind === 'ability' && /カードを引いた時/.test(x.text))) sawTapWaiting = true;
+        const pk = abilityPick(s);
+        if (pk && pk.indices.length >= 2) {
+          s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+          continue;
+        }
+        const untapped = top.kind === 'choice' ? [...top.options].sort((x, y) => +s.cards[x].tapped - +s.cards[y].tapped) : [];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: untapped.slice(0, top.min || 1) }) : { t: 'resolve', use: true });
+      }
+      // 「引いた時」の能力は、引く能力の処理が終わってから待つ
+      expect(sawTapWaiting).toBe(true);
+      expect(s.players[0].hand.length).toBe(hand0 + 2);
+      expect(s.players[1].mana.filter((m) => s.cards[m].tapped)).toHaveLength(2);
+    });
+  });
+
+  describe('バトルの期間', () => {
+    it('「そのバトルの終わりまで」のパワー低下は、バトルが終わると元に戻る', () => {
+      let s = setup([
+        { p: 0, cid: 'deathMarch', zone: 'battle' },
+        { p: 1, cid: 'big9', zone: 'battle', tapped: true },
+      ]);
+      const foe = find(s, 1, 'battle', 'big9')!;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'deathMarch')!, player: 1, card: foe });
+      for (let k = 0; k < 10 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      // 9000-4000 = 5000 > 3000 なので deathMarch が負ける。バトルの後、big9 のパワーは 9000 に戻る
+      expect(s.cards[foe].zone).toBe('battle');
+      expect(find(s, 0, 'grave', 'deathMarch')).toBeDefined();
+      expect(s.battleNow).toBeUndefined();
+      expect(power(s, L, foe)).toBe(9000);
+    });
+
+    it('「そのバトルの終わりまで」のパワー低下でバトルに勝てる', () => {
+      let s = setup([
+        { p: 0, cid: 'deathMarch', zone: 'battle' },
+        { p: 1, cid: 'big', zone: 'battle', tapped: true },
+      ]);
+      const foe = find(s, 1, 'battle', 'big')!;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'deathMarch')!, player: 1, card: foe });
+      for (let k = 0; k < 10 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      // 6000-4000 = 2000 < 3000
+      expect(s.cards[foe].zone).toBe('grave');
+      expect(find(s, 0, 'battle', 'deathMarch')).toBeDefined();
     });
   });
 

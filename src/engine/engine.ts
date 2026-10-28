@@ -97,7 +97,10 @@ export const isCreature = (s: GameState, L: Lookup, iid: number) => !!faceOf(s, 
 export function power(s: GameState, L: Lookup, iid: number, attacking = false, ctx: PowerCtx = {}): number {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
-  let p = (f?.power ?? 0) + c.powerMod;
+  // バトルが続いている間 (破壊された時の能力の処理中も) は「バトル中」のパワーで数える
+  const bt = s.battleNow;
+  if (!ctx.inBattle && bt && (bt.att === iid || bt.def === iid) && c.zone === 'battle') ctx = { ...ctx, inBattle: true, foe: bt.att === iid ? bt.def : bt.att, blocking: s.attack?.blocked === iid };
+  let p = (f?.power ?? 0) + c.powerMod + (c.battleMod ?? 0);
   for (const u of c.under) if (s.cards[u].linkedTo === iid) p += L(s.cards[u].cid)?.faces[s.cards[u].face]?.power ?? 0;
   // 「次の自分のターンのはじめまでパワー+N」は一時的な能力として持っている
   for (const g of c.grants ?? []) for (const k of g.kws) if (/^パワー[+-]\d+$/.test(k)) p += +k.slice(3);
@@ -150,6 +153,7 @@ function resetCard(c: CardInst) {
   c.tapped = false;
   c.sick = false;
   c.powerMod = 0;
+  c.battleMod = undefined;
   c.noAttack = false;
   c.revealed = false;
 }
@@ -1429,6 +1433,7 @@ function finishEndTurn(s: GameState, L: Lookup) {
     }
   }
   s.brokeThisTurn = [];
+  endBattle(s);
   for (const c of s.cards) {
     c.powerMod = 0;
     c.noAttack = false;
@@ -1532,6 +1537,7 @@ function advance(s: GameState, L: Lookup): boolean {
   if (a) {
     if (s.cards[a.attacker].zone !== 'battle' && (a.step === 'atkTrig' || a.step === 'resolve' || a.step === 'block')) {
       s.attack = null;
+      endBattle(s);
       return true;
     }
     if (a.step === 'atkTrig') {
@@ -1544,6 +1550,8 @@ function advance(s: GameState, L: Lookup): boolean {
     }
     if (a.step === 'breaking' || a.step === 'done') {
       s.attack = null;
+      // バトルで破壊された時などの能力がすべて解決したので、バトルが終わる
+      endBattle(s);
       // バトルの後に解決した能力の「バトルの後で〜」
       const after = s.afterBattleExecs ?? [];
       s.afterBattleExecs = [];
@@ -1954,14 +1962,25 @@ function blockStep(s: GameState, L: Lookup) {
   } else resolveAttack(s, L);
 }
 
+/** バトルの終わり: 「そのバトルの終わりまで」の効果をなくす */
+function endBattle(s: GameState) {
+  if (!s.battleNow) return;
+  s.battleNow = undefined;
+  for (const c of s.cards) if (c.battleMod) c.battleMod = undefined;
+}
+
 export function battle(s: GameState, L: Lookup, att: number, def: number) {
   // バトルで破壊されるのはカードの効果ではない
   const prevBy = s.effBy;
   s.effBy = undefined;
+  // 攻撃によるバトルは resolveAttack で始まっている。効果による「バトルさせる」はその場で始まって終わる
+  const byEffect = !s.battleNow;
+  if (byEffect) s.battleNow = { att, def };
   try {
     battleInner(s, L, att, def);
   } finally {
     s.effBy = prevBy;
+    if (byEffect) endBattle(s);
   }
 }
 
@@ -2101,6 +2120,7 @@ function resolveAttack(s: GameState, L: Lookup) {
   const a = s.attack!;
   if (s.cards[a.attacker].zone !== 'battle') {
     s.attack = null;
+    endBattle(s);
     return;
   }
   // 「バトルする時」「ブロックされなかった時」の能力を先に解決する
@@ -2110,6 +2130,8 @@ function resolveAttack(s: GameState, L: Lookup) {
     const foe = a.blocked ?? a.targetCard;
     if (foe != null) {
       if (s.cards[foe].zone === 'battle') {
+        // クリーチャーを攻撃した・ブロックされたので、バトルが始まる
+        s.battleNow = { att: a.attacker, def: foe };
         fireSelf(s, L, a.attacker, s.cards[a.attacker].face, ['battle']);
         fireSelf(s, L, foe, s.cards[foe].face, ['battle']);
         fireWatchers(s, L, a.owner, a.attacker, 'ownBattle', null, a.attacker);

@@ -31,6 +31,8 @@ export interface CardInst {
   parent: number | null;
   /** ターン終了時まで有効なパワー修正 */
   powerMod: number;
+  /** 「そのバトルの終わりまで、パワーを±N」(バトルが終わったら0に戻す) */
+  battleMod?: number;
   /** このターン攻撃できない (G・ストライク等) */
   noAttack: boolean;
   /** 表向きか (シールド・パートナー用) */
@@ -368,6 +370,11 @@ export interface GameState {
   turnTriggers?: number;
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
+  /**
+   * いま行われているバトル。クリーチャーを攻撃した・ブロックされた時に始まり、
+   * 勝ち負け (破壊など) と、それでトリガーした能力の処理がすべて終わるまで続く
+   */
+  battleNow?: { att: number; def: number };
   /** 能力を無視する効果 (by 以外のプレイヤーのバトルゾーンのカード。until のプレイヤーのターンのはじめまで / turn のターンだけ / costEq のコストだけ) */
   ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number; iid?: number }[];
   /** 今実行している効果のプレイヤー (カードの効果でない移動では undefined) */
