@@ -22,8 +22,17 @@ function DeckSlot({ db, label, opt, active, onClick }: { db: CardDB; label: stri
       {opt ? (
         <DeckTile db={db} deck={opt.deck} showUpdated={false} />
       ) : (
-        <div className="muted small" style={{ padding: 20 }}>
-          下の一覧からデッキを選んでください
+        // デッキを選んだ時と同じ大きさの空の枠
+        <div className="deck-tile testplay-empty">
+          <div className="deck-tile-main">
+            <div className="deck-tile-thumb">
+              <div className="deck-thumb-empty deck-tile-random">?</div>
+            </div>
+            <div className="deck-tile-body">
+              <div className="deck-tile-name muted">未選択</div>
+              <div className="small muted">下の一覧からデッキを選んでください</div>
+            </div>
+          </div>
         </div>
       )}
     </button>

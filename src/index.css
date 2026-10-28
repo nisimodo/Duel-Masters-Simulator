@@ -1258,3 +1258,7 @@ button.glow-btn {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.testplay-empty .deck-tile-random {
+  border: 2px dashed var(--line);
+  border-radius: 6px;
+}
