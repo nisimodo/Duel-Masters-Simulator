@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { parseTriggers } from '../lib/triggers';
+import { parseTriggers, spellEffectLines } from '../lib/triggers';
+import { parseEffect } from '../rules/parse';
 import { applyAction, createGame } from './engine';
 import type { Action, GameState } from './types';
 
@@ -218,5 +219,23 @@ describe('triggered abilities', () => {
     expect(s.active).toBe(0);
     expect(s.players[0].mana.length).toBe(manaBefore + 1);
     expect(s.turnStep).toBe('main');
+  });
+});
+
+describe('追加ターン・手札から唱える呪文', () => {
+  it('parses the wordings of extra turns', () => {
+    for (const t of ['このターンの後で自分のターンをもう一度行う。', 'このターンの後もう一度自分のターンを行う。', 'このターンの後に自分のターンを追加する。'])
+      expect(parseEffect(t).ops).toEqual([{ op: 'extraTurn' }]);
+    expect(parseEffect('追加ターン中でなければ、このターンの後に自分のターンを追加する。').ops).toEqual([{ op: 'if', cond: { c: 'not', a: { c: 'inExtraTurn' } }, body: [{ op: 'extraTurn' }] }]);
+  });
+  it('treats 鬼エンド as a hand ability, not part of the spell effect', () => {
+    const lines = ['鬼エンド:クリーチャーが攻撃する時、シールドが1つもないプレイヤーがいれば、この呪文を自分の手札からコストを支払わずに唱えてもよい。', 'カードを1枚引く。'];
+    expect(parseTriggers(lines)[0].fromHand).toBe(true);
+    expect(spellEffectLines(lines)).toEqual(['カードを1枚引く。']);
+  });
+  it('「自分の魔導具呪文を唱えた時」 watches only own matching spells', () => {
+    const [t] = parseTriggers(['自分の魔導具呪文を唱えた時、カードを1枚引く。']);
+    expect(t.events).toEqual(['spellOwn']);
+    expect(t.subject?.races).toEqual(['魔導具']);
   });
 });

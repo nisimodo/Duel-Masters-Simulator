@@ -150,6 +150,8 @@ export function parseCond(c0: string): Cond | null {
     return m[2] ? { c: 'turnCount', what: 'attacks', cmp: '<=', n: m[1] ? +m[1] - 1 : 0 } : { c: 'turnCount', what: 'attacks', cmp: '>=', n: 1 };
   if ((m = c.match(/^(?:(?:その|この)ターン、?|これが、?(?:その|この)ターン|その攻撃が、?(?:その|この)ターン)(\d+)度目(以降)?の(?:クリーチャー(?:の|による)?|ドラゴンによる)?攻撃(?:であ|で)?$/)))
     return { c: 'turnCount', what: 'attacks', cmp: m[2] ? '>=' : '==', n: +m[1] };
+  if (/^(?:これが|今が)?追加ターン(?:中)?(?:であ|で)?$/.test(c)) return { c: 'inExtraTurn' };
+  if (/^(?:これが|今が)?追加ターン(?:中)?でな(?:けれ|け)?$/.test(c)) return { c: 'not', a: { c: 'inExtraTurn' } };
   if ((m = c.match(/^(?:その|この)ターン(?:中に|中)?、?(?:自分が)?呪文を(?:(\d+)枚以上)?唱えてい$/))) return { c: 'turnCount', what: 'spells', cmp: '>=', n: m[1] ? +m[1] : 1 };
   // 「自分のマナゾーンにあるカードがN枚以下」「相手の墓地にクリーチャーがN体以上あ」
   if ((m = c.match(/^(自分|相手)の(マナゾーン|墓地|手札)(?:にある|に|の)(.+?)が(\d+)(?:枚|体|つ)(以上あ|以下|以下であ|以下で)$/))) {
@@ -1350,7 +1352,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = nr && parseSel(nr[2]);
     if (nr && hr && sel) return [{ op: 'grant', target: { ref: 'sel', sel, count: { all: true }, chooser: 'self' }, kws: hr[1], until: nr[1] === 'このターン' ? 'turn' : 'nextOwnTurn' }];
   }
-  if (/^このターンの後に(自分の)?ターンを(追加する|もう一度行う)$/.test(s) || /^このターンの後にもう一度自分のターンを行う$/.test(s)) return [{ op: 'extraTurn' }];
+  if (/^このターンの後(?:に|で)?、?(?:もう一度)?(?:自分の)?ターンを(?:追加する|もう一度行う|行う|繰り返す)$/.test(s) || /^このターンの後(?:に|で)?、?もう一度自分のターンを(?:行う|繰り返す)$/.test(s)) return [{ op: 'extraTurn' }];
   // 「その中から〇〇をすべて手札に加え、それ以外のカードを好きな順序で山札の一番下に戻す」
   {
     const lh = s.match(/^その中から(.+?)を(すべて|(\d+)(?:枚|体)(まで)?)、?(?:自分の)?手札に加え、(?:それ以外のカード|残り(?:のカード)?)を(?:好きな順序で)?(?:自分の)?山札の(?:一番)?下に(?:戻す|置く)$/);

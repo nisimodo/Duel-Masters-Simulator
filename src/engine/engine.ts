@@ -1357,7 +1357,8 @@ function finishEndTurn(s: GameState, L: Lookup) {
 function advanceTurn(s: GameState, L: Lookup) {
   if (s.phase === 'over') return;
   let next = s.active;
-  if (s.extraTurnFor === s.active && !s.players[s.active].lost) s.extraTurnFor = undefined;
+  s.inExtraTurn = s.extraTurnFor === s.active && !s.players[s.active].lost;
+  if (s.inExtraTurn) s.extraTurnFor = undefined;
   else
     for (let i = 0; i < s.players.length; i++) {
       next = (next + 1) % s.players.length;

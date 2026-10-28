@@ -45,8 +45,13 @@ export function setCpuLegacy(players: number[], only: string[] = []) {
   LEGACY = new Set(players);
   ONLY = new Set(only);
 }
+/** プレイヤーごとに止める考え方 (比べる時だけ使う) */
+let OFF = new Map<number, Set<string>>();
+export function setCpuOff(player: number, feats: string[]) {
+  OFF = new Map(feats.length ? [[player, new Set(feats)]] : []);
+}
 /** その考え方を使うか */
-const on = (p: number, feat: 'spell' | 'element' | 'charge' | 'deck') => !LEGACY.has(p) && (!ONLY.size || ONLY.has(feat));
+const on = (p: number, feat: 'spell' | 'element' | 'charge' | 'deck' | 'extra' | 'mass' | 'hand' | 'modal' | 'decline') => !LEGACY.has(p) && (!ONLY.size || ONLY.has(feat)) && !OFF.get(p)?.has(feat);
 
 /** 呪文の効果・タマシード等の「出た時」の効果を解釈した命令 (価値の見積もり用) */
 const faceOpsCache = new WeakMap<Face, Op[]>();
@@ -59,6 +64,25 @@ function faceOps(f: Face): Op[] {
   }
   return ops;
 }
+
+/** 命令の中に op があるか (「〜してもよい」「〜なら」の中も調べる) */
+function hasOp(ops: unknown, name: Op['op']): boolean {
+  if (!Array.isArray(ops)) return false;
+  return ops.some((o) => o && typeof o === 'object' && ((o as Op).op === name || Object.values(o).some((v) => Array.isArray(v) && (hasOp(v, name) || v.some((x) => x && typeof x === 'object' && 'body' in x && hasOp((x as { body: unknown }).body, name))))));
+}
+/** 追加ターンを得る呪文・カード */
+const givesExtraTurn = (f: Face | undefined) => !!f && hasOp(faceOps(f), 'extraTurn');
+/** 「攻撃する時、呪文を手札からコストを支払わずに唱えてもよい」 */
+const castsOnAttack = (f: Face | undefined) => !!f && (f.triggers ?? []).some((t) => t.events.includes('attack') && programOf(t.effect).ops.some((o) => o.op === 'optional' && o.body.some((x) => x.op === 'play' && x.mode === 'cast')));
+/** 攻撃すると追加ターンを得るクリーチャー (攻撃時の能力そのもの、または手札の追加ターン呪文を唱える) */
+function extraTurnAttacker(s: GameState, p: number, L: Lookup, iid: number): boolean {
+  if (!on(p, 'extra') || noExtraTurn(s, L)) return false;
+  const f = faceOf(s, L, iid);
+  if (!f) return false;
+  if ((f.triggers ?? []).some((t) => t.events.includes('attack') && hasOp(programOf(t.effect).ops, 'extraTurn'))) return true;
+  return castsOnAttack(f) && s.players[p].hand.some((h) => L(s.cards[h].cid)?.faces.some((x) => x.isSpell && givesExtraTurn(x)));
+}
+const noExtraTurn = (s: GameState, L: Lookup) => activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn');
 
 // ---------- 評価 ----------
 
@@ -275,6 +299,8 @@ function chooseCharge(s: GameState, p: number, L: Lookup): number | null {
   const manaCivs = new Set(me.mana.flatMap((i) => cardCivs(L, s.cards[i].cid)));
   const threats = oppCreaturesByThreat(s, p, L).length > 0;
 
+  // 攻撃する時に手札の呪文を唱えるクリーチャー (《水晶の王 ゴスペル》など) が自分のデッキにあるか
+  const enabler = on(p, 'extra') && s.cards.some((c) => c.owner === p && L(c.cid)?.faces.some((f) => castsOnAttack(f)));
   const score = (i: number) => {
     const card = L(s.cards[i].cid);
     if (!card) return -99;
@@ -293,6 +319,9 @@ function chooseCharge(s: GameState, p: number, L: Lookup): number | null {
     if (scaling && !dup) sc -= 25;
     // 相手のターンなどに手札から使える切り札 (鬼エンド・逆転撃 等) は手札に残す
     if (on(p, 'charge') && !dup && faces.some((f) => (f.triggers ?? []).some((t) => t.fromHand))) sc -= 15;
+    // 追加ターンを得るカードは手札に残す (コスト99の呪文など、効果で唱えるもの)
+    // (コストが大きいほどマナに置きやすくなる分を打ち消す。2枚以上あっても高いコストだけで優先はしない)
+    if (enabler && faces.some((f) => givesExtraTurn(f))) sc -= dup ? 4 + maxCost : 200;
     if (early) {
       // 序盤: 低コストを出すために、多色・高コスト・足りない文明をマナへ
       if (multi) sc += 8;
@@ -605,6 +634,13 @@ function chooseAttack(s: GameState, p: number, L: Lookup): Action | null {
   // 山札が少ない時は、攻撃する時に自分の山札を減らすクリーチャーで攻撃しない (とどめを刺せる時は別)
   const selfMill = (i: number) => (faceOf(s, L, i)?.triggers ?? []).some((t) => t.events.includes('attack') && programOf(t.effect).ops.some((o) => (o.op === 'top' && o.who === 'self') || (o.op === 'draw' && o.who === 'self')));
   const deckLow = on(p, 'deck') && me.deck.length <= 6;
+  // 攻撃すると追加ターンを得られるなら、ブロッカーでも真っ先にプレイヤーへ攻撃する
+  for (const iid of attackers) {
+    if (!extraTurnAttacker(s, p, L, iid)) continue;
+    const tg = attackTargets(s, L, iid);
+    if (tg.players.includes(target)) return { t: 'attack', attacker: iid, player: target };
+    if (tg.cards.length) return { t: 'attack', attacker: iid, player: s.cards[tg.cards[0]].owner, card: tg.cards[0] };
+  }
   for (const iid of attackers) {
     const f = faceOf(s, L, iid)!;
     if (deckLow && !lethal && selfMill(iid)) continue;
@@ -653,8 +689,23 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
   let v = 0;
   // 山札が少ない時は、自分の山札を減らす効果はマイナス (山札切れで負けないように)
   const low = on(p, 'deck') && s.players[p].deck.length <= 8;
-  for (const o of ops) {
-    if (o.op === 'draw') v += (o.who === 'self' ? (low ? -6 : 4) : -4) * o.n;
+  // 手札が十分にある時は、引いてもあまり得にならない
+  const handFull = on(p, 'hand') && s.players[p].hand.length >= 10;
+  for (let k = 0; k < ops.length; k++) {
+    const o = ops[k];
+    const nx = ops[k + 1];
+    // 「各プレイヤーは〜をすべて山札の下に置く」など、自分のクリーチャーも巻き込む全体の効果は差し引きで見る
+    if (on(p, 'mass') && o.op === 'choose' && o.target.ref === 'sel' && o.target.count && 'all' in o.target.count && o.target.sel.owner !== 'opp' && o.target.sel.zones.includes('battle') && (nx?.op === 'move' || nx?.op === 'destroy') && nx.target.ref === 'it') {
+      const sel = { ...o.target.sel, owner: 'any' as const };
+      const hit = s.players.flatMap((pl) => pl.battle).filter((i) => matchesSel(s, L, i, sel));
+      const mine = hit.filter((i) => s.cards[i].owner === p);
+      if (mine.length || o.target.sel.owner === 'any') {
+        v += hit.filter((i) => s.cards[i].owner !== p).reduce((a, i) => a + 4 + threatOf(s, L, i), 0) - mine.reduce((a, i) => a + 6 + ownValue(s, L, i), 0);
+        k++;
+        continue;
+      }
+    }
+    if (o.op === 'draw') v += (o.who === 'self' ? (low ? -6 : handFull ? 1 : 4) : -4) * o.n;
     else if (o.op === 'top' && o.who === 'self' && low && o.to !== 'look' && o.to !== 'reveal') v -= 6 * o.n;
     else if (o.op === 'top') v += o.to === 'mana' || o.to === 'manaTapped' ? 3 * o.n : o.to === 'shield' ? 4 * o.n : o.to === 'hand' ? 4 * o.n : 1;
     else if (o.op === 'choose' && o.target.ref === 'sel') {
@@ -666,9 +717,11 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
       else v += 4;
     } else if (o.op === 'discard') v += o.who === 'opp' ? 5 : -4;
     else if (o.op === 'grSummon') v += 6 * o.n;
+    else if (o.op === 'extraTurn' && on(p, 'extra') && !noExtraTurn(s, L)) v += 40;
     else if (o.op === 'breakShield') v += 3;
     else if (o.op === 'tap' || o.op === 'power' || o.op === 'restrict') v += 2;
     else if (o.op === 'optional' || o.op === 'if') v += opsValue(s, p, L, o.op === 'if' ? o.body : o.body) / 2;
+    else if (o.op === 'modal' && on(p, 'modal')) v += Math.max(0, ...o.options.map((x) => opsValue(s, p, L, x.body)));
   }
   return v;
 }
@@ -679,6 +732,14 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
     const deckLow = s.players[p].deck.length <= 8;
     const risky = op?.op === 'optional' && op.body.some((o) => o.op === 'draw' || (o.op === 'top' && o.who === 'self'));
     if (deckLow && risky) return { t: 'choose', yes: false };
+    // 「呪文を1枚、手札から唱えてもよい」: 唱えて得になる呪文がなければ唱えない
+    const [c0, c1] = op?.op === 'optional' ? op.body : [];
+    if (on(p, 'decline') && c0?.op === 'choose' && c0.target.ref === 'sel' && c1?.op === 'play' && c1.mode === 'cast') {
+      const sel = c0.target.sel;
+      const pool = sel.zones.flatMap((z) => (s.players[p] as unknown as Record<string, number[]>)[z] ?? []).filter((i) => matchesSel(s, L, i, { ...sel, owner: 'any' }));
+      const best = Math.max(-1, ...pool.map((i) => Math.max(...(L(s.cards[i].cid)?.faces.filter((f) => f.isSpell).map((f) => opsValue(s, p, L, faceOps(f))) ?? [-1]))));
+      if (best <= 0) return { t: 'choose', yes: false };
+    }
     if (op?.op === 'optional' && opsValue(s, p, L, op.body) < 0 && !top.exec.ops.slice(1).some((o) => o.op === 'if' && o.cond.c === 'did'))
       return { t: 'choose', yes: false };
     return { t: 'choose', yes: true };
@@ -722,7 +783,14 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
     if (top.purpose === 'benefit') return mine ? ownValue(s, L, i) : -threatOf(s, L, i);
     return 0;
   };
-  const ranked = [...top.options].sort((a, b) => score(b) - score(a));
+  // 選んだカードをそのまま唱える時は、呪文の効果の価値で選ぶ (追加ターンの呪文を最優先)
+  const next = top.exec.ops[1];
+  const casting = on(p, 'extra') && top.purpose === 'benefit' && top.exec.ops[0]?.op === 'choose' && next?.op === 'play' && next.mode === 'cast';
+  const castScore = (i: number) => {
+    const f = L(s.cards[i].cid)?.faces.find((x) => x.isSpell);
+    return f ? opsValue(s, p, L, faceOps(f)) + f.cost / 10 : -99;
+  };
+  const ranked = [...top.options].sort((a, b) => (casting ? castScore(b) - castScore(a) : score(b) - score(a)));
   const n = top.purpose === 'sacrifice' ? top.min : top.max;
   if (top.sumCostMax != null) {
     // コストの合計の上限内で、価値の高い順に詰める

@@ -269,6 +269,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const b = me.broken?.turn === s.turn ? me.broken.n : 0;
       return s.active !== ex.player && b >= 2;
     }
+    case 'inExtraTurn':
+      return !!s.inExtraTurn;
     case 'turnCount': {
       const t = c.what === 'attacks' ? me.attacks : me.spellsCast;
       const v = t?.turn === s.turn ? t.n : 0;

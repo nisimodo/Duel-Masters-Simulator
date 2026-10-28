@@ -287,6 +287,8 @@ export interface GameState {
   startTurnExecs?: Exec[];
   /** このプレイヤーの今のターンの後に、もう一度そのプレイヤーのターン */
   extraTurnFor?: number;
+  /** 今のターンが追加ターンか */
+  inExtraTurn?: boolean;
   /** 次のターンのはじめに支払うコスト (逆転撃) */
   debts?: { player: number; cost: number }[];
   /** 直前に選んだ種族・文明・数字 */

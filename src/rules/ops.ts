@@ -193,6 +193,7 @@ export type Cond =
   /** 見せた・見たカードがすべてクリーチャーで、コストが同じ */
   | { c: 'lookedSameCost' }
   /** このターンに自分が攻撃した回数 / 唱えた呪文の数 */
+  | { c: 'inExtraTurn' } // 追加ターン中
   | { c: 'turnCount'; what: 'attacks' | 'spells'; cmp: '>=' | '<=' | '=='; n: number }
 
 export type Op =
