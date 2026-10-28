@@ -6,14 +6,13 @@ import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 import { expandDeck, presetToDeck, splitByFormat, type Deck } from '../lib/deck';
 import { addGame, emptyStats, simulateGame, type SimStats } from '../engine/sim';
 import type { CardDB } from '../lib/cards';
+import { deckReport, downloadBlob, pct, renderResultImage, type ImageShape } from '../lib/resultImage';
 
 interface Option {
   id: string;
   deck: Deck;
   preset: boolean;
 }
-
-const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 1000) / 10}%` : '-');
 
 function DeckSlot({ db, label, opt, active, onClick }: { db: CardDB; label: string; opt: Option | null; active: boolean; onClick: () => void }) {
   return (
@@ -33,19 +32,7 @@ function DeckSlot({ db, label, opt, active, onClick }: { db: CardDB; label: stri
 /** デッキごとの結果 */
 function DeckReport({ db, st, p, name }: { db: CardDB; st: SimStats; p: 0 | 1; name: string }) {
   const q = (1 - p) as 0 | 1;
-  const losses = Object.entries(st.reasons)
-    .map(([r, v]) => [r, v[q]] as const)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1]);
-  const wins = Object.entries(st.reasons)
-    .map(([r, v]) => [r, v[p]] as const)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1]);
-  const fin = Object.entries(st.finishers[p]).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const usage = Object.entries(st.usage[p])
-    .map(([cid, [n, w]]) => ({ name: db.byId.get(cid)?.name ?? cid, n, w }))
-    .sort((a, b) => b.n - a.n)
-    .slice(0, 10);
+  const { wins, losses, finishers: fin, usage } = deckReport(db, st, p);
   const total = st.wins[p] + st.wins[q];
   return (
     <div className="panel col" style={{ flex: '1 1 320px', minWidth: 0 }}>
@@ -172,6 +159,9 @@ export default function TestPlay() {
   const [stats, setStats] = useState<SimStats | null>(null);
   const [running, setRunning] = useState(false);
   const [names, setNames] = useState<[string, string]>(['', '']);
+  // 結果を出したデッキ (画像に使う。対戦の後で選び直しても変わらない)
+  const [resultDecks, setResultDecks] = useState<[Deck, Deck] | null>(null);
+  const [saving, setSaving] = useState<ImageShape | null>(null);
   const cancel = useRef(false);
   if (!db || !user) return null;
 
@@ -203,6 +193,7 @@ export default function TestPlay() {
     cancel.current = false;
     setRunning(true);
     setNames([optA.deck.name, optB.deck.name]);
+    setResultDecks([optA.deck, optB.deck]);
     const st = emptyStats();
     setStats({ ...st });
     const a = expandDeck(optA.deck);
@@ -233,6 +224,21 @@ export default function TestPlay() {
     }
     setStats(structuredClone(st));
     setRunning(false);
+  };
+
+  const saveImage = async (shape: ImageShape) => {
+    if (!stats || !resultDecks) return;
+    setSaving(shape);
+    try {
+      const blob = await renderResultImage(db, stats, resultDecks, shape);
+      const d = new Date();
+      const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+      downloadBlob(blob, `testplay-${stamp}-${shape === 'landscape' ? '16x9' : '9x16'}.png`);
+    } catch (e) {
+      alert(`画像を作れませんでした: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setSaving(null);
+    }
   };
 
   return (
@@ -281,6 +287,17 @@ export default function TestPlay() {
                 結果 {stats.games}/{count}試合{running ? ' (対戦中…)' : ''}
               </b>
               {stats.decided > 0 && <span className="small muted">平均 {Math.round((stats.turnSum / stats.decided) * 10) / 10} ターンで決着</span>}
+              {!running && stats.games > 0 && (
+                <span className="row small" style={{ gap: 6 }}>
+                  結果を画像で保存
+                  <button disabled={!!saving} onClick={() => saveImage('landscape')} title="1920×1080">
+                    {saving === 'landscape' ? '作成中…' : '横長 16:9'}
+                  </button>
+                  <button disabled={!!saving} onClick={() => saveImage('portrait')} title="1080×1920">
+                    {saving === 'portrait' ? '作成中…' : '縦長 9:16'}
+                  </button>
+                </span>
+              )}
             </div>
             <div className="testplay-bar">
               <div className="a" style={{ width: pct(stats.wins[0], stats.games) }}>
