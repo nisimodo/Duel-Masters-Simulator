@@ -172,8 +172,8 @@ export default function TestPlay() {
   // 結果を出したデッキ (画像に使う。対戦の後で選び直しても変わらない)
   const [resultDecks, setResultDecks] = useState<[Deck, Deck] | null>(null);
   // 結果画像のプレビュー (保存ボタンで保存する)
-  const [preview, setPreview] = useState<{ shape: ImageShape; blob: Blob; url: string } | null>(null);
-  const [making, setMaking] = useState<ImageShape | null>(null);
+  const [preview, setPreview] = useState<{ shape: ImageShape; blob: Blob; url: string; missingThumbs: number } | null>(null);
+  const [making, setMaking] = useState<ImageShape | 'reload' | null>(null);
   useEffect(
     () => () => {
       if (preview) URL.revokeObjectURL(preview.url);
@@ -244,12 +244,13 @@ export default function TestPlay() {
     setRunning(false);
   };
 
-  const showImage = async (shape: ImageShape) => {
+  /** reload: カード画像を読み込み直す (長めに待つ) */
+  const showImage = async (shape: ImageShape, reload = false) => {
     if (!stats || !resultDecks) return;
-    setMaking(shape);
+    setMaking(reload ? 'reload' : shape);
     try {
-      const blob = await renderResultImage(db, stats, resultDecks, shape);
-      setPreview({ shape, blob, url: URL.createObjectURL(blob) });
+      const { blob, missingThumbs } = await renderResultImage(db, stats, resultDecks, shape, reload ? 30000 : 10000);
+      setPreview({ shape, blob, url: URL.createObjectURL(blob), missingThumbs });
     } catch (e) {
       alert(`画像を作れませんでした: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -351,10 +352,18 @@ export default function TestPlay() {
               </button>
             ))}
             <span className="grow" />
-            <button className="primary" onClick={saveImage}>
+            <button disabled={!!making} onClick={() => showImage(preview.shape, true)} title="カードの画像を取得し直して、画像を作り直す">
+              {making === 'reload' ? '再取得中…' : '↻ 再読み込み'}
+            </button>
+            <button className="primary" disabled={!!making} onClick={saveImage}>
               保存
             </button>
           </div>
+          {preview.missingThumbs > 0 && (
+            <div className="small caution">
+              カード画像を読み込めなかったため、{preview.missingThumbs === 2 ? '両方のデッキ' : '一方のデッキ'}は文明の色で代わりに表示しています。「再読み込み」でカード画像の取得をもう一度試せます (初めて使うカードは取得に時間がかかることがあります)。
+            </div>
+          )}
           <img className="result-preview" src={preview.url} alt="テストプレイの結果画像" style={preview.shape === 'landscape' ? { width: 'min(860px, 88vw)' } : { height: 'min(70vh, 1200px)' }} />
         </Modal>
       )}

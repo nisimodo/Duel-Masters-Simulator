@@ -43,13 +43,13 @@ const C = {
 const FONT = '"Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif';
 
 /** カード画像を読み込む (別サイトの画像は CORS が許されない時は使わない) */
-function loadImage(src: string): Promise<HTMLImageElement | null> {
+function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     // (画面のカード画像と同じく、参照元を送らない)
     img.referrerPolicy = 'no-referrer';
-    const timer = setTimeout(() => resolve(null), 10000);
+    const timer = setTimeout(() => resolve(null), timeoutMs);
     img.onload = () => {
       clearTimeout(timer);
       resolve(img);
@@ -259,7 +259,17 @@ function drawBar(ctx: CanvasRenderingContext2D, st: SimStats, x: number, y: numb
 }
 
 /** 結果の画像 (PNG) を作る */
-export async function renderResultImage(db: CardDB, st: SimStats, decks: [Deck, Deck], shape: ImageShape): Promise<Blob> {
+export interface ResultImage {
+  blob: Blob;
+  /** カード画像を読み込めず、文明の色で代わりに描いたデッキの数 */
+  missingThumbs: number;
+}
+
+/**
+ * 結果の画像 (PNG) を作る。
+ * thumbTimeoutMs: カード画像を待つ時間 (まだ wsrv.nl が縮めていない画像は時間がかかるので、読み込み直す時は長めに待つ)
+ */
+export async function renderResultImage(db: CardDB, st: SimStats, decks: [Deck, Deck], shape: ImageShape, thumbTimeoutMs = 10000): Promise<ResultImage> {
   const [W, H] = shape === 'landscape' ? [1920, 1080] : [1080, 1920];
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -271,7 +281,7 @@ export async function renderResultImage(db: CardDB, st: SimStats, decks: [Deck, 
       const id = deckThumb(d);
       const card = id ? db.byId.get(id) : undefined;
       // (縮めた画像は別サイトからの読み込みが許されているので、画像に描ける)
-      return card ? loadImage(cardImageSmall(card)) : Promise.resolve(null);
+      return card ? loadImage(cardImageSmall(card), thumbTimeoutMs) : Promise.resolve(null);
     }),
   );
   const sides: Side[] = ([0, 1] as const).map((p) => {
@@ -328,9 +338,10 @@ export async function renderResultImage(db: CardDB, st: SimStats, decks: [Deck, 
   ctx.fillText('デュエマ オンライン ・ CPU同士の対戦結果', W - M, H - M + 8);
   ctx.textAlign = 'left';
 
+  const missingThumbs = decks.filter((d, p) => deckThumb(d) && !thumbs[p]).length;
   return new Promise((resolve, reject) => {
     try {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('画像を作れませんでした'))), 'image/png');
+      canvas.toBlob((b) => (b ? resolve({ blob: b, missingThumbs }) : reject(new Error('画像を作れませんでした'))), 'image/png');
     } catch (e) {
       reject(e);
     }
