@@ -96,7 +96,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; fromCount?: boolean } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; sumCostMin?: number; fromCount?: boolean } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -192,6 +192,10 @@ export type Cond =
   | { c: 'elemEveryCiv' }
   /** 見せた・見たカードがすべてクリーチャーで、コストが同じ */
   | { c: 'lookedSameCost' }
+  /** 「それがすべて〇〇なら」(見せたカードがすべて条件に合う) */
+  | { c: 'lookedAll'; sel: Sel }
+  /** 選んだカードが自分のもの */
+  | { c: 'itMine' }
   /** このターンに自分が攻撃した回数 / 唱えた呪文の数 */
   | { c: 'inExtraTurn' } // 追加ターン中
   | { c: 'turnCount'; what: 'attacks' | 'spells'; cmp: '>=' | '<=' | '=='; n: number }
@@ -315,7 +319,15 @@ export type Op =
   | { op: 'toggleTap'; target: Target }
   /** 相手は呪文を唱えられない */
   | { op: 'lockSpells'; until: 'turn' | 'nextOwnTurn'; costMax?: number; costRef?: boolean }
-  | { op: 'lockSummon'; costMax?: number; costRef?: boolean }
+  | { op: 'lockSummon'; costMax?: number }
+  /** 次の自分のターンのはじめまで、相手は選んだ数字と同じコストのカードを実行できない */
+  | { op: 'lockExec' }
+  /** 次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない */
+  | { op: 'leaveGuard' }
+  /** 選んだカード (it) のうちまだバトルゾーンにあるものを山札の下に置き、その数だけ引く */
+  | { op: 'itToDeckBottomDraw' }
+  /** 「そうしたら」の判定を変える (選ばなかった時など) */
+  | { op: 'setDid'; v: boolean }
   /** このクリーチャーは、選んだカード1枚につきシールドをさらに1つブレイクする */
   | { op: 'breakBonus' }
   /** it の枚数 + plus 枚引く */
@@ -351,7 +363,7 @@ export type Op =
   /** 「この能力は各ターン1度しか使えない」: 使っていれば残りを実行しない */
   | { op: 'oncePerTurn' }
   /** 相手のバトルゾーンのカードの能力を無視する (costRef: 選んだ数字と同じコストだけ) */
-  | { op: 'ignoreAbilities'; until: 'turn' | 'nextOwnTurn'; costRef?: boolean }
+  | { op: 'ignoreAbilities'; until: 'turn' | 'nextOwnTurn'; costRef?: boolean; it?: boolean }
   /** クロスギアをコストを支払わずにクロスする (onto: pick は自分のクリーチャーから自動で選ぶ) */
   | { op: 'crossFree'; gear: Target; onto: 'self' | 'it' | 'pick'; otherOnly?: boolean }
   /** パワーが一番小さい (max: 大きい) クリーチャーを破壊する */

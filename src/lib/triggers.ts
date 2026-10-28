@@ -46,6 +46,9 @@ export type TrigEvent =
   | 'unsealedAll' // このカードの封印がすべてなくなった時
   | 'evolvedOn' // シンカパワー: このクリーチャーが進化する時
   | 'mugetsuUsed' // 自分の「無月の門」能力を使った時
+  | 'attackEnd' // このクリーチャーの攻撃の終わりに
+  | 'otherOwnLeave' // 自分の他のクリーチャーが離れた時
+  | 'oppToGrave' // カードが相手の墓地に置かれた時
   | 'flipped' // このクリーチャーが龍解した時 / 覚醒した時
   | 'ownShieldAdded' // 自分のシールドゾーンにカードが置かれた時
   | 'ownShieldLeft' // カードが自分のシールドゾーンを離れた時
@@ -104,6 +107,9 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   unsealedAll: '封印がすべてなくなった時',
   evolvedOn: '進化する時',
   mugetsuUsed: '「無月の門」能力を使った時',
+  attackEnd: '攻撃の終わり',
+  otherOwnLeave: '自分の他のクリーチャーが離れた時',
+  oppToGrave: '相手の墓地にカードが置かれた時',
   flipped: '龍解・覚醒した時',
   ownShieldAdded: 'シールドゾーンにカードが置かれた時',
   ownShieldLeft: 'シールドゾーンを離れた時',
@@ -265,6 +271,9 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/^(?:各ターン、)?クリーチャーが破壊された時/.test(clause)) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
     if (/^(?:鬼エンド[:：])?クリーチャーが攻撃する時/.test(clause)) (ev.add('ownAttack'), ev.add('oppAttack'));
     if (/^このクリーチャーを表向きにして(?:自分の)?シールドゾーンに(?:加えた|置いた)時/.test(clause)) ev.add('toShieldFaceUp');
+    if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
+    if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
+    if (/^カードが(?:どこからでも)?相手の墓地に置かれた時$|^相手の墓地にカードが置かれた時$/.test(clause)) ev.add('oppToGrave');
     if (/相手がカードを引いた時/.test(clause)) ev.add('oppDraw');
     else if (/自分がカードを引いた時/.test(clause)) ev.add('ownDraw');
     if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
@@ -275,6 +284,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       else ev.add('spellAny');
     }
     if (!ev.size) continue;
+    if (ev.has('attackEnd') && (parseStaticLine(raw) ?? []).some((x) => ['untapAfterAttack', 'winAfterAttack', 'destroyAfterAttack'].includes(x.s))) continue;
     const optional = /てもよい|ことができる/.test(effect);
     // 他のカードを見張る能力の対象 (「自分の(他の)〇〇が出た時」「相手が〇〇を召喚した時」)
     let subject: Sel | undefined;
@@ -291,13 +301,18 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
       const ss = parseSel(spellOf[1].replace(/の$/, '') + '呪文');
       if (ss) subject = { ...ss, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
     }
+    const lv = ev.has('otherOwnLeave') && clause.match(/自分の他の([^、]+?)が(?:バトルゾーンを)?離れた時$/);
+    if (lv && !/^クリーチャー$/.test(lv[1])) {
+      const ls = parseSel(lv[1]);
+      if (ls) subject = { ...ls, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
+    }
     if (manaPut && !/^カード$/.test(manaPut[1])) {
       const ms = parseSel(manaPut[1]);
       if (ms) subject = { ...ms, zones: ['mana'] };
     }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
-    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
+    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /^このクリーチャーが自分の手札にあれば/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
     const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause) ? ('revChange' as const) : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);

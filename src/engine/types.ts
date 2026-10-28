@@ -143,11 +143,12 @@ export interface PlayerState {
   draws?: { turn: number; n: number };
   /** 召喚できないのはこのコスト以下のクリーチャーだけ */
   summonLockCost?: number;
-  /** 召喚できないクリーチャーのコスト (この値と同じもの) */
-  summonLockCostEq?: number;
-  summonLockEqUntil?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
+  /** 「相手のカードの効果によって、自分のクリーチャーは離れない」(このプレイヤーのターンのはじめまで) */
+  leaveGuard?: { until: number };
+  /** 「相手はその数字と同じコストのカードを実行できない」(until のプレイヤーのターンのはじめまで) */
+  execLock?: { cost: number; until: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */
@@ -189,6 +190,8 @@ export type Pending =
       /** 選んだクリーチャーのパワーの合計の上限 */
       sumPowerMax?: number;
       sumCostMax?: number;
+      /** 選んだカードのコストの合計の下限 */
+      sumCostMin?: number;
       exec: Exec;
     }
   | {
@@ -307,7 +310,9 @@ export interface GameState {
   /** バトルの結果でクリーチャーを破壊している最中 */
   inBattleNow?: boolean;
   /** 能力を無視する効果 (by 以外のプレイヤーのバトルゾーンのカード。until のプレイヤーのターンのはじめまで / turn のターンだけ / costEq のコストだけ) */
-  ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number }[];
+  ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number; iid?: number }[];
+  /** 今実行している効果のプレイヤー (カードの効果でない移動では undefined) */
+  effBy?: number;
   /** 最近のカードの移動 (画面のアニメーション用。n は通し番号) */
   moves?: { n: number; iid: number; owner: number; from: ZoneName | 'under' | 'gone'; to: ZoneName | 'under' | 'gone' }[];
   moveSeq?: number;

@@ -334,6 +334,16 @@ export function parseCond(c0: string): Cond | null {
   }
   if (/^そのターン(?:中)?に他の「ファイナル革命」を(?:まだ)?使っていな(?:けれ|け)?$/.test(c)) return { c: 'finalRev' };
   if (/^それがすべてコストが同じクリーチャー(?:であ|で)?$/.test(c)) return { c: 'lookedSameCost' };
+  // 「それがすべてジョーカーズなら」
+  if ((m = c.match(/^それ(?:ら)?がすべて([^、]+?)(?:であ|で)?$/))) {
+    const sel = parseSel(m[1]);
+    if (sel) return { c: 'lookedAll', sel: { ...sel, kind: sel.kind === 'creature' && !/クリーチャー/.test(m[1]) ? 'card' : sel.kind, zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] } };
+  }
+  // 「バトルゾーンまたはマナゾーンに自分のジョーカーズが(合計)4枚以上あれば」「自分の、ジョーカーズとマナゾーンにあるジョーカーズ・カードが合計7つ以上なら」
+  if ((m = c.match(/^(?:バトルゾーンまたはマナゾーン|バトルゾーンとマナゾーン)に自分の([^、]+?)が(?:合計)?(\d+)(?:枚|つ|体)以上あ$/) ?? c.match(/^自分の、?([^、]+?)とマナゾーンにある[^、]+?が合計(\d+)(?:枚|つ)以上(?:あ)?$/))) {
+    const sel = parseSel(m[1].replace(/・カード$/, ''));
+    if (sel) return { c: 'count', sel: { ...sel, owner: 'self', kind: /クリーチャー/.test(m[1]) ? sel.kind : 'card', zones: ['battle', 'mana'] }, cmp: '>=', n: +m[2] };
+  }
   if (/^相手がそのターン中、?マナゾーンのカードをタップせずに、?クリーチャーを出すか呪文を唱えてい$/.test(c)) return { c: 'oppFreePlay' };
   if (/^(?:その|この)クリーチャーがコストを支払わずに出てい$/.test(c)) return { c: 'itFreeEntered' };
   if ((m = c.match(/^それがそのターンに相手が引く(\d+)枚目でな(?:け|い)?$/))) return { c: 'oppDrewGE', n: +m[1] + 1 };
@@ -629,6 +639,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^相手とガチンコ・ジャッジをする$/, '相手とガチンコ・ジャッジする')
     .replace(/マナゾーンの枚数以下のコスト/g, 'マナゾーンにあるカードの枚数以下のコスト')
     .replace(/^自分のクリーチャーを1体と、相手のクリーチャーを1体、バトルゾーンから選(?:んでもよい|ぶ)$/, '自分と相手のクリーチャーを1体ずつ選ぶ')
+    // 「好きな枚数の生徒会組カードを、自分の墓地からマナゾーンに置く」
+    .replace(/^好きな(?:枚数|数)の(.+?)を、?自分の(墓地|手札|マナゾーン)から/, '$1を99枚まで自分の$2から')
     // ドギラゴールデン 「次のターン、相手のパワー1000000以下のクリーチャーは、自分を攻撃できない」
     .replace(/^次の(?:相手の)?ターン、相手の(?:パワー\d+以下の)?クリーチャーは、?自分を攻撃できない$/, '次の自分のターンのはじめまで、相手のクリーチャーは自分を攻撃できない')
     // ミラダンテSF 「光か水のコスト6以下の呪文を、自分の手札から〜唱える」
@@ -1002,7 +1014,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'atTurnEnd', body: [{ op: 'if', cond: { c: 'itAttacked' }, body: [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }] }] },
     ];
   // 「そのカードの、出た時にトリガーする能力を、自分が1つ使ってもよい」
-  if (/^そのカードの、?出た時にトリガーする能力を、?(?:自分が)?(?:1つ|ひとつ)使ってもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
+  if (/^(?:そのカード|それ)の、?出た時にトリガーする能力を、?(?:自分が)?(?:1つ|ひとつ)使ってもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
   // 「相手は自身のパワーが一番小さいクリーチャーすべてに封印を1つずつ付ける」
   if ((mm = s.match(/^相手は自身の(.+?)すべてに封印を(\d+)つずつ付ける$/))) {
     const ssel = parseSel('相手の' + mm[1]);
@@ -1207,10 +1219,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
     if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
     // ドギラゴン逆 「自分はゲームに負けず、相手のカードの効果によって、自分のクリーチャーは離れない」 (今いる自分のクリーチャーに「離れない」を与える)
-    if (/^次の自分のターンのはじめまで、自分はゲームに負けず、(?:相手のカードの効果によって、)?自分のクリーチャーは(?:バトルゾーンを)?離れない$/.test(s))
-      return [{ op: 'noLose', until: 'nextOwnTurn' }, { op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['離れない'], until: 'nextOwnTurn' }];
+    if (/^次の自分のターンのはじめまで、自分はゲームに負けず、相手のカードの効果によって、自分のクリーチャーは(?:バトルゾーンを)?離れない$/.test(s)) return [{ op: 'noLose', until: 'nextOwnTurn' }, { op: 'leaveGuard' }];
     // オーパーツ銃 「相手はその数字と同じコストのカードを実行できない」
-    if (/^次の自分のターンのはじめまで、相手は(?:(?:その|選んだ)数字と同じコスト|〈数字コスト〉)のカードを実行できない$/.test(s)) return [{ op: 'lockSpells', until: 'nextOwnTurn', costRef: true }, { op: 'lockSummon', costRef: true }];
+    if (/^次の自分のターンのはじめまで、相手は(?:(?:その|選んだ)数字と同じコスト|〈数字コスト〉)のカードを実行できない$/.test(s)) return [{ op: 'lockExec' }];
     // ドギラゴン・フォーエバー 「このクリーチャーは、こうしてマナゾーンに置いたカード1枚につきシールドをさらに1つブレイクする」
     if (/^このクリーチャーは、?こうして(?:マナゾーンに置いた|捨てた|墓地に置いた)カード1枚につき(?:、)?シールドをさらに1つブレイクする$/.test(s)) return [{ op: 'breakBonus' }];
     // ドギラゴン天 「コストの合計がその選んだクリーチャーのコスト以下になるよう、〇〇を2体まで、自分の手札から出す」
@@ -1298,6 +1309,47 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // Dスイッチ 「このD2フィールドをゲーム中で一度上下逆さまにする」
   if (/^この(D2|DN|D)?フィールドをゲーム中で一度上下逆さまにする$/.test(s)) return [{ op: 'oncePerGame' }];
+  // 勝熱と弾丸と自由の決断 「このターン、自分のクリーチャー1体は相手プレイヤーを攻撃できる」
+  if (/^このターン、自分のクリーチャー1体は(?:相手)?プレイヤーを攻撃できる$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '相手プレイヤーを攻撃できるようにする自分のクリーチャーを選ぶ' },
+      { op: 'grant', target: { ref: 'it' }, kws: ['プレイヤー攻撃可'], until: 'turn' },
+    ];
+  // 「このターン、そのクリーチャーの能力をすべて無視する」
+  if (/^(?:この|その)ターン、(?:その|選んだ)クリーチャーの能力(?:を)?すべて(?:を)?無視する$/.test(s)) return [{ op: 'ignoreAbilities', until: 'turn', it: true }];
+  // モウジャキンガ 「こうして多色カードを捨てたら、このクリーチャーをアンタップする」
+  if ((mm = s.match(/^こうして(.+?)を捨てたら、(.+)$/))) {
+    const sel = parseSel(mm[1], { zones: ['grave'] });
+    const body = sel && sentence(mm[2], ctx);
+    if (sel && body) return [{ op: 'if', cond: { c: 'itMatches', sel: { ...sel, kind: /クリーチャー/.test(mm[1]) ? sel.kind : 'card' } }, body }];
+  }
+  // メラベンチャー・ザ・ジョニー 「このターンの終わりに、それらを好きな順序で山札の下に置き、こうして下に置いたクリーチャー1体につき、カードを1枚引く」
+  if (/^このターンの終わりに、それらを(?:好きな順序で)?山札の(?:一番)?下に置き、こうして(?:山札の)?下に置いたクリーチャー1体につき、カードを1枚引く$/.test(s)) return [{ op: 'atTurnEnd', body: [{ op: 'itToDeckBottomDraw' }] }];
+  // 燃えるデット・ソード 「相手はバトルゾーン、マナゾーン、手札から自身のカードを1枚ずつ選び、好きな順序で山札の一番下に置く」
+  if (/^相手はバトルゾーン、マナゾーン、手札から自身のカードを1枚(?:ずつ)?選び、(?:好きな順序で)?(?:自身の)?山札の(?:一番)?下に置く$/.test(s))
+    return (['battle', 'mana', 'hand'] as const).flatMap((z): Op[] => [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: [z], kind: 'card' }, count: { n: 1, upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `山札の下に置くカードを${({ battle: 'バトルゾーン', mana: 'マナゾーン', hand: '手札' } as const)[z]}から選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+    ]);
+  // 最終兵ッキー 「そのクリーチャーの持ち主はそれを自身の山札の一番下に置き、カードを1枚引く」
+  if ((mm = s.match(/^そのクリーチャーの持ち主はそれを自身の山札の(?:一番)?下に置き、カードを(\d+)枚引く$/))) return [{ op: 'move', target: { ref: 'it' }, to: 'deckBottom' }, { op: 'draw', n: +mm[1], who: 'itOwner' }];
+  // 「選んだクリーチャー以下のコストを持つクリーチャーを1体、その持ち主は自身の手札からバトルゾーンに出してもよい」
+  if (/^(?:その後、)?選んだクリーチャー以下のコストを持つクリーチャーを1体、その持ち主は自身の手札からバトルゾーンに出してもよい$/.test(s)) {
+    const pick = (owner: 'self' | 'opp'): Op[] => [
+      { op: 'choose', target: { ref: 'sel', sel: { owner, zones: ['hand'], kind: 'creature', costLeIt: true }, count: { n: 1, upTo: true }, chooser: owner }, purpose: 'benefit', prompt: '手札からバトルゾーンに出すクリーチャーを選ぶ (出さなくてもよい)' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+    return [{ op: 'if', cond: { c: 'itMine' }, body: pick('self'), else: pick('opp') }];
+  }
+  // Dr.富士山ッピング 「自分のジョーカーズ・クリーチャーをコストの合計が7以上になるように好きな数手札に戻してもよい」
+  if ((mm = s.match(/^自分の([^、]+?)をコストの合計が(\d+)以上になるように好きな数(?:、)?手札に戻す$/))) {
+    const sel = parseSel('自分の' + mm[1]);
+    if (sel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel, count: { n: 99, upTo: true, sumCostMin: +mm[2] }, chooser: 'self' }, purpose: 'sacrifice', prompt: `手札に戻す${mm[1]}を、コストの合計が${mm[2]}以上になるように選ぶ` },
+        { op: 'if', cond: { c: 'itCount', cmp: '>=', n: 1 }, body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }], else: [{ op: 'setDid', v: false }] },
+      ];
+  }
   // 卍 新世壊 卍 「(唱えた呪文を) 唱えた後で墓地に置くかわりに、このフィールドの下に置いてカードを1枚引く」
   if ((mm = s.match(/^唱えた後で?、?墓地に置くかわりに、?この(?:フィールド|クリーチャー|カード)の下に置いて、?カードを(\d+)枚引く$/)))
     return [{ op: 'if', cond: { c: 'itMatches', sel: { owner: 'self', zones: ['grave'], kind: 'spell' } }, body: [{ op: 'stackUnder', what: 'it' }, { op: 'draw', n: +mm[1], who: 'self' }] }];
@@ -2714,6 +2766,59 @@ export function parseEffect(text: string): Program {
   if (fr) {
     const inner = parseEffect(fr[2]);
     return { ...inner, ops: inner.ops.length ? [{ op: 'if', cond: { c: 'finalRev', ...(fr[1] === 'ゲーム' ? { game: true } : {}) }, body: inner.ops }] : [] };
+  }
+  // 勝敵逆夢王 モウジャキンガ 「相手の、シールド1つとクリーチャー1体を選ぶ。その後、相手の手札を1枚見ないで選ぶ。相手はそれらをすべて墓地に置く」
+  if (/^相手の、シールド1つとクリーチャー1体を選ぶ。その後、相手の手札を1枚見ないで選ぶ。相手はそれらをすべて墓地に置く。?$/.test(normText(text).replace(/\s+/g, '')))
+    return {
+      ops: [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '墓地に置く相手のシールドを選ぶ' },
+        { op: 'save' },
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '墓地に置く相手のクリーチャーを選ぶ' },
+        { op: 'move', target: { ref: 'saved' }, to: 'grave' },
+        { op: 'move', target: { ref: 'it' }, to: 'grave' },
+        { op: 'discard', who: 'opp', count: { n: 1, upTo: false }, how: 'random' },
+      ],
+      complete: true,
+      unparsed: [],
+    };
+  // キング・ザ・スロットン7 「それがすべてジョーカーズなら、その中からクリーチャーを1体、バトルゾーンに出す。そのターン、そのクリーチャーは、相手プレイヤーを攻撃できる」(攻撃できるのは出したクリーチャーだけ)
+  {
+    const ks = normText(text).replace(/\s+/g, '').match(/^自分の山札の上から(\d+)枚を表向きにする。それがすべて([^、。]+?)なら、その中からクリーチャーを1体、バトルゾーンに出す。そのターン、そのクリーチャーは、?相手プレイヤーを攻撃できる。残りのカードを好きな順序で自分の山札の一番下に置く。?$/);
+    const ksel = ks && parseSel(ks[2]);
+    if (ks && ksel)
+      return {
+        ops: [
+          { op: 'top', n: +ks[1], to: 'reveal', who: 'self' },
+          {
+            op: 'if',
+            cond: { c: 'lookedAll', sel: { ...ksel, kind: 'card', zones: ['deck', 'hand', 'grave', 'mana', 'shield', 'battle'] } },
+            body: [
+              { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'creature' }, count: { n: 1, upTo: false } }, purpose: 'benefit', prompt: 'バトルゾーンに出すクリーチャーを選ぶ' },
+              { op: 'play', target: { ref: 'it' }, mode: 'put' },
+              { op: 'grant', target: { ref: 'it' }, kws: ['プレイヤー攻撃可'], until: 'turn' },
+            ],
+          },
+          { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // キング・ザ・スロットン7 / 7777777 「相手は自身の山札の上から3枚を表向きにし、自分はその中から1枚を選ぶ。その選んだカードとコストが同じ相手のクリーチャーをすべてと、表向きにした3枚を、相手は好きな順序で自身の山札の一番下に置く」
+  {
+    const sv = normText(text).replace(/\s+/g, '').match(/^相手は自身の山札の上から(\d+)枚を表向きにし、自分はその中から1枚を選ぶ。その選んだカードとコストが同じ相手のクリーチャーをすべてと、表向きにした\d+枚を、相手は好きな順序で自身の山札の一番下に置く。?$/);
+    if (sv)
+      return {
+        ops: [
+          { op: 'top', n: +sv[1], to: 'reveal', who: 'opp' },
+          { op: 'choose', target: { ref: 'looked', count: { n: 1, upTo: false } }, purpose: 'neutral', prompt: 'コストを比べるカードを1枚選ぶ' },
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costEqIt: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+          { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+          { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
   }
   // 「自分の手札から/墓地から呪文を唱えた時」(誘発の側で印を付ける): 効果全体をその条件で
   const castFrom = text.match(/^〈(手札|墓地)から唱えた〉([\s\S]*)$/);

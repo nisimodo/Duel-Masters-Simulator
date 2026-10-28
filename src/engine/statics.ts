@@ -256,7 +256,7 @@ export function isSealed(s: GameState, iid: number): boolean {
 export function abilitiesIgnored(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   if (!c || c.zone !== 'battle' || !s.ignoreAbil?.length) return false;
-  return s.ignoreAbil.some((x) => x.by !== c.owner && (x.turn == null || x.turn === s.turn) && (x.costEq == null || (L(c.cid)?.faces[c.face]?.cost ?? -1) === x.costEq));
+  return s.ignoreAbil.some((x) => x.by !== c.owner && (x.iid == null || x.iid === iid) && (x.turn == null || x.turn === s.turn) && (x.costEq == null || (L(c.cid)?.faces[c.face]?.cost ?? -1) === x.costEq));
 }
 
 /** G・リンクしているか (一番上のカード / 下のカードどちらでも) */

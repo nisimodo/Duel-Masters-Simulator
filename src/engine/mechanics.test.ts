@@ -186,6 +186,7 @@ const db = buildDB(
     cr('mach', 2, 3000, ['マッハファイター']),
     cr('rc', 5, 9000, ['革命チェンジ：火のクリーチャー（自分の火のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）']),
     cr('frA', 5, 5000, ['革命チェンジ：火のクリーチャー', 'ファイナル革命：このクリーチャーが「革命チェンジ」によって出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。その後、カードを１枚引く。']),
+    cr('atkEnd', 1, 5000, ['スピードアタッカー', 'このクリーチャーの攻撃の終わりに、カードを１枚引く。']),
     cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
@@ -1609,6 +1610,51 @@ describe('named mechanics', () => {
       used.players[0].finalRevTurn = -1;
       const u = settle(act(used, 0, { t: 'play', iid: b, face: 0, pay: freeMana(used, 0, 1) }));
       expect(u.players[0].deck.length).toBe(deck);
+    });
+  });
+
+  describe('相手のカードの効果によって離れない・コストを指定した実行の禁止・攻撃の終わり', () => {
+    it('相手の効果では離れず、自分の効果・バトルでは離れる', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'big', zone: 'battle' },
+      ]);
+      const v = find(s, 0, 'battle', 'vanilla')!;
+      s.players[0].leaveGuard = { until: 0 };
+      startExec(s, L, 1, find(s, 1, 'battle', 'big')!, programOf('相手のクリーチャーを1体破壊する。').ops, 'test');
+      expect(s.cards[v].zone).toBe('battle');
+      startExec(s, L, 0, v, programOf('自分のクリーチャーを1体破壊する。').ops, 'test');
+      expect(s.cards[v].zone).toBe('grave');
+      // バトル (カードの効果ではない) では破壊される
+      let s2 = setup([
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'big', zone: 'battle' },
+      ]);
+      const v2 = find(s2, 0, 'battle', 'vanilla')!;
+      s2.players[0].leaveGuard = { until: 0 };
+      battle(s2, L, find(s2, 1, 'battle', 'big')!, v2);
+      expect(s2.cards[v2].zone).toBe('grave');
+    });
+
+    it('選んだ数字と同じコストのカードは、効果でも実行できない', () => {
+      const s = setup([{ p: 0, cid: 'vanilla', zone: 'hand' }]);
+      const h = find(s, 0, 'hand', 'vanilla')!;
+      s.players[0].execLock = { cost: 1, until: 1 };
+      expect(applyAction(s, 0, { t: 'play', iid: h, face: 0, pay: freeMana(s, 0, 1) }, L).error).toMatch(/実行できません/);
+      s.players[0].execLock = { cost: 2, until: 1 };
+      expect(applyAction(s, 0, { t: 'play', iid: h, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeFalsy();
+    });
+
+    it('「このクリーチャーの攻撃の終わりに」', () => {
+      let s = setup([{ p: 0, cid: 'atkEnd', zone: 'battle' }]);
+      const a = find(s, 0, 'battle', 'atkEnd')!;
+      const deck = s.players[0].deck.length;
+      s = act(s, 0, { t: 'attack', attacker: a, player: 1 });
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[1].shield.slice(0, top.count) } : top.kind === 'trigger' ? { t: 'trigger', use: false } : top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : { t: 'resolve', use: true });
+      }
+      expect(deck - s.players[0].deck.length).toBe(1);
     });
   });
 });

@@ -309,6 +309,11 @@ export function moveCard(
   const card = L(c.cid);
   const from = c.zone;
   const prevFace = c.face;
+  // 「相手のカードの効果によって、自分のクリーチャーは離れない」(バトルやルールによる移動、自分の効果では離れる)
+  if (from === 'battle' && to !== 'battle' && s.effBy != null && s.effBy !== c.owner && s.players[c.owner].leaveGuard && !s.players[c.owner].lost) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は相手のカードの効果では離れない`);
+    return 'battle';
+  }
   // 「相手のクリーチャーがバトルゾーンに出る時、かわりにマナゾーン/墓地へ」
   if (to === 'battle' && from !== 'battle' && !opts.noReplace) {
     const r = enterReplaceOf(s, L, iid, opts);
@@ -626,6 +631,7 @@ export function moveCard(
     if (from === 'battle' && dest !== 'battle') {
       const destroyed = dest === 'grave';
       fireSelf(s, L, iid, prevFace, destroyed ? ['destroyed', 'leave'] : ['leave']);
+      fireWatchers(s, L, c.owner, iid, 'otherOwnLeave', null);
       // クロスギア・ドラグハート・オーラの「これを付けたクリーチャーが破壊された時」
       if (destroyed) for (const u of under) if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossDestroyed']);
       if (destroyed) {
@@ -635,7 +641,7 @@ export function moveCard(
     }
     if (dest === 'grave' && from !== 'grave') {
       fireSelf(s, L, iid, prevFace, ['toGrave']);
-      fireWatchers(s, L, c.owner, null, 'ownToGrave', null, iid);
+      fireWatchers(s, L, c.owner, null, 'ownToGrave', 'oppToGrave', iid);
     }
     if (dest === 'battle' && from === 'grave') fireWatchers(s, L, c.owner, null, 'ownGraveToBattle', null, iid);
     // 進化クリーチャーの下から墓地に置かれたカードの「このカードが墓地に置かれた時」
@@ -977,6 +983,19 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
   }
 }
 
+/** 「コストの合計がN以上になるように選ぶ」が、今のバトルゾーンで届くか (届かない時は手札の能力を誘発させない) */
+function sumCostReachable(s: GameState, L: Lookup, p: number, ops: import('../rules/ops').Op[]): boolean {
+  for (const o of ops) {
+    if (o.op === 'choose' && o.target.ref === 'sel' && o.target.count && 'sumCostMin' in o.target.count && o.target.count.sumCostMin != null) {
+      const sel = o.target.sel;
+      const pool = (sel.owner === 'opp' ? s.players.filter((_, i) => i !== p) : [s.players[p]]).flatMap((pl) => sel.zones.flatMap((z) => (pl[z as 'battle'] as number[] | undefined) ?? []));
+      return pool.filter((i) => matchesSel(s, L, i, sel)).reduce((a, i) => a + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) >= o.target.count.sumCostMin;
+    }
+    if ((o.op === 'optional' || o.op === 'if') && !sumCostReachable(s, L, p, o.body)) return false;
+  }
+  return true;
+}
+
 /** 手札にあるカードの「〜時、このカードを手札から使ってもよい」 */
 function fireHand(s: GameState, L: Lookup, actor: number, ownEv: TrigEvent | null, oppEv: TrigEvent | null, subject: number | null) {
   s.players.forEach((pl, p) => {
@@ -989,6 +1008,7 @@ function fireHand(s: GameState, L: Lookup, actor: number, ownEv: TrigEvent | nul
       card?.faces.forEach((f, fi) => {
         for (const spec of f.triggers ?? []) {
           if (!spec.fromHand || !spec.events.includes(ev) || (inGrave && !spec.fromGrave)) continue;
+          if (!sumCostReachable(s, L, p, programOf(spec.effect).ops)) continue;
           if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
           pushAbility(s, L, h, fi, spec, ev, subject);
         }
@@ -1263,7 +1283,10 @@ function startTurn(s: GameState, L: Lookup) {
       pl2.summonLockUntil = undefined;
       pl2.summonLockCost = undefined;
     }
-  for (const pl2 of s.players) if (pl2.summonLockCostEq != null && pl2.summonLockEqUntil === p) pl2.summonLockCostEq = pl2.summonLockEqUntil = undefined;
+  for (const pl2 of s.players) {
+    if (pl2.execLock?.until === p) pl2.execLock = undefined;
+    if (pl2.leaveGuard?.until === p) pl2.leaveGuard = undefined;
+  }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
   for (const pl2 of s.players) if (pl2.noLose?.until === p) pl2.noLose = undefined;
   // 「次の自分のターンのはじめに〜」
@@ -1472,6 +1495,8 @@ function advance(s: GameState, L: Lookup): boolean {
         log(s, a.owner, `攻撃の終わりに ${q(nameOf(s, L, a.attacker))} を破壊`);
         moveCard(s, L, a.attacker, 'grave');
       }
+      // 「このクリーチャーの攻撃の終わりに、〜」
+      if (ac?.zone === 'battle') fireSelf(s, L, a.attacker, ac.face, ['attackEnd']);
       // キリフダッシュ: シールドをブレイクした攻撃の終わりに召喚できる
       if (a.broke) offerKirifu(s, L, a.owner);
       // 「攻撃の後、〜」を実行
@@ -1587,7 +1612,11 @@ function checkState(s: GameState, L: Lookup) {
       const f = faceOf(s, L, iid);
       if (f?.isCreature && f.power != null && power(s, L, iid) <= 0) {
         log(s, s.cards[iid].owner, `${q(nameOf(s, L, iid))} はパワー0以下で破壊された`);
+        // (ルールによる破壊。カードの効果ではない)
+        const prevBy = s.effBy;
+        s.effBy = undefined;
         moveCard(s, L, iid, 'grave');
+        s.effBy = prevBy;
       }
     }
   }
@@ -1839,6 +1868,17 @@ function blockStep(s: GameState, L: Lookup) {
 }
 
 export function battle(s: GameState, L: Lookup, att: number, def: number) {
+  // バトルで破壊されるのはカードの効果ではない
+  const prevBy = s.effBy;
+  s.effBy = undefined;
+  try {
+    battleInner(s, L, att, def);
+  } finally {
+    s.effBy = prevBy;
+  }
+}
+
+function battleInner(s: GameState, L: Lookup, att: number, def: number) {
   const blocking = s.attack?.blocked === def;
   const pa = power(s, L, att, s.attack?.attacker === att, { inBattle: true, foe: def });
   const pd = power(s, L, def, false, { inBattle: true, blocking, foe: att });
@@ -2320,7 +2360,10 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   if (a.gzero) {
     const g = statics.find((x) => x.s === 'gzero');
     if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
-    const n = (g.cond.c === 'countAtLeast' && g.cond.sel.owner !== 'self' ? s.players.flatMap((pl) => pl.battle) : s.players[p].battle).filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
+    // 条件のゾーン (「バトルゾーンまたはマナゾーンに」) にあるカードを数える
+    const zones = g.cond.c === 'countAtLeast' ? (g.cond.sel.zones.length ? g.cond.sel.zones : ['battle']) : ['battle'];
+    const owners = g.cond.c === 'countAtLeast' && g.cond.sel.owner !== 'self' ? s.players : [s.players[p]];
+    const n = owners.flatMap((pl) => zones.flatMap((z) => (pl[z as 'battle'] as number[] | undefined) ?? [])).filter((b) => g.cond.c === 'countAtLeast' && matchesSel(s, L, b, g.cond.sel)).length;
     if (g.cond.c === 'countAtLeast' && n < g.cond.n) return 'G・ゼロの条件を満たしていません';
     const sc = s.players[p].spellsCast;
     if (g.cond.c === 'spellsThisTurn' && !(sc?.turn === s.turn && sc.n >= g.cond.n)) return 'G・ゼロの条件を満たしていません';
@@ -2379,6 +2422,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
+  // 「相手はその数字と同じコストのカードを実行できない」(効果で使う時も)
+  if (s.players[p].execLock && (face.cost ?? 0) === s.players[p].execLock.cost) return `効果により、コスト${face.cost}のカードは実行できません`;
   const fromOk =
     c.zone === 'hand' ||
     c.zone === 'partner' ||
@@ -2472,7 +2517,6 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   }
   if (face.isCreature && !a.force && (face.power ?? 0) <= Math.max(-1, ...activeStatics(s, L).map((x) => (x.spec.s === 'summonPowerLock' ? x.spec.powerMax : -1)))) return '効果により、このパワーのクリーチャーは召喚できません';
   if (face.isCreature && !a.force && s.players[p].summonLockUntil != null && (s.players[p].summonLockCost == null || (face.cost ?? 0) <= s.players[p].summonLockCost)) return '効果により、クリーチャーを召喚できません';
-  if (face.isCreature && !a.force && s.players[p].summonLockCostEq != null && (face.cost ?? 0) === s.players[p].summonLockCostEq) return `効果により、コスト${s.players[p].summonLockCostEq}のクリーチャーは召喚できません`;
   if (face.isCreature && !a.force && !a.free && (face.statics ?? []).some((x) => x.s === 'noSummon' && (!x.fromHand || c.zone === 'hand'))) return 'このクリーチャーは召喚できません';
   if (face.isCreature && !a.force && activeStatics(s, L).some((x) => x.spec.s === 'noSummonSel' && matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] }))) return '能力により、このクリーチャーは召喚できません';
   const onlyIf = (face.statics ?? []).find((x) => x.s === 'summonOnlyIf');
@@ -2849,6 +2893,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         if (picks.length < top.min || picks.length > top.max) return top.min === top.max ? `${top.min}枚選んでください` : `${top.min}～${top.max}枚選んでください`;
         if (top.sumPowerMax != null && picks.reduce((a2, i) => a2 + power(s, L, i), 0) > top.sumPowerMax) return `パワーの合計が${top.sumPowerMax}以下になるように選んでください`;
         if (top.sumCostMax != null && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) > top.sumCostMax) return `コストの合計が${top.sumCostMax}以下になるように選んでください`;
+        if (top.sumCostMin != null && picks.length && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) < top.sumCostMin) return `コストの合計が${top.sumCostMin}以上になるように選んでください`;
         s.pending.shift();
         resumeExec(s, L, top.exec, { picks });
       } else if (top.mode === 'yesno') {

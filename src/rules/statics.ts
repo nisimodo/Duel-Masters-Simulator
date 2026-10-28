@@ -689,9 +689,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sel = sel0 && { ...sel0, owner: m[1] ? sel0.owner : ('any' as const) };
     if (sel) return [{ s: 'gzero', cond: { c: 'countAtLeast', sel, n: m[3] ? +m[3] : 1 } }];
   }
-  if ((m = t0.match(/^G・ゼロ[:：](.+?)、このクリーチャーをコストを支払わずに召喚してもよい$/))) {
+  if ((m = t0.match(/^G・ゼロ[:：](.+?)、(?:このクリーチャーをコストを支払わずに召喚|この呪文をコストを支払わずに唱え)てもよい$/))) {
     const r = parseCondPrefix(m[1] + '、_');
-    if (r?.cond && r.rest === '_') return [{ s: 'gzero', cond: r.cond }];
+    // 「自分のジョーカーズが」(カード) はクリーチャー以外も数える
+    const cond = r?.cond && r.cond.c === 'countAtLeast' && !/クリーチャー/.test(m[1]) && r.cond.sel.kind === 'creature' ? { ...r.cond, sel: { ...r.cond.sel, kind: 'card' as const } } : r?.cond;
+    if (cond && r?.rest === '_') return [{ s: 'gzero', cond }];
     return null;
   }
   if (/^(マナゾーンに置く時、)?このカードはタップして(マナゾーンに)?置く$/.test(t0) || /^この(カード|クロスギア|クリーチャー|呪文)は、?マナゾーンにタップして置かれる$/.test(t0)) return [{ s: 'tapMana' }];

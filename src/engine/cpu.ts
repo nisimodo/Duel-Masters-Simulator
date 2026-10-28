@@ -807,6 +807,27 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   };
   const ranked = [...top.options].sort((a, b) => (casting ? castScore(b) - castScore(a) : score(b) - score(a)));
   const n = top.purpose === 'sacrifice' ? top.min : top.max;
+  if (top.sumCostMin != null) {
+    // コストの合計の下限: 価値の低い順に、合計が届くまで選ぶ (届かなければ選ばない)
+    const picks: number[] = [];
+    let sum = 0;
+    for (const i of [...top.options].sort((a, b) => ownValue(s, L, a) - ownValue(s, L, b))) {
+      if (sum >= top.sumCostMin || picks.length >= top.max) break;
+      picks.push(i);
+      sum += L(s.cards[i].cid)?.faces[0]?.cost ?? 0;
+    }
+    return { t: 'choose', picks: sum >= top.sumCostMin ? picks : [] };
+  }
+  // 「その中から1枚を選ぶ。その選んだカードとコストが同じ相手のクリーチャーを〜」: 一番多く巻き込めるコストのカード
+  const nx = top.exec.ops[1];
+  if (top.purpose === 'neutral' && nx?.op === 'choose' && nx.target.ref === 'sel' && nx.target.sel.costEqIt) {
+    const sel = nx.target.sel;
+    const hits = (i: number) => {
+      const co = L(s.cards[i].cid)?.faces[0]?.cost;
+      return s.players.flatMap((pl, o) => (o === p ? [] : pl.battle)).filter((b) => matchesSel(s, L, b, { ...sel, costEqIt: undefined }) && faceOf(s, L, b)?.cost === co).reduce((a, b) => a + 1 + threatOf(s, L, b), 0);
+    };
+    return { t: 'choose', picks: [...top.options].sort((a, b) => hits(b) - hits(a)).slice(0, Math.max(1, top.min)) };
+  }
   if (top.sumCostMax != null) {
     // コストの合計の上限内で、価値の高い順に詰める
     const picks: number[] = [];

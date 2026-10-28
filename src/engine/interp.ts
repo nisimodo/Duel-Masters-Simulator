@@ -244,6 +244,12 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return evalCond(s, L, ex, c.a) || evalCond(s, L, ex, c.b);
     case 'not':
       return !evalCond(s, L, ex, c.a);
+    case 'lookedAll': {
+      const ids = ex.looked.length ? ex.looked : ex.it;
+      return ids.length > 0 && ids.every((i) => matchesSel(s, L, i, c.sel));
+    }
+    case 'itMine':
+      return ex.it.length > 0 && s.cards[ex.it[0]]?.owner === ex.player;
     case 'lookedSameCost': {
       const ids = ex.looked.length ? ex.looked : ex.it;
       const fs = ids.map((i) => L(s.cards[i].cid)?.faces[s.cards[i].face]);
@@ -535,11 +541,14 @@ function ask(s: GameState, ex: Exec, p: Omit<Extract<GameState['pending'][number
 
 export function runExec(s: GameState, L: Lookup, ex: Exec) {
   const prevSpell = s.curSpellBy;
+  const prevBy = s.effBy;
   s.curSpellBy = ex.spellBy;
+  s.effBy = ex.player;
   try {
     runExecInner(s, L, ex);
   } finally {
     s.curSpellBy = prevSpell;
+    s.effBy = prevBy;
   }
 }
 
@@ -639,6 +648,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           purpose: op.purpose,
           sumPowerMax: cnt.sumPowerMax,
           // 「コストの合計がその選んだクリーチャーのコスト以下になるよう」
+          sumCostMin: cnt.sumCostMin,
           sumCostMax: cnt.sumCostIt ? (L(s.cards[ex.it[0] ?? -1]?.cid ?? '')?.faces[0]?.cost ?? 0) : cnt.sumCostMax,
         });
         return;
@@ -1308,15 +1318,6 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'lockSummon': {
-        if (op.costRef) {
-          // 「相手はその数字と同じコストのカードを実行できない」(クリーチャーの側)
-          for (const o of opps(s, ex.player)) {
-            s.players[o].summonLockCostEq = s.chosenValue?.num ?? -1;
-            s.players[o].summonLockEqUntil = ex.player;
-          }
-          log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${s.chosenValue?.num ?? '?'}のクリーチャーを召喚できない`);
-          break;
-        }
         for (const o of opps(s, ex.player)) {
           const pl = s.players[o];
           // すでにすべて召喚できないなら、コストの制限で緩めない
@@ -1324,6 +1325,29 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           pl.summonLockUntil = ex.player;
         }
         log(s, ex.player, `次の自分のターンのはじめまで、相手は${op.costMax != null ? `コスト${op.costMax}以下の` : ''}クリーチャーを召喚できない`);
+        break;
+      }
+      case 'lockExec': {
+        const cost = s.chosenValue?.num ?? -1;
+        for (const o of opps(s, ex.player)) s.players[o].execLock = { cost, until: ex.player };
+        log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${cost}のカードを実行できない`);
+        break;
+      }
+      case 'leaveGuard': {
+        s.players[ex.player].leaveGuard = { until: ex.player };
+        log(s, ex.player, '次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない');
+        break;
+      }
+      case 'setDid':
+        ex.did = op.v;
+        break;
+      case 'itToDeckBottomDraw': {
+        const back = ex.it.filter((i) => s.cards[i]?.zone === 'battle');
+        for (const i of back) moveCard(s, L, i, 'deck', { pos: 'bottom' });
+        if (back.length) {
+          const d = drawCards(s, ex.player, back.length);
+          log(s, ex.player, `${back.length}体を山札の下に置き、カードを${d}枚引いた`);
+        }
         break;
       }
       case 'breakBonus': {
@@ -1392,7 +1416,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'ignoreAbilities': {
-        (s.ignoreAbil ??= []).push({ by: ex.player, ...(op.until === 'turn' ? { turn: s.turn } : { until: ex.player }), ...(op.costRef ? { costEq: s.chosenValue?.num ?? -1 } : {}) });
+        if (op.it && !ex.it.length) break;
+        (s.ignoreAbil ??= []).push({ by: ex.player, ...(op.until === 'turn' ? { turn: s.turn } : { until: ex.player }), ...(op.costRef ? { costEq: s.chosenValue?.num ?? -1 } : {}), ...(op.it ? { iid: ex.it[0] } : {}) });
         log(s, ex.player, `${op.until === 'turn' ? 'このターン' : '次の自分のターンのはじめまで'}、相手の${op.costRef ? `コスト${s.chosenValue?.num ?? '?'}の` : ''}カードの能力を無視する`);
         break;
       }
