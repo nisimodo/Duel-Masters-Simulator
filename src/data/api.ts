@@ -219,7 +219,7 @@ export async function removeCpu(room: Room, id: string) {
 }
 
 /** 開いているルームの一覧 (オンラインのメンバーがいて、古すぎないもの) */
-export function subscribeRooms(cb: (rooms: Room[]) => void) {
+export function subscribeRooms(cb: (rooms: Room[]) => void, onError?: (e: Error) => void) {
   return backend.subscribe<Record<string, Partial<Room>>>('rooms', (v) => {
     const now = Date.now();
     const list = Object.entries(v || {})
@@ -227,7 +227,7 @@ export function subscribeRooms(cb: (rooms: Room[]) => void) {
       .filter((r): r is Room => !!r && Object.values(r.members).some((m) => m.online) && now - r.createdAt < STALE_MS * 4);
     list.sort((a, b) => b.createdAt - a.createdAt);
     cb(list);
-  });
+  }, onError);
 }
 
 export function subscribeRoom(key: string, cb: (r: Room | null) => void) {

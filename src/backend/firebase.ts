@@ -76,8 +76,15 @@ export function createFirebaseBackend(config: FirebaseOptions): Backend {
       );
       return { committed: res.committed, value: res.snapshot.val() };
     },
-    subscribe(path, cb) {
-      return onValue(r(path), (s) => cb(s.exists() ? s.val() : null));
+    subscribe(path, cb, onError) {
+      return onValue(
+        r(path),
+        (s) => cb(s.exists() ? s.val() : null),
+        (e) => {
+          console.error(`読み込めませんでした: ${path}`, e);
+          onError?.(e);
+        },
+      );
     },
     onChildAdded(path, cb) {
       return onChildAdded(query(r(path), orderByKey()), (s) => cb(s.key!, s.val()));

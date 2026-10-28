@@ -64,6 +64,8 @@ GitHub Pages (サイトの置き場所) + Firebase 無料プラン (ログイン
 3. **Authentication → 設定 → 承認済みドメイン** に `<あなたのユーザー名>.github.io` を追加。
 4. **Realtime Database** → データベースを作成 → 場所は `asia-southeast1 (シンガポール)` など → **ロックモード** で開始。
 5. Realtime Database の **ルール** タブを開き、このフォルダの `database.rules.json` の中身を貼り付けて「公開」。
+   `database.rules.json` は機能の追加で変わることがあります。更新した時は、同じように貼り直して「公開」してください
+   (例: ルーム一覧には `rooms` 全体の読み取りの許可が必要です。古いルールのままだと一覧を読み込めません)。
 6. プロジェクトの設定 (⚙) → マイアプリ → ウェブアプリ (`</>`) を追加 → 表示された `firebaseConfig` の値を
    `src/firebaseConfig.ts` に貼り付ける (`databaseURL` も忘れずに。Realtime Database の画面上部に表示されている URL です)。
 7. 変更を commit して push すると、オンラインモードで公開されます。

@@ -24,7 +24,8 @@ export interface Backend {
   remove(path: string): Promise<void>;
   newKey(path: string): string;
   transaction<T>(path: string, fn: (cur: T | null) => T | null | undefined): Promise<TxResult<T>>;
-  subscribe<T = unknown>(path: string, cb: (v: T | null) => void): () => void;
+  /** onError: 読めなかった時 (権限がない等) */
+  subscribe<T = unknown>(path: string, cb: (v: T | null) => void, onError?: (e: Error) => void): () => void;
   /** 子要素が追加された時に通知 (数値キーは昇順) */
   onChildAdded<T = unknown>(path: string, cb: (key: string, v: T) => void): () => void;
   /** 切断時にこのパスへ値をセット */

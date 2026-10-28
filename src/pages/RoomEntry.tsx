@@ -13,13 +13,32 @@ function ago(t: number) {
 /** 開いているルームの一覧。押すとそのルームに入る */
 function RoomList({ mode, uid }: { mode: DeckType; uid: string }) {
   const [rooms, setRooms] = useState<Room[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const nav = useNavigate();
-  useEffect(() => subscribeRooms(setRooms), []);
+  useEffect(
+    () =>
+      subscribeRooms(
+        (r) => {
+          setError(null);
+          setRooms(r);
+        },
+        (e) => setError(/permission/i.test(e.message) ? 'permission' : e.message),
+      ),
+    [],
+  );
   const list = (rooms ?? []).filter((r) => r.rules.mode === mode);
   return (
     <div className="panel col">
       <h3>ルーム一覧</h3>
-      {rooms == null && <div className="muted small">読み込み中…</div>}
+      {error === 'permission' ? (
+        <div className="small warn">
+          ルーム一覧を読み込む権限がありません。Firebase の Realtime Database の「ルール」に、このアプリの <code>database.rules.json</code> の内容を貼り直して「公開」してください (ルーム一覧のために <code>rooms</code> 全体の読み取りを許可する設定が増えています)。パスワードで入ることはこのままでもできます。
+        </div>
+      ) : error ? (
+        <div className="small warn">ルーム一覧を読み込めませんでした: {error}</div>
+      ) : (
+        rooms == null && <div className="muted small">読み込み中…</div>
+      )}
       {rooms != null && !list.length && <div className="muted small">開いているルームはありません</div>}
       <div className="room-list">
         {list.map((r) => {
