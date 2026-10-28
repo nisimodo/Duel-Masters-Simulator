@@ -194,6 +194,8 @@ const db = buildDB(
     cr('ordB', 1, 1000, ['自分のクリーチャーが出た時、自分の山札の上から１枚目をマナゾーンに置く。']),
     cr('ordOpp', 1, 1000, ['相手のクリーチャーが出た時、カードを１枚引く。']),
     cr('chain', 1, 1000, ['このクリーチャーが出た時、自分の山札の上から２枚をマナゾーンに置いてもよい。その後、クリーチャーを１体、自分のマナゾーンから手札に戻してもよい。']),
+    cr('gaiash', 6, 9000, ['相手のターンの終わりに、相手がそのターン中、マナゾーンのカードをタップせずに、クリーチャーを出すか呪文を唱えていれば、このクリーチャーをコストを支払わずに召喚してもよい。']),
+    cr('freeHunter', 1, 1000, ['相手のクリーチャーがコストを支払わずに出た時、それを破壊する。']),
     cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
@@ -1766,6 +1768,57 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'choose', picks: [] });
       expect(s.players[0].hand.length).toBe(hand0);
       expect(s.pending.length).toBe(0);
+    });
+  });
+
+  describe('マナを支払わずに出た時・そのターンにしたこと', () => {
+    const endTurnAndResolve = (s: GameState) => {
+      s = act(s, 0, { t: 'endTurn' });
+      for (let k = 0; k < 10 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, top.min) }) : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+
+    it('相手がマナをタップせずにクリーチャーを出したターンの終わりに、手札から召喚できる (ガイアッシュ・カイザー)', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'hand' },
+        { p: 1, cid: 'gaiash', zone: 'hand' },
+      ]);
+      const g = find(s, 1, 'hand', 'gaiash')!;
+      // マナを払って召喚しただけでは出せない
+      let paid = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'vanilla')!, face: 0, pay: freeMana(s, 0, 1) });
+      paid = endTurnAndResolve(paid);
+      expect(paid.cards[g].zone).toBe('hand');
+      // 効果などでマナを支払わずに出したら出せる
+      s = act(s, 0, { t: 'move', iid: find(s, 0, 'hand', 'vanilla')!, to: 'battle' });
+      s = endTurnAndResolve(s);
+      expect(s.cards[g].zone).toBe('battle');
+    });
+
+    it('「コストを支払わずに出た時」はマナを支払って召喚したクリーチャーでは誘発しない', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'hand' },
+        { p: 0, cid: 'vanilla', zone: 'hand' },
+        { p: 1, cid: 'freeHunter', zone: 'battle' },
+      ]);
+      const [a, b] = s.players[0].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      s = act(s, 0, { t: 'play', iid: a, face: 0, pay: freeMana(s, 0, 1) });
+      expect(s.cards[a].zone).toBe('battle');
+      s = act(s, 0, { t: 'move', iid: b, to: 'battle' });
+      for (let k = 0; k < 5 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.cards[b].zone).toBe('grave');
+    });
+
+    it('侵略ZERO・「このクリーチャーをコストを支払わずに召喚してもよい」は手札から使う能力', () => {
+      const [z] = parseTriggers(['侵略ZERO:相手のターンの終わりに、そのターン相手がコストを支払わずにクリーチャーをバトルゾーンに出していたら、このクリーチャーを自分の手札からバトルゾーンに出してもよい。']);
+      expect(z?.events).toEqual(['turnEndOpp']);
+      expect(z?.fromHand).toBe(true);
+      expect(programOf(z!.effect).complete).toBe(true);
+      const [r] = parseTriggers(['リベンジ・チャンス-各ターンの終わりに、相手がそのターン、クリーチャーを3体以上バトルゾーンに出していた場合、このクリーチャーをコストを支払わずに召喚してもよい。']);
+      expect(r?.fromHand).toBe(true);
+      expect(programOf(r!.effect).complete).toBe(true);
     });
   });
 });

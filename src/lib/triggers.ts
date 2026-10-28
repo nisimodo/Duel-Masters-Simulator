@@ -149,14 +149,14 @@ export interface TriggerSpec {
   /** 「自分の〇〇が出た時」(「他の」がない) は、このカード自身が出た時も誘発する */
   includeSelf?: boolean;
   /** 「召喚以外の方法で出た時」 / 「召喚によって出た時」 */
-  howEnter?: 'notSummon' | 'summon' | 'revChange';
+  howEnter?: 'notSummon' | 'summon' | 'revChange' | 'free';
   /** 「自分のターン中に」「相手のターン中に」だけ誘発する */
   turn?: 'own' | 'opp';
 }
 
 const SKIP = /^(ブロッカー|革命チェンジ|S級侵略|侵略|ニンジャ・ストライク|S・トリガー|シールド・トリガー|スーパー・S・トリガー|G・ストライク|スピードアタッカー|マッハファイター|ジャストダイバー|スレイヤー|[WTQ]・ブレイカー|ワールド・ブレイカー|EXライフ|チャージャー|G・ゼロ|シンパシー|パワーアタッカー)/;
 
-const SKIP_TRIG = /^(革命チェンジ|S級侵略|侵略|ニンジャ・ストライク)/;
+const SKIP_TRIG = /^(革命チェンジ|S級侵略|侵略(?!ZERO)|ニンジャ・ストライク)/;
 
 export { stripReminder };
 
@@ -171,7 +171,7 @@ export function isAutoEffect(effect: string, optional: boolean): boolean {
 export function parseTriggers(rawLines: string[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
   for (const raw of rawLines) {
-    const line = stripReminder(normText(raw)).trim().replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、').replace(/^このクリーチャーの各ブレイクの前に、/, 'このクリーチャーがシールドをブレイクする時、')
+    const line = stripReminder(normText(raw)).trim().replace(/^(?:侵略ZERO|リベンジ・チャンス)\s*[:：\-－ー―]\s*/, '').replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、').replace(/^このクリーチャーの各ブレイクの前に、/, 'このクリーチャーがシールドをブレイクする時、')
       // 古い表記: 「このクリーチャーがバトルゾーンにある間、〜たびに」
       .replace(/^このクリーチャーがバトルゾーンにある間(?:に)?、(?=.{1,80}?(?:時|たびに?|はじめに|終わりに)、)/, '')
       .replace(/^(.{1,80}?)(?:置かれる|出る|出た)たびに?、/, (_, x) => `${x}${/置かれる/.test(_) ? '置かれた' : '出た'}時、`);
@@ -214,6 +214,7 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     if (/(出た|出した|召喚した)時/.test(clause)) {
       if (self) ev.add('enter');
       else if (/他のクリーチャーが/.test(clause) && !own && !opp) (ev.add('otherOwnEnter'), ev.add('oppEnter'));
+      else if (/いずれかのプレイヤーが|誰かが/.test(clause)) (ev.add('otherOwnEnter'), ev.add('oppEnter'));
       else if (opp) ev.add('oppEnter');
       else if (own) ev.add('otherOwnEnter');
     }
@@ -312,9 +313,15 @@ export function parseTriggers(rawLines: string[]): TriggerSpec[] {
     }
     const oncePerTurn = /各ターン(に)?(1|一)度|各ターン、.*はじめて|各ターンはじめて/.test(clause) || /この能力は、?各ターン(1|一)度しか使えない/.test(effect);
     const eff0 = effect.replace(/\s+/g, '');
-    const fromHand = /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) || /^このクリーチャーが自分の手札にあれば/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
+    const fromHand =
+      /^(この(カード|クリーチャー|呪文)を|これを).{0,30}?(自分の)?手札から/.test(eff0) ||
+      /^このクリーチャーが自分の手札にあれば/.test(eff0) ||
+      // 「(条件なら、)このクリーチャーを(自分の手札から)(コストを支払わずに)召喚してもよい」「このD2フィールドを自分の手札から出してもよい」
+      /このクリーチャーを(?:自分の手札から)?(?:コストを支払わずに)?召喚してもよい/.test(eff0) ||
+      /この(?:クリーチャー|D2フィールド|フィールド|タマシード)を(?:自分の)?手札から(?:バトルゾーンに)?出してもよい/.test(eff0) || /このクリーチャーを手札から表向きに/.test(eff0) || /手札にあるこのクリーチャーと/.test(eff0) || /この呪文を(?:自分の)?(?:手札から)?(コストを支払わずに)?唱え/.test(eff0);
     const fromGrave = /このクリーチャーを自分の(?:手札または)?墓地から/.test(eff0);
-    const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause) ? ('revChange' as const) : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
+    const freeClause = /コストを支払わずに|マナゾーン(?:にある|の)カードをタップせずに/.test(clause);
+    const howEnter = /「革命チェンジ」によって(?:バトルゾーンに)?出た時/.test(clause) ? ('revChange' as const) : freeClause ? ('free' as const) : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);
     const turn = turnM ? (turnM[1] === '自分' ? ('own' as const) : ('opp' as const)) : undefined;
     const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;

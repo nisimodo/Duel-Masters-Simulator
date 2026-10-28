@@ -26,6 +26,7 @@ import {
   q,
   rand,
   shuffleArr,
+  turnStat,
   type Lookup,
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
@@ -325,6 +326,16 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     case 'manaEveryCiv': {
       const have = new Set(me.mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
       return (['L', 'W', 'D', 'F', 'N'] as const).every((x) => have.has(x));
+    }
+    case 'turnStat': {
+      const who = c.who === 'self' ? [ex.player] : c.who === 'opp' ? opps(s, ex.player) : s.players.map((_, i) => i);
+      const val = (p: number) => (c.what === 'draws' ? (s.players[p].draws?.turn === s.turn ? s.players[p].draws!.n : 0) : turnStat(s, p)[c.what]);
+      // (「シールドが2つ以上手札に加えられていたら」は全員の合計)
+      return c.who === 'any' ? who.reduce((a, p) => a + val(p), 0) >= c.n : who.some((p) => val(p) >= c.n);
+    }
+    case 'oppMoreCreaturesBy': {
+      const mine = s.players[ex.player].battle.filter((b) => faceOf(s, L, b)?.isCreature).length;
+      return opps(s, ex.player).some((o) => s.players[o].battle.filter((b) => faceOf(s, L, b)?.isCreature).length - mine >= c.n);
     }
     case 'manaAllSel':
       return me.mana.length > 0 && me.mana.every((m) => matchesSel(s, L, m, { ...c.sel, owner: 'any', zones: ['mana'] }));
@@ -1372,6 +1383,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const cost = s.chosenValue?.num ?? -1;
         for (const o of opps(s, ex.player)) s.players[o].execLock = { cost, until: ex.player };
         log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${cost}のカードを実行できない`);
+        break;
+      }
+      case 'lockFreeEnter': {
+        for (const o of opps(s, ex.player)) s.players[o].freeEnterLock = { until: ex.player };
+        log(s, ex.player, '次の相手のターン中、相手はマナゾーンのカードをタップせずにクリーチャーを出せない');
         break;
       }
       case 'leaveGuard': {

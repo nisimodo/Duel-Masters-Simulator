@@ -150,6 +150,10 @@ export type Cond =
   | { c: 'wasUnderEvo' }
   /** 自分のマナゾーンのカードがすべてその文明 */
   | { c: 'manaAllCiv'; civ: Civ }
+  /** 「そのターン、相手が〜を3体以上召喚していれば」など。who: any はどのプレイヤーでも (シールドが手札に加えられていたら) */
+  | { c: 'turnStat'; who: 'self' | 'opp' | 'any'; what: 'summons' | 'enters' | 'freeEnters' | 'hyperEnters' | 'shieldAdds' | 'shieldsToHand' | 'toGrave' | 'left' | 'spellTamaCost' | 'draws'; n: number }
+  /** 「その相手のクリーチャーが自分より4体以上多く」 */
+  | { c: 'oppMoreCreaturesBy'; n: number }
   /** 「自分のマナゾーンにあるカードがすべてアビス・カードなら」 */
   | { c: 'manaAllSel'; sel: Sel }
   /** 自分のマナゾーンにすべての文明が揃っている */
@@ -324,6 +328,8 @@ export type Op =
   | { op: 'lockSummon'; costMax?: number }
   /** 次の自分のターンのはじめまで、相手は選んだ数字と同じコストのカードを実行できない */
   | { op: 'lockExec' }
+  /** 次の相手のターン中、相手は自身のマナゾーンのカードをタップせずにクリーチャーを出せない */
+  | { op: 'lockFreeEnter' }
   /** 次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない */
   | { op: 'leaveGuard' }
   /** 選んだカード (it) のうちまだバトルゾーンにあるものを山札の下に置き、その数だけ引く */

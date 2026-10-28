@@ -151,7 +151,7 @@ function resetCard(c: CardInst) {
 }
 
 /** 出る時の置換 (地封龍 ギャイア・単騎連射 マグナム 等) の行き先 */
-function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: number; summoned?: boolean }): 'mana' | 'grave' | null {
+function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: number; summoned?: boolean; free?: boolean }): 'mana' | 'grave' | null {
   const c = s.cards[iid];
   const face = L(c.cid)?.faces[opts.face ?? c.face];
   if (!face?.isCreature) return null;
@@ -162,6 +162,8 @@ function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: num
     if (sp.when === 'ownTurn' && s.active !== a.owner) continue;
     if (sp.when === 'oppTurn' && s.active === a.owner) continue;
     if (sp.notSummon && opts.summoned) continue;
+    // (マナゾーンのカードをタップせずに出す時だけ)
+    if (sp.free && opts.summoned && !opts.free) continue;
     if (sp.cip && !face.triggers.some((t) => t.events.includes('enter'))) continue;
     if (sp.nonDragon && face.races.some((r) => r.includes('ドラゴン'))) continue;
     return sp.to;
@@ -303,7 +305,7 @@ export function moveCard(
   L: Lookup,
   iid: number,
   to: ZoneName,
-  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean; revChange?: boolean } = {},
+  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean; revChange?: boolean; free?: boolean } = {},
 ): ZoneName {
   const c = s.cards[iid];
   const card = L(c.cid);
@@ -313,6 +315,11 @@ export function moveCard(
   if (from === 'battle' && to !== 'battle' && s.effBy != null && s.effBy !== c.owner && s.players[c.owner].leaveGuard && !s.players[c.owner].lost) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は相手のカードの効果では離れない`);
     return 'battle';
+  }
+  // 「マナゾーンのカードをタップせずにクリーチャーを出せない」
+  if (to === 'battle' && from !== 'battle' && s.players[c.owner].freeEnterLock && (!opts.summoned || opts.free) && card?.faces[opts.face ?? c.face]?.isCreature) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} はマナゾーンのカードをタップせずには出せない`);
+    return from as ZoneName;
   }
   // 「相手のクリーチャーがバトルゾーンに出る時、かわりにマナゾーン/墓地へ」
   if (to === 'battle' && from !== 'battle' && !opts.noReplace) {
@@ -564,10 +571,21 @@ export function moveCard(
   noteMove(s, iid, from, dest);
   if (dest === 'battle' && from !== 'battle') {
     c.enteredTurn = s.turn;
-    // 召喚 (コストを払ったかは playCard で決める) 以外で出たものは、マナを支払わずに出たもの
-    c.enteredFree = !opts.summoned;
+    // 召喚以外で出たもの・マナゾーンのカードをタップせずに召喚したものは、マナを支払わずに出たもの
+    c.enteredFree = !opts.summoned || !!opts.free;
     if (c.enteredFree && card?.faces[opts.face ?? c.face]?.isCreature) s.players[c.owner].freePlayTurn = s.turn;
+    if (card?.faces[opts.face ?? c.face]?.isCreature) {
+      const ts = turnStat(s, c.owner);
+      ts.enters++;
+      if (opts.summoned) ts.summons++;
+      if (c.enteredFree) ts.freeEnters++;
+      if (from === 'hyper') ts.hyperEnters++;
+    }
   }
+  if (from === 'battle' && dest !== 'battle' && card?.faces[prevFace]?.isCreature) turnStat(s, c.owner).left++;
+  if (dest === 'grave' && from !== 'grave') turnStat(s, c.owner).toGrave++;
+  if (dest === 'shield' && from === 'deck') turnStat(s, c.owner).shieldAdds++;
+  if (from === 'shield' && dest === 'hand') turnStat(s, c.owner).shieldsToHand++;
   c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
   if (opts.face != null) c.face = opts.face;
@@ -827,6 +845,8 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
   if (spec.howEnter === 'notSummon' && s.cards[entering]?.summoned) return;
   if (spec.howEnter === 'summon' && !s.cards[entering]?.summoned) return;
   if (spec.howEnter === 'revChange' && !s.cards[entering]?.revChanged) return;
+  // 「コストを支払わずに出た時」「マナゾーンのカードをタップせずに呪文を唱えた時」
+  if (spec.howEnter === 'free' && !(event.startsWith('spell') ? s.cards[entering]?.castFree : s.cards[entering]?.enteredFree)) return;
   if (spec.turn === 'own' && s.active !== s.cards[src].owner) return;
   if (spec.turn === 'opp' && s.active === s.cards[src].owner) return;
   if (spec.oncePerTurn) {
@@ -1061,6 +1081,13 @@ export function noteMove(s: GameState, iid: number, from: ZoneName | 'under' | '
   s.moves = list.length > 40 ? list.slice(-40) : list;
 }
 
+/** そのプレイヤーのこのターンの記録 (ターンが変わっていれば数え直す) */
+export function turnStat(s: GameState, p: number): import('./types').TurnStat {
+  const pl = s.players[p];
+  if (pl.turnStat?.turn !== s.turn) pl.turnStat = { turn: s.turn, summons: 0, enters: 0, freeEnters: 0, hyperEnters: 0, shieldAdds: 0, shieldsToHand: 0, toGrave: 0, left: 0, spellTamaCost: 0 };
+  return pl.turnStat;
+}
+
 export function drawCards(s: GameState, p: number, n: number) {
   const pl = s.players[p];
   let drawn = 0;
@@ -1285,6 +1312,7 @@ function startTurn(s: GameState, L: Lookup) {
     }
   for (const pl2 of s.players) {
     if (pl2.execLock?.until === p) pl2.execLock = undefined;
+    if (pl2.freeEnterLock?.until === p) pl2.freeEnterLock = undefined;
     if (pl2.leaveGuard?.until === p) pl2.leaveGuard = undefined;
   }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
@@ -2478,6 +2506,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
+  if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   // 「相手はその数字と同じコストのカードを実行できない」(効果で使う時も)
   if (s.players[p].execLock && (face.cost ?? 0) === s.players[p].execLock.cost) return `効果により、コスト${face.cost}のカードは実行できません`;
   const fromOk =
@@ -2634,7 +2663,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (me2.manaSummon.left > 0) me2.manaSummon.left--;
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
     }
-    moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true });
+    moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true, free: !a.pay?.length });
     if (!a.pay?.length) {
       // マナゾーンのカードをタップせずに召喚した
       c.enteredFree = true;
@@ -2766,6 +2795,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     me.spellsCast = me.spellsCast?.turn === s.turn ? { turn: s.turn, n: me.spellsCast.n + 1 } : { turn: s.turn, n: 1 };
     if (!a.pay?.length) me.freePlayTurn = s.turn;
     c.castFrom = zone0;
+    c.castFree = !a.pay?.length;
+    turnStat(s, p).spellTamaCost = Math.max(turnStat(s, p).spellTamaCost, face.cost ?? 0);
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp', a.iid);
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };

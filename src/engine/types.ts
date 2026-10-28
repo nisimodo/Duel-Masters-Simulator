@@ -57,6 +57,8 @@ export interface CardInst {
   wasUnderEvo?: boolean;
   /** 直前のゾーン移動がバトルゾーンからだった (「その直前にバトルゾーンにあれば」) */
   fromBattle?: boolean;
+  /** マナを支払わずに唱えた呪文 */
+  castFree?: boolean;
   /** 「各ターンに一度」の置換効果を使ったターン */
   replTurn?: number;
   /** マナを支払わずに (効果・コスト0で) バトルゾーンに出た */
@@ -103,6 +105,29 @@ export interface CardInst {
   grants?: { kws: string[]; until: number }[];
 }
 
+/** プレイヤーがそのターンにしたこと (ターンが変わると数え直す) */
+export interface TurnStat {
+  turn: number;
+  /** 召喚したクリーチャー */
+  summons: number;
+  /** バトルゾーンに出したクリーチャー (召喚以外も) */
+  enters: number;
+  /** マナゾーンのカードをタップせずに (コストを支払わずに) 出したクリーチャー */
+  freeEnters: number;
+  /** 超次元ゾーンから出したクリーチャー */
+  hyperEnters: number;
+  /** 山札から新しく加えたシールド */
+  shieldAdds: number;
+  /** シールドゾーンから手札に加えたカード (自分のシールド) */
+  shieldsToHand: number;
+  /** どこからでも墓地に置かれたカード (自分のカード) */
+  toGrave: number;
+  /** バトルゾーンを離れたクリーチャー (自分のクリーチャー) */
+  left: number;
+  /** 使った呪文・タマシードの一番大きいコスト */
+  spellTamaCost: number;
+}
+
 export interface PlayerState {
   uid: string;
   name: string;
@@ -145,6 +170,8 @@ export interface PlayerState {
   freePlayTurn?: number;
   /** このターンに引いた枚数 */
   draws?: { turn: number; n: number };
+  /** このターンにしたこと (「そのターン、相手が〜していたら」) */
+  turnStat?: TurnStat;
   /** 召喚できないのはこのコスト以下のクリーチャーだけ */
   summonLockCost?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
@@ -153,6 +180,8 @@ export interface PlayerState {
   leaveGuard?: { until: number };
   /** 「相手はその数字と同じコストのカードを実行できない」(until のプレイヤーのターンのはじめまで) */
   execLock?: { cost: number; until: number };
+  /** 「相手は自身のマナゾーンのカードをタップせずにクリーチャーを出せない」(until のプレイヤーのターンのはじめまで) */
+  freeEnterLock?: { until: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */

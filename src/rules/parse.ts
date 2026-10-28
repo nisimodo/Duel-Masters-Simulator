@@ -145,6 +145,37 @@ export function parseCond(c0: string): Cond | null {
     .replace(/^(バトルゾーンに自分の《[^》]+》が\d+(?:体|枚))あ$/, '$1以上あ')
     .replace(/^(名前に《[^》]+》とあるカード|[^、]+?・カード)(が\d+枚以上|が)自分の(墓地|マナゾーン)に(あ|な(?:け|い)?)$/, '自分の$3に$1$2$4');
   if ((m = c.match(new RegExp(`^シールドが${N}つもないプレイヤーがい$`)))) return { c: 'anyShieldsLess', n: +m[1] };
+  // 「そのターン、相手が〜していたら」: そのターンにしたこと
+  {
+    const t = c.replace(/(?:その|この)ターン(?:中)?(?:に)?、?/g, '').replace(/^その(?=相手)/, '');
+    const who = (w: string) => (w === '自分' ? ('self' as const) : ('opp' as const));
+    const FREE = '(?:コストを支払わずに|(?:自身の)?マナゾーン(?:にある|の)カードをタップせずに、?)';
+    let k: RegExpMatchArray | null;
+    if ((k = t.match(new RegExp(`^(相手|自分)が${FREE}クリーチャーを(?:バトルゾーンに)?出してい$`))) || (k = t.match(new RegExp(`^(相手|自分)のクリーチャーが${FREE}出てい$`))))
+      return { c: 'turnStat', who: who(k[1]), what: 'freeEnters', n: 1 };
+    if ((k = t.match(/^(相手|自分)がクリーチャーを(\d+)体以上召喚してい$/))) return { c: 'turnStat', who: who(k[1]), what: 'summons', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)がクリーチャーを(\d+)体以上(?:バトルゾーンに)?出してい$/))) return { c: 'turnStat', who: who(k[1]), what: 'enters', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)がクリーチャーを(\d+)体(?:以上)?、(?:自身|自分)の超次元ゾーンから(?:バトルゾーンに)?出してい$/))) return { c: 'turnStat', who: who(k[1]), what: 'hyperEnters', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)がカードを(\d+)枚以上引いてい$/))) return { c: 'turnStat', who: who(k[1]), what: 'draws', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)が山札からシールドゾーンに新しいシールドを(?:(\d+)つ以上)?加えてい$/))) return { c: 'turnStat', who: who(k[1]), what: 'shieldAdds', n: k[2] ? +k[2] : 1 };
+    if ((k = t.match(/^シールドが(\d+)つ以上手札に加えられてい$/))) return { c: 'turnStat', who: 'any', what: 'shieldsToHand', n: +k[1] };
+    if ((k = t.match(/^(相手|自分)のカードが(\d+)枚以上どこからでも墓地に置かれてい$/))) return { c: 'turnStat', who: who(k[1]), what: 'toGrave', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)のクリーチャーが(\d+)体以上(?:バトルゾーンを)?離れてい$/))) return { c: 'turnStat', who: who(k[1]), what: 'left', n: +k[2] };
+    if ((k = t.match(/^(相手|自分)が(?:そのターン中、?)?コスト(\d+)以上の呪文またはコスト\d+以上のタマシードを使ってい$/))) return { c: 'turnStat', who: who(k[1]), what: 'spellTamaCost', n: +k[2] };
+    if ((k = t.match(/^相手のクリーチャーが自分より(\d+)体以上多(?:く|けれ|い)?$/))) return { c: 'oppMoreCreaturesBy', n: +k[1] };
+    // 「その相手のクリーチャーが自分より4体以上多く、自分の《ブルー・インパルス》がなければ」
+    if ((k = c.match(/^(?:その)?相手のクリーチャーが自分より(\d+)体以上多く、(.+)$/))) {
+      const rest = parseCond(k[2]);
+      if (rest) return { c: 'and', a: { c: 'oppMoreCreaturesBy', n: +k[1] }, b: rest };
+    }
+    // 「バトルゾーンに相手のコスト11以上またはパワー18000以上のクリーチャーがあれば」
+    if ((k = t.match(/^(?:バトルゾーンに)?相手の、?コスト(\d+)以上またはパワー(\d+)以上のクリーチャーがあ$/)))
+      return {
+        c: 'or',
+        a: { c: 'count', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costMin: +k[1] }, cmp: '>=', n: 1 },
+        b: { c: 'count', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', powerMin: +k[2] }, cmp: '>=', n: 1 },
+      };
+  }
   // このターンの攻撃回数・唱えた呪文の数
   if ((m = c.match(/^(?:その|この)ターン(?:中に|中)?、?(?:すでに)?クリーチャーが(?:(\d+)体も)?攻撃してい(な(?:け|い)?)?$/)))
     return m[2] ? { c: 'turnCount', what: 'attacks', cmp: '<=', n: m[1] ? +m[1] - 1 : 0 } : { c: 'turnCount', what: 'attacks', cmp: '>=', n: 1 };
@@ -160,7 +191,7 @@ export function parseCond(c0: string): Cond | null {
     if (sel) return { c: 'count', sel: { ...sel, owner: m[1] === '自分' ? 'self' : 'opp', zones: [zone] }, cmp: /以下/.test(m[5]) ? '<=' : '>=', n: +m[4] };
   }
   if (/^このクリーチャーが自分の手札にあ$/.test(c)) return { c: 'count', sel: { owner: 'self', zones: ['hand'], kind: 'card', self: true }, cmp: '>=', n: 1 };
-  if ((m = c.match(/^このターン(?:中に)?自分の《([^》]+)》を(?:バトルゾーンに)?出していな(?:け|い)?$/))) return { c: 'not', a: { c: 'enteredNameThisTurn', name: m[1] } };
+  if ((m = c.match(/^このターン(?:中に)?自分の《([^》]+)》を(?:バトルゾーンに)?出していな(?:け|い)?$/) ?? c.match(/^このターン(?:中に)?、?自分の《([^》]+)》が(?:バトルゾーンに)?出ていな(?:け|い)?$/))) return { c: 'not', a: { c: 'enteredNameThisTurn', name: m[1] } };
   // 「その攻撃がこのターン2度目のクリーチャーによる攻撃で、B」
   if ((m = c.match(/^(.+?攻撃)で、(.+)$/))) {
     const a = parseCond(m[1]);
@@ -424,6 +455,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   let s = s0
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
+    // (「このようにして山札を見ていた場合、シャッフルする」は後の決まった書き方で処理する)
+    .replace(/^(?!このようにして山札を見て)([^。]{4,120}?(?:て|で))い(?:たら|た場合)、/, '$1いれば、')
     .replace(/^(?:この|その)?ターンの終わりまで、/, 'このターン、')
     .replace(/^相手は、?自身の(.+?)をすべて(?:自身の|持ち主の)?マナゾーンに置く$/, '相手の$1をすべて持ち主のマナゾーンに置く')
     .replace(/^その中の(\d+)枚を/, 'その中から$1枚を')
@@ -1314,6 +1347,20 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // Dスイッチ 「このD2フィールドをゲーム中で一度上下逆さまにする」
   if (/^この(D2|DN|D)?フィールドをゲーム中で一度上下逆さまにする$/.test(s)) return [{ op: 'oncePerGame' }];
+  // モモキング -旅丸- 「次の相手のターン中、相手は自身のマナゾーンのカードをタップせずにクリーチャーを出せない」
+  if (/^次の相手のターン中、?相手は(?:自身の)?マナゾーン(?:にある|の)カードをタップせずにクリーチャーを出せない$/.test(s)) return [{ op: 'lockFreeEnter' }];
+  // 侵略ZERO・手札から出す能力 「このD2フィールドを自分の手札からバトルゾーンに出す」
+  if (/^この(?:D2フィールド|DGフィールド|フィールド|タマシード)を(?:自分の)?手札から(?:バトルゾーンに)?出す$/.test(s)) return [{ op: 'play', target: { ref: 'self' }, mode: 'put' }];
+  // 「そのクリーチャー以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい」(出たクリーチャーのコストまで)
+  if ((mm = s.match(/^(?:自分の(手札|マナゾーン|墓地)から)?その(?:クリーチャー|エレメント)以下のコストの(.+?)を(\d+)(?:体|つ)、?(?:自分の(手札|マナゾーン|墓地)から)?出す$/)) && (mm[1] || mm[4])) {
+    const zone = ({ 手札: 'hand', マナゾーン: 'mana', 墓地: 'grave' } as const)[(mm[1] || mm[4]) as '手札'];
+    const sel = parseSel('自分の' + mm[2], { zones: [zone] });
+    if (sel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { ...sel, zones: [zone], costLeIt: true }, count: { n: +mm[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: s0 },
+        { op: 'play', target: { ref: 'it' }, mode: 'put' },
+      ];
+  }
   // 邪心臓の魔法陣 「自分の手札を1枚捨て、カードを3枚まで引き、もう一度自分の手札を1枚捨てる」
   if ((mm = s.match(/^(自分の手札を\d+枚捨て)、(カードを\d+枚(?:まで)?引き)、(?:もう一度)?(自分の手札を\d+枚捨てる)$/))) {
     const parts = [sentence(mm[1] + 'る', ctx), sentence(mm[2].replace(/引き$/, '引く'), ctx), sentence(mm[3], ctx)];

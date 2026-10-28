@@ -232,7 +232,7 @@ export type StaticSpec =
   /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
   | { s: 'breakToDeck4' }
   /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
-  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn' }
+  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn'; free?: boolean }
   /** 鬼S-MAX進化: 自分がゲームに負ける時・このクリーチャーが離れる時、かわりに自分の表向きのカードをN枚破壊する (orShield: かわりにシールドを1つ墓地に置いてもよい) */
   | { s: 'oniSmax'; n: number; orShield?: boolean }
   /** バトルゾーンを離れない */
@@ -574,6 +574,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 「相手の「このクリーチャーがバトルゾーンに出た時」で始まる能力を持つクリーチャーがバトルゾーンに出る時、相手はかわりにそのクリーチャーをマナゾーンに置く」
   if (/^相手の「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を持つクリーチャーが(?:バトルゾーンに)?出る時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', cip: true }];
   if (/^自分のターン中に、?相手のクリーチャーがバトルゾーンに出る時、そのクリーチャーはバトルゾーンのかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'ownTurn' }];
+  // モモキング -旅丸- 「相手のターン中、相手がマナゾーンのカードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーをマナゾーンに置く」
+  if (/^相手のターン中(?:に)?、?相手が(?:自身の)?マナゾーン(?:にある|の)カードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', when: 'oppTurn', free: true }];
   if (/^相手のターン中に、?相手のクリーチャーが召喚以外の方法で出る時、相手はかわりにそのクリーチャーを墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'oppTurn', notSummon: true }];
   if (/^ドラゴンではないクリーチャーがバトルゾーンに出る時、バトルゾーンに出るかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', nonDragon: true, all: true }];
   {
