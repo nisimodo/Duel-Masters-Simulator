@@ -243,119 +243,126 @@ export default function RoomPage() {
           前回の結果: <b>{room.lastResult.winners.map((w) => room.lastResult!.names[w.replace(/[.#$[\]/]/g, '_')] ?? w).join('、') || '引き分け'}</b> の勝利 ({room.lastResult.reason})
         </div>
       )}
+      {/* 左: 対戦するプレイヤー・観戦・CPUの追加 / 右: あなたのデッキ選択 */}
       <div className="row" style={{ alignItems: 'flex-start' }}>
-        <div className="panel col" style={{ flex: '2 1 320px', minWidth: 0 }}>
-          <b>
-            対戦するプレイヤー ({count}/{max})
-          </b>
-          {players.map(([uid, m]) => (
-            <div key={uid} className="member">
-              <span className={`dot${m.online ? ' on' : ''}`} />
-              <b>{m.name}</b>
-              {uid === room.hostUid && <span className="badge">ホスト</span>}
-              {m.deck && <DeckThumb db={db} deck={m.deck} width={28} />}
-              <span className="grow small muted">{m.deck ? m.deck.name : 'デッキ未選択'}</span>
-              {m.ready ? <span className="ok">準備完了</span> : <span className="muted">準備中</span>}
-            </div>
-          ))}
-          {Object.entries(room.cpus).map(([id, c]) => (
-            <div key={id} className="member">
-              <span className="dot on" />
-              <b>{c.name}</b>
-              <span className="badge">CPU</span>
-              <DeckThumb db={db} deck={c.deck} width={28} />
-              <span className="grow small muted">{c.deck.name}</span>
-              <span className="ok">準備完了</span>
-              {(isHost || c.addedBy === user.uid) && (
-                <button className="small danger" onClick={() => removeCpu(room, id)}>
-                  削除
-                </button>
-              )}
-            </div>
-          ))}
-          <CpuAdder db={db} room={room} myDecks={decks} uid={user.uid} />
-          {!enough && (
-            <div className="small muted">
-              {room.rules.mode === 'duema' ? '2人そろうと対戦できます' : '2～5人そろうと対戦できます'} (CPUを追加することもできます)
-            </div>
-          )}
-          {cpuOnly && enough ? (
-            isHost ? (
-              <div className="row">
-                <button className="primary" onClick={() => startGame(room).catch((e) => setErr(String(e.message || e)))}>
-                  CPU同士の対戦を観戦する
-                </button>
-              </div>
-            ) : (
-              <div className="small muted">ホストが開始するとCPU同士の対戦を観戦できます</div>
-            )
-          ) : (
-            <>
-              {enough && !allReady && <div className="small muted">全員が準備完了すると対戦が始まります</div>}
-              {enough && allReady && <div className="ok">まもなく対戦開始…</div>}
-            </>
-          )}
-          {!players.length && !enough && (
-            <div className="small muted">全員が観戦にまわってCPUを{room.rules.mode === 'duema' ? '2体' : '2～5体'}追加すると、CPU同士の対戦を観戦できます</div>
-          )}
-        </div>
-
-        <div className="panel col" style={{ flex: '1 1 240px', minWidth: 0 }}>
-          <b>観戦</b>
-          {Object.entries(room.members)
-            .filter(([, m]) => m.role === 'spectator')
-            .map(([uid, m]) => (
+        <div className="col" style={{ flex: '1 1 320px', minWidth: 0 }}>
+          <div className="panel col">
+            <b>
+              対戦するプレイヤー ({count}/{max})
+            </b>
+            {players.map(([uid, m]) => (
               <div key={uid} className="member">
                 <span className={`dot${m.online ? ' on' : ''}`} />
-                {m.name}
+                <b>{m.name}</b>
                 {uid === room.hostUid && <span className="badge">ホスト</span>}
+                {m.deck && <DeckThumb db={db} deck={m.deck} width={28} />}
+                <span className="grow small muted">{m.deck ? m.deck.name : 'デッキ未選択'}</span>
+                {m.ready ? <span className="ok">準備完了</span> : <span className="muted">準備中</span>}
               </div>
             ))}
-        </div>
-      </div>
-
-      {me && (
-        <div className="panel col">
-          <b>あなた ({me.role === 'player' ? '対戦する' : '観戦する'})</b>
-          <div className="row">
-            {me.role === 'spectator' ? (
-              <button disabled={!canBecomePlayer} onClick={() => updateMember(room.key, user.uid, { role: 'player', ready: false })}>
-                対戦する側にまわる
-              </button>
-            ) : (
-              <button onClick={() => updateMember(room.key, user.uid, { role: 'spectator', ready: false })}>観戦する側にまわる</button>
-            )}
-          </div>
-          {me.role === 'player' && (
-            <>
-              <div className="deck-pick-grid col" style={{ gap: 8 }}>
-                {room.rules.mode === 'duema' ? (
-                  roomFormats(room.rules).map((f) => (
-                    <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(room.rules, f)} empty="デッキがありません">
-                      {splitByFormat(db, myDecks, (d) => d)[f].map(deckTile)}
-                    </DeckSection>
-                  ))
-                ) : (
-                  <DeckSection title="デッキ">{myDecks.map(deckTile)}</DeckSection>
+            {Object.entries(room.cpus).map(([id, c]) => (
+              <div key={id} className="member">
+                <span className="dot on" />
+                <b>{c.name}</b>
+                <span className="badge">CPU</span>
+                <DeckThumb db={db} deck={c.deck} width={28} />
+                <span className="grow small muted">{c.deck.name}</span>
+                <span className="ok">準備完了</span>
+                {(isHost || c.addedBy === user.uid) && (
+                  <button className="small danger" onClick={() => removeCpu(room, id)}>
+                    削除
+                  </button>
                 )}
               </div>
-              <div className="row">
-                <button className={me.ready ? '' : 'primary'} disabled={!myDeck || myIssues.length > 0} onClick={toggleReady}>
-                  {me.ready ? '準備完了を取り消す' : '準備完了'}
-                </button>
+            ))}
+            {!enough && (
+              <div className="small muted">
+                {room.rules.mode === 'duema' ? '2人そろうと対戦できます' : '2～5人そろうと対戦できます'} (CPUを追加することもできます)
               </div>
-              {!myDecks.length && (
-                <div className="warn small">
-                  このルールで使えるデッキがありません。<Link to="/decks">デッキを作成</Link>してください。
+            )}
+            {cpuOnly && enough ? (
+              isHost ? (
+                <div className="row">
+                  <button className="primary" onClick={() => startGame(room).catch((e) => setErr(String(e.message || e)))}>
+                    CPU同士の対戦を観戦する
+                  </button>
                 </div>
-              )}
-              {myDecks.length > 0 && myDecks.every((d) => validateDeck(db, d, room.rules).length > 0) && (
-                <div className="warn small">このルームのレギュレーションで使えるデッキがありません。</div>
-              )}
-            </>
-          )}
+              ) : (
+                <div className="small muted">ホストが開始するとCPU同士の対戦を観戦できます</div>
+              )
+            ) : (
+              <>
+                {enough && !allReady && <div className="small muted">全員が準備完了すると対戦が始まります</div>}
+                {enough && allReady && <div className="ok">まもなく対戦開始…</div>}
+              </>
+            )}
+            {!players.length && !enough && (
+              <div className="small muted">全員が観戦にまわってCPUを{room.rules.mode === 'duema' ? '2体' : '2～5体'}追加すると、CPU同士の対戦を観戦できます</div>
+            )}
+          </div>
+
+          <div className="panel col">
+            <b>観戦</b>
+            {Object.entries(room.members)
+              .filter(([, m]) => m.role === 'spectator')
+              .map(([uid, m]) => (
+                <div key={uid} className="member">
+                  <span className={`dot${m.online ? ' on' : ''}`} />
+                  {m.name}
+                  {uid === room.hostUid && <span className="badge">ホスト</span>}
+                </div>
+              ))}
+          </div>
+
+          <div className="panel col">
+            <b>CPUの追加</b>
+            <CpuAdder db={db} room={room} myDecks={decks} uid={user.uid} />
+          </div>
         </div>
-      )}
+
+        {me && (
+          <div className="panel col" style={{ flex: '2 1 360px', minWidth: 0 }}>
+            <b>あなた ({me.role === 'player' ? '対戦する' : '観戦する'})</b>
+            <div className="row">
+              {me.role === 'spectator' ? (
+                <button disabled={!canBecomePlayer} onClick={() => updateMember(room.key, user.uid, { role: 'player', ready: false })}>
+                  対戦する側にまわる
+                </button>
+              ) : (
+                <button onClick={() => updateMember(room.key, user.uid, { role: 'spectator', ready: false })}>観戦する側にまわる</button>
+              )}
+            </div>
+            {me.role === 'player' && (
+              <>
+                <div className="deck-pick-grid col" style={{ gap: 8 }}>
+                  {room.rules.mode === 'duema' ? (
+                    roomFormats(room.rules).map((f) => (
+                      <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(room.rules, f)} empty="デッキがありません">
+                        {splitByFormat(db, myDecks, (d) => d)[f].map(deckTile)}
+                      </DeckSection>
+                    ))
+                  ) : (
+                    <DeckSection title="デッキ">{myDecks.map(deckTile)}</DeckSection>
+                  )}
+                </div>
+                <div className="row">
+                  <button className={me.ready ? '' : 'primary'} disabled={!myDeck || myIssues.length > 0} onClick={toggleReady}>
+                    {me.ready ? '準備完了を取り消す' : '準備完了'}
+                  </button>
+                </div>
+                {!myDecks.length && (
+                  <div className="warn small">
+                    このルールで使えるデッキがありません。<Link to="/decks">デッキを作成</Link>してください。
+                  </div>
+                )}
+                {myDecks.length > 0 && myDecks.every((d) => validateDeck(db, d, room.rules).length > 0) && (
+                  <div className="warn small">このルームのレギュレーションで使えるデッキがありません。</div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
       {err && <div className="error">{err}</div>}
     </div>
   );
