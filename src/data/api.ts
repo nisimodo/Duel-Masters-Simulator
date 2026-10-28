@@ -72,6 +72,9 @@ export interface Member {
   role: Role;
   ready: boolean;
   online: boolean;
+  /** 開いている画面 (タブ) ごとの接続。1つでもあればオンライン (presence: 2 のメンバー) */
+  conns?: Record<string, number>;
+  presence?: number;
   joinedAt: number;
   deckId?: string | null;
   deck?: Deck | null;
@@ -117,7 +120,9 @@ export function decodeRoom(key: string, v: Partial<Room> | null): Room | null {
   if (!v || !v.rules) return null;
   const members: Record<string, Member> = {};
   for (const [uid, m] of Object.entries(v.members || {})) {
-    members[uid] = { ...m, deck: m.deck ? decodeDeck(m.deck.id || 'x', m.deck) : null };
+    // 接続ごとの記録があるメンバーは、開いているタブが1つでもあればオンライン (別のタブを閉じても退出にならない)
+    const online = m.presence === 2 ? Object.keys(m.conns || {}).length > 0 : !!m.online;
+    members[uid] = { ...m, online, deck: m.deck ? decodeDeck(m.deck.id || 'x', m.deck) : null };
   }
   const cpus: Record<string, CpuMember> = {};
   for (const [id, c] of Object.entries(v.cpus || {})) cpus[id] = { ...c, deck: decodeDeck(c.deck?.id || 'cpu', c.deck) };
@@ -177,15 +182,39 @@ export async function enterRoom(uid: string, name: string, key: string) {
   if (!room) throw new Error('ルームが見つかりません');
   const me = room.members[uid];
   if (me) {
-    await backend.update(`rooms/${key}/members/${uid}`, { online: true, name });
+    await backend.update(`rooms/${key}/members/${uid}`, { online: true, name, presence: 2 });
   } else {
-    if (!(await hasDeckOfType(uid, room.rules.mode)))
-      throw new Error(room.rules.mode === 'duema' ? 'デュエマ用のデッキを作成してから入室してください' : 'デュエパ用のデッキを作成してから入室してください');
+    // 対戦中・満員のルームには観戦で入る (観戦ならデッキは要らない)
     const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
     const role: Role = room.status === 'playing' || full ? 'spectator' : 'player';
-    await backend.set(`rooms/${key}/members/${uid}`, { name, role, ready: false, online: true, joinedAt: Date.now() });
+    if (role === 'player' && !(await hasDeckOfType(uid, room.rules.mode)))
+      throw new Error(room.rules.mode === 'duema' ? 'デュエマ用のデッキを作成してから入室してください' : 'デュエパ用のデッキを作成してから入室してください');
+    await backend.set(`rooms/${key}/members/${uid}`, { name, role, ready: false, online: true, presence: 2, joinedAt: Date.now() });
   }
-  await backend.onDisconnectSet(`rooms/${key}/members/${uid}/online`, false);
+}
+
+/**
+ * このタブがルームを開いている間の接続を記録する (タブを閉じる・回線が切れると消える)。
+ * 同じ人が別のタブ・ウィンドウでも開いていれば、そちらの接続が残るので退出にはならない。
+ */
+export function watchPresence(key: string, uid: string): () => void {
+  const path = `rooms/${key}/members/${uid}/conns/${backend.newKey(`rooms/${key}/members/${uid}/conns`)}`;
+  let stopped = false;
+  // 回線が切れて戻った時も、もう一度接続を記録し直す
+  const unsub = backend.subscribe<boolean>('.info/connected', (v) => {
+    if (stopped || v === false) return;
+    void backend.set(path, Date.now());
+    void backend.onDisconnectSet(path, null);
+  });
+  const onHide = () => void backend.remove(path);
+  window.addEventListener('pagehide', onHide);
+  return () => {
+    stopped = true;
+    unsub();
+    window.removeEventListener('pagehide', onHide);
+    void backend.cancelOnDisconnect(path);
+    void backend.remove(path);
+  };
 }
 
 export async function leaveRoom(uid: string, room: Room) {

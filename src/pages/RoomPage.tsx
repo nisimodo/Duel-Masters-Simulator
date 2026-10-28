@@ -7,6 +7,7 @@ import {
   encodeDeck,
   enterRoom,
   leaveRoom,
+  watchPresence,
   MAX_PLAYERS,
   playerCount,
   removeCpu,
@@ -142,8 +143,20 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!user || !key) return;
-    enterRoom(user.uid, user.name, key).catch((e) => setErr(String(e.message || e)));
-    return subscribeRoom(key, setRoom);
+    let alive = true;
+    let stopPresence = () => {};
+    enterRoom(user.uid, user.name, key)
+      .then(() => {
+        // このタブを開いている間はオンライン (閉じると退出として扱われる)
+        if (alive) stopPresence = watchPresence(key, user.uid);
+      })
+      .catch((e) => setErr(String(e.message || e)));
+    const unsub = subscribeRoom(key, setRoom);
+    return () => {
+      alive = false;
+      stopPresence();
+      unsub();
+    };
   }, [user, key]);
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
 

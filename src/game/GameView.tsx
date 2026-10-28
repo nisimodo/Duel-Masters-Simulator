@@ -10,7 +10,7 @@ import { activationOf } from './activationOf';
 import { MoveAnimator } from './MoveAnimator';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
+import { AWAY_CPU_MS, attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { canPlayFromZone, costOf } from '../engine/statics';
@@ -146,7 +146,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   useEffect(() => {
     if (!s || s.phase === 'over' || !isRunner || cpuBusy.current) return;
     const d = decider(s);
-    if (d == null || !s.players[d].cpu) return;
+    // 退出して戻らないプレイヤーもCPUが代わりに操作する
+    if (d == null || !(s.players[d].cpu || s.players[d].away === 'cpu')) return;
     const t = setTimeout(async () => {
       if (cpuBusy.current) return;
       cpuBusy.current = true;
@@ -179,6 +180,32 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     }, cpuDelay);
     return () => clearTimeout(t);
   }, [s, isRunner, L, submit, cpuTick, cpuDelay]);
+
+  // ---- 対戦中の退出・復帰 ----
+  // 退出 (タブを閉じた等) をログに出し、1分戻らなければCPUに切り替える。戻ったら操作を戻す。
+  // 判定と送信はCPUを動かしている人が行う (戻った本人も自分の復帰を送る)
+  const presenceSent = useRef(new Set<string>());
+  useEffect(() => {
+    if (!s || s.phase === 'over' || !user) return;
+    const timers: number[] = [];
+    s.players.forEach((pl, i) => {
+      if (pl.cpu || pl.lost) return;
+      const online = !!room.members[pl.uid]?.online;
+      if (!isRunner && pl.uid !== user.uid) return;
+      const send = (state: 'left' | 'cpu' | 'back', at?: number) => {
+        // (同じ状態から同じ送信を繰り返さない)
+        const k = `${i}:${state}:${s.seq}`;
+        if (presenceSent.current.has(k)) return;
+        presenceSent.current.add(k);
+        void submit(i, { t: 'presence', state, ...(at != null ? { at } : {}) });
+      };
+      if (online && pl.away) send('back');
+      else if (!isRunner) return;
+      else if (!online && !pl.away) send('left', Date.now());
+      else if (!online && pl.away === 'left') timers.push(window.setTimeout(() => send('cpu'), Math.max(0, (pl.awaySince ?? 0) + AWAY_CPU_MS - Date.now())));
+    });
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [s, room.members, isRunner, user, submit]);
 
   // ---- 結果の記録 ----
   useEffect(() => {
@@ -502,6 +529,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         {s.active === p && '▶ '}
         {pl.name}
         {pl.cpu && ' (CPU)'}
+        {pl.away === 'left' && ' (退出中)'}
+        {pl.away === 'cpu' && ' (退出中・CPUが操作)'}
         {pl.lost && ` — 敗北${pl.place ? ` (${pl.place}位)` : ''}`}
         {targetable && ' ← ここを攻撃'}
       </span>

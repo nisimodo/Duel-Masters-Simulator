@@ -108,4 +108,32 @@ describe('engine', () => {
       expect(s.winners.length).toBe(1);
     }
   });
+
+  it('対戦中の退出・CPUへの切り替え・復帰 (ログに出し、ゲームは同じ状態のまま)', () => {
+    const d = expandDeck(randomDeck(db, 'duema'));
+    let s = createGame({ mode: 'duema', seed: 3, createdAt: 0, first: 0, players: [{ uid: 'a', name: 'A', cpu: false, ...d }, { uid: 'b', name: 'B', cpu: false, ...d }] }, L);
+    const step = (p: number, a: Parameters<typeof applyAction>[2]) => {
+      const r = applyAction(s, p, a, L);
+      if (!r.error) s = r.state;
+      return r.error;
+    };
+    // 退出していないのにCPUへ切り替え・復帰はできない
+    expect(step(1, { t: 'presence', state: 'cpu' })).toBeTruthy();
+    expect(step(1, { t: 'presence', state: 'back' })).toBeTruthy();
+    // 相手のターン中でも、誰が送っても受け付ける
+    expect(step(1, { t: 'presence', state: 'left', at: 1000 })).toBeNull();
+    expect(s.players[1].away).toBe('left');
+    expect(s.players[1].awaySince).toBe(1000);
+    expect(s.log.at(-1)?.m).toMatch(/B が退出しました/);
+    expect(step(1, { t: 'presence', state: 'left' })).toBeTruthy();
+    expect(step(1, { t: 'presence', state: 'cpu' })).toBeNull();
+    expect(s.players[1].away).toBe('cpu');
+    expect(s.log.at(-1)?.m).toMatch(/CPUが代わりに操作/);
+    // CPUが代わりに動かせる
+    expect(cpuPlan(s, decider(s) ?? 0, L).length).toBeGreaterThan(0);
+    expect(step(1, { t: 'presence', state: 'back' })).toBeNull();
+    expect(s.players[1].away).toBeUndefined();
+    expect(s.log.at(-1)?.m).toMatch(/B が戻りました。CPUから操作を戻します/);
+  });
 });
+

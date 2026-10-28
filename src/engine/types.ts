@@ -107,6 +107,10 @@ export interface PlayerState {
   uid: string;
   name: string;
   cpu: boolean;
+  /** 対戦中に退出した ('left': 戻るのを待っている / 'cpu': CPUが代わりに操作している) */
+  away?: 'left' | 'cpu';
+  /** 退出した時刻 (ミリ秒) */
+  awaySince?: number;
   lost: boolean;
   /** 脱落順 (デュエパ) */
   place: number | null;
@@ -349,6 +353,8 @@ export interface GameState {
 
 export type Action =
   | { t: 'charge'; iid: number }
+  /** プレイヤーの退出・CPUへの切り替え・復帰 (誰でも送れる。p は対象のプレイヤー) */
+  | { t: 'presence'; state: 'left' | 'cpu' | 'back'; at?: number }
   | {
       t: 'play';
       iid: number;

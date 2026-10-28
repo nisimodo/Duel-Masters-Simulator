@@ -2101,6 +2101,32 @@ export function isManual(a: Action) {
 }
 
 /** アクションを適用する。不正なら状態を変えずにエラー文字列を返す。 */
+/** 退出したプレイヤーのCPUへの切り替えまでの時間 */
+export const AWAY_CPU_MS = 60_000;
+
+/** 対戦中の退出・復帰 (ゲームの進行には関わらず、ログと操作する人だけが変わる) */
+function applyPresence(s: GameState, p: number, a: Extract<Action, { t: 'presence' }>): Result {
+  const pl = s.players[p];
+  if (pl.cpu) return 'CPUです';
+  if (a.state === 'left') {
+    if (pl.away) return '既に退出しています';
+    pl.away = 'left';
+    pl.awaySince = a.at ?? 0;
+    log(s, p, `${pl.name} が退出しました (1分以内に戻らなければ、CPUが代わりに操作します)`);
+  } else if (a.state === 'cpu') {
+    if (pl.away !== 'left') return '退出していません';
+    pl.away = 'cpu';
+    log(s, p, `${pl.name} が戻らないため、CPUが代わりに操作します`);
+  } else {
+    if (!pl.away) return '退出していません';
+    const wasCpu = pl.away === 'cpu';
+    pl.away = undefined;
+    pl.awaySince = undefined;
+    log(s, p, wasCpu ? `${pl.name} が戻りました。CPUから操作を戻します` : `${pl.name} が戻りました`);
+  }
+  return null;
+}
+
 export function applyAction(s0: GameState, p: number, a: Action, L: Lookup): { state: GameState; error: Result } {
   const s = structuredClone(s0);
   vividLookup = L;
@@ -2121,6 +2147,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
   if (s.phase === 'over') return 'ゲームは終了しています';
   const me = s.players[p];
   if (!me || me.lost) return '操作できません';
+  if (a.t === 'presence') return applyPresence(s, p, a);
   if (isManual(a)) return applyManual(s, p, a, L);
   // 「コストを支払わずに使う」は効果の処理中 (能力の解決待ち等) でも自分のカードなら使える
   if (a.t === 'play' && a.free) return playCard(s, p, a, L);
