@@ -9,6 +9,9 @@ export interface CondSpec {
   civs: string[];
   minCost?: number;
   maxCost?: number;
+  /** 「パワー8000以上の」 */
+  minPower?: number;
+  maxPower?: number;
   /** 種族/カードの種類キーワード ("ドラゴン", "コマンド" 等)。空なら任意のクリーチャー */
   words: string[];
   /** 名前に含む文字列 (例: 名前に《レッドゾーン》とある) */
@@ -55,12 +58,17 @@ export function parseCond(text: string): CondSpec {
   for (const [w, c] of Object.entries(CIV_WORDS)) if (t.includes(w)) civs.push(c);
   const minM = t.match(/コスト(\d+)以上/);
   const maxM = t.match(/コスト(\d+)以下/);
+  const minP = t.match(/パワー(\d+)以上/);
+  const maxP = t.match(/パワー(\d+)以下/);
   const nameM = t.match(/名前に《(.+?)》/);
   // 文明語・コスト指定を除いた末尾を種族ワードとみなす
   let rest = t
     .replace(/名前に《.+?》とある/g, '')
     .replace(/コスト\d+以[上下]の?/g, '')
+    .replace(/パワー\d+以[上下]の?/g, '')
     .replace(/(光|水|闇|火|自然)(または|か|、|・)?/g, '')
+    // 「光または自然の、パワー8000以上の」の「の、」
+    .replace(/^の?[、,]/, '')
     .replace(/^の/, '')
     .replace(/の/g, ' ')
     .trim();
@@ -74,6 +82,8 @@ export function parseCond(text: string): CondSpec {
     civs,
     minCost: minM ? Number(minM[1]) : undefined,
     maxCost: maxM ? Number(maxM[1]) : undefined,
+    minPower: minP ? Number(minP[1]) : undefined,
+    maxPower: maxP ? Number(maxP[1]) : undefined,
     words,
     nameHas: nameM?.[1],
   };

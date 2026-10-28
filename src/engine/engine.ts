@@ -1780,12 +1780,14 @@ function attackOptions(s: GameState, L: Lookup): number[] {
   const att = L(s.cards[a.attacker].cid);
   const attFace = faceOf(s, L, a.attacker);
   if (!att || !attFace) return [];
+  // 「パワー8000以上の」は攻撃中の今のパワーで見る
+  const attPower = power(s, L, a.attacker, true);
   return s.players[owner].hand.filter((h) => {
     const card = L(s.cards[h].cid);
     // この攻撃中に入れ替えで手札に戻ったカードは、もう一度は使わない (無限ループ防止)
     if (!card || (a.usedOpts ?? []).includes(h)) return false;
     return card.faces.some(
-      (f) => (f.kw.revChange && matchesCond(f.kw.revChange, att, attFace)) || (f.kw.invasion && matchesCond(f.kw.invasion, att, attFace)),
+      (f) => (f.kw.revChange && matchesCond(f.kw.revChange, att, attFace, attPower)) || (f.kw.invasion && matchesCond(f.kw.invasion, att, attFace, attPower)),
     );
   });
 }
@@ -2800,8 +2802,9 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       const card = L(s.cards[a.iid].cid)!;
       const attCard = L(s.cards[at.attacker].cid)!;
       const attFace = faceOf(s, L, at.attacker)!;
-      const rc = card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace));
-      const inv = card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace));
+      const attPower = power(s, L, at.attacker, true);
+      const rc = card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace, attPower));
+      const inv = card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace, attPower));
       const oldName = nameOf(s, L, at.attacker);
       at.usedOpts = [...(at.usedOpts ?? []), at.attacker, a.iid];
       if (rc >= 0) {

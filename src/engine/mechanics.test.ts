@@ -184,6 +184,9 @@ const db = buildDB(
     { id: 'drg', n: 'drg', img: '', f: [{ n: 'drg', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['アーマード・ドラゴン'], x: [] }] },
     cr('bp', 1, 1000, ['相手のターン中に、相手が召喚以外の方法でクリーチャーを出した時、そのクリーチャーを破壊する。']),
     cr('mach', 2, 3000, ['マッハファイター']),
+    cr('machBig', 5, 8000, ['マッハファイター'], 'N'),
+    cr('machSmallN', 2, 3000, ['マッハファイター'], 'N'),
+    cr('rcPow', 8, 15000, ['革命チェンジ：光または自然の、パワー8000以上のクリーチャー'], 'LN'),
     cr('rc', 5, 9000, ['革命チェンジ：火のクリーチャー（自分の火のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）']),
     cr('frA', 5, 5000, ['革命チェンジ：火のクリーチャー', 'ファイナル革命：このクリーチャーが「革命チェンジ」によって出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。その後、カードを１枚引く。']),
     cr('atkEnd', 1, 5000, ['スピードアタッカー', 'このクリーチャーの攻撃の終わりに、カードを１枚引く。']),
@@ -1657,4 +1660,49 @@ describe('named mechanics', () => {
       expect(deck - s.players[0].deck.length).toBe(1);
     });
   });
+
+  describe('マッハファイター・パワー条件の革命チェンジ', () => {
+    it('出たターンはアンタップしているクリーチャーも攻撃でき、次のターンからはタップしているクリーチャーだけ', () => {
+      const s = setup([
+        { p: 0, cid: 'machBig', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const m = find(s, 0, 'battle', 'machBig')!;
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      s.cards[v].tapped = false;
+      s.cards[m].sick = true;
+      expect(attackTargets(s, L, m)).toEqual({ players: [], cards: [v] });
+      s.cards[m].sick = false;
+      expect(attackTargets(s, L, m).cards).toEqual([]);
+      s.cards[v].tapped = true;
+      expect(attackTargets(s, L, m).cards).toEqual([v]);
+    });
+
+    it('「光または自然の、パワー8000以上のクリーチャー」に、マッハファイターでクリーチャーを攻撃する時に革命チェンジできる', () => {
+      let s = setup([
+        { p: 0, cid: 'machBig', zone: 'battle' },
+        { p: 0, cid: 'rcPow', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const m = find(s, 0, 'battle', 'machBig')!;
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      s.cards[m].sick = true;
+      s = act(s, 0, { t: 'attack', attacker: m, player: 1, card: v });
+      expect(s.pending[0]?.kind).toBe('attackOpt');
+      const rc = find(s, 0, 'hand', 'rcPow')!;
+      s = act(s, 0, { t: 'attackOpt', iid: rc });
+      expect(s.cards[rc].zone).toBe('battle');
+      // パワーが足りないクリーチャーからは革命チェンジできない
+      let s2 = setup([
+        { p: 0, cid: 'machSmallN', zone: 'battle' },
+        { p: 0, cid: 'rcPow', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const m2 = find(s2, 0, 'battle', 'machSmallN')!;
+      s2.cards[m2].sick = true;
+      s2 = act(s2, 0, { t: 'attack', attacker: m2, player: 1, card: find(s2, 1, 'battle', 'vanilla')! });
+      expect(s2.pending[0]?.kind).not.toBe('attackOpt');
+    });
+  });
 });
+

@@ -549,7 +549,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
           me.battle.some((b) => {
             const bc = L(s.cards[b].cid);
             const bf = faceOf(s, L, b);
-            return bc && bf && ((f.kw.revChange && matchesCond(f.kw.revChange, bc, bf)) || (f.kw.invasion && matchesCond(f.kw.invasion, bc, bf)));
+            return bc && bf && ((f.kw.revChange && matchesCond(f.kw.revChange, bc, bf, power(s, L, b, true))) || (f.kw.invasion && matchesCond(f.kw.invasion, bc, bf, power(s, L, b, true))));
           })
         )
           return;
