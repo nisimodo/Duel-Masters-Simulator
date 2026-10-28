@@ -133,7 +133,10 @@ function drawHead(ctx: CanvasRenderingContext2D, st: SimStats, s: Side, x: numbe
     const lines: string[] = [];
     let cur = '';
     for (const ch of chars) {
-      if (ctx.measureText(cur + ch).width > tw - 24) (lines.push(cur), (cur = ''));
+      if (ctx.measureText(cur + ch).width > tw - 24) {
+        lines.push(cur);
+        cur = '';
+      }
       cur += ch;
     }
     if (cur) lines.push(cur);
@@ -145,21 +148,37 @@ function drawHead(ctx: CanvasRenderingContext2D, st: SimStats, s: Side, x: numbe
   const tx = x + 32 + tw + 32;
   const maxW = x + w - 32 - tx;
   ctx.textBaseline = 'alphabetic';
-  font(ctx, 30, true);
-  ctx.fillStyle = s.p === 0 ? '#7fb0ff' : '#ff8fab';
-  ctx.fillText(s.p === 0 ? 'デッキA' : 'デッキB', tx, y + 60);
-  font(ctx, 38, true);
-  ctx.fillStyle = C.text;
-  ctx.fillText(fit(ctx, s.name, maxW), tx, y + 108);
-  font(ctx, 110, true);
-  ctx.fillStyle = C.accent;
-  ctx.fillText(pct(st.wins[s.p], st.games), tx, y + Math.round(h * 0.62));
-  font(ctx, 30);
-  ctx.fillStyle = C.text;
-  ctx.fillText(fit(ctx, `${st.wins[s.p]}勝 ${st.wins[q]}敗${st.draws ? ` ${st.draws}分` : ''}`, maxW), tx, y + Math.round(h * 0.77));
-  ctx.fillStyle = C.muted;
-  font(ctx, 26);
-  ctx.fillText(fit(ctx, `先攻 ${pct(st.firstWins[s.p], st.firstGames[s.p])} ・ 後攻 ${pct(st.wins[s.p] - st.firstWins[s.p], st.games - st.firstGames[s.p])}`, maxW), tx, y + Math.round(h * 0.9));
+  // 上から順に、行の高さ (文字の上端・下端) を測って重ならないように並べる
+  const lines: { text: string; px: number; bold: boolean; color: string; gap: number }[] = [
+    { text: s.p === 0 ? 'デッキA' : 'デッキB', px: 28, bold: true, color: s.p === 0 ? '#7fb0ff' : '#ff8fab', gap: 0 },
+    { text: s.name, px: 36, bold: true, color: C.text, gap: 10 },
+    { text: pct(st.wins[s.p], st.games), px: 104, bold: true, color: C.accent, gap: 14 },
+    { text: `${st.wins[s.p]}勝 ${st.wins[q]}敗${st.draws ? ` ${st.draws}分` : ''}`, px: 30, bold: false, color: C.text, gap: 14 },
+    { text: `先攻 ${pct(st.firstWins[s.p], st.firstGames[s.p])} ・ 後攻 ${pct(st.wins[s.p] - st.firstWins[s.p], st.games - st.firstGames[s.p])}`, px: 26, bold: false, color: C.muted, gap: 10 },
+  ];
+  const metric = (l: (typeof lines)[number]) => {
+    font(ctx, l.px, l.bold);
+    const m = ctx.measureText(l.text || '0');
+    return { up: m.fontBoundingBoxAscent ?? l.px * 0.88, down: m.fontBoundingBoxDescent ?? l.px * 0.12 };
+  };
+  // 大きな数字は字面 (数字の上端・下端) で詰める
+  const pctM = () => {
+    font(ctx, lines[2].px, true);
+    const m = ctx.measureText(lines[2].text);
+    return { up: m.actualBoundingBoxAscent, down: m.actualBoundingBoxDescent };
+  };
+  const total = () => lines.reduce((a, l, i) => a + l.gap + (i === 2 ? pctM().up + pctM().down : metric(l).up + metric(l).down), 0);
+  // 高さに収まらなければ数字を小さくする
+  while (total() > h - 40 && lines[2].px > 60) lines[2].px -= 4;
+  let cy = y + Math.max(20, (h - total()) / 2);
+  lines.forEach((l, i) => {
+    const m = i === 2 ? pctM() : metric(l);
+    cy += l.gap + m.up;
+    font(ctx, l.px, l.bold);
+    ctx.fillStyle = l.color;
+    ctx.fillText(fit(ctx, l.text, maxW), tx, cy);
+    cy += m.down;
+  });
 }
 
 /** 見出しつきの短い一覧 */

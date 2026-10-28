@@ -6,6 +6,7 @@ import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 import { expandDeck, presetToDeck, splitByFormat, type Deck } from '../lib/deck';
 import { addGame, emptyStats, simulateGame, type SimStats } from '../engine/sim';
 import type { CardDB } from '../lib/cards';
+import { Modal } from '../game/dialogs';
 import { deckReport, downloadBlob, pct, renderResultImage, type ImageShape } from '../lib/resultImage';
 
 interface Option {
@@ -161,7 +162,15 @@ export default function TestPlay() {
   const [names, setNames] = useState<[string, string]>(['', '']);
   // 結果を出したデッキ (画像に使う。対戦の後で選び直しても変わらない)
   const [resultDecks, setResultDecks] = useState<[Deck, Deck] | null>(null);
-  const [saving, setSaving] = useState<ImageShape | null>(null);
+  // 結果画像のプレビュー (保存ボタンで保存する)
+  const [preview, setPreview] = useState<{ shape: ImageShape; blob: Blob; url: string } | null>(null);
+  const [making, setMaking] = useState<ImageShape | null>(null);
+  useEffect(
+    () => () => {
+      if (preview) URL.revokeObjectURL(preview.url);
+    },
+    [preview],
+  );
   const cancel = useRef(false);
   if (!db || !user) return null;
 
@@ -226,19 +235,23 @@ export default function TestPlay() {
     setRunning(false);
   };
 
-  const saveImage = async (shape: ImageShape) => {
+  const showImage = async (shape: ImageShape) => {
     if (!stats || !resultDecks) return;
-    setSaving(shape);
+    setMaking(shape);
     try {
       const blob = await renderResultImage(db, stats, resultDecks, shape);
-      const d = new Date();
-      const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-      downloadBlob(blob, `testplay-${stamp}-${shape === 'landscape' ? '16x9' : '9x16'}.png`);
+      setPreview({ shape, blob, url: URL.createObjectURL(blob) });
     } catch (e) {
       alert(`画像を作れませんでした: ${e instanceof Error ? e.message : e}`);
     } finally {
-      setSaving(null);
+      setMaking(null);
     }
+  };
+  const saveImage = () => {
+    if (!preview) return;
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+    downloadBlob(preview.blob, `testplay-${stamp}-${preview.shape === 'landscape' ? '16x9' : '9x16'}.png`);
   };
 
   return (
@@ -289,12 +302,12 @@ export default function TestPlay() {
               {stats.decided > 0 && <span className="small muted">平均 {Math.round((stats.turnSum / stats.decided) * 10) / 10} ターンで決着</span>}
               {!running && stats.games > 0 && (
                 <span className="row small" style={{ gap: 6 }}>
-                  結果を画像で保存
-                  <button disabled={!!saving} onClick={() => saveImage('landscape')} title="1920×1080">
-                    {saving === 'landscape' ? '作成中…' : '横長 16:9'}
+                  結果画像
+                  <button disabled={!!making} onClick={() => showImage('landscape')} title="1920×1080 のプレビューを表示">
+                    {making === 'landscape' ? '作成中…' : '横長 16:9'}
                   </button>
-                  <button disabled={!!saving} onClick={() => saveImage('portrait')} title="1080×1920">
-                    {saving === 'portrait' ? '作成中…' : '縦長 9:16'}
+                  <button disabled={!!making} onClick={() => showImage('portrait')} title="1080×1920 のプレビューを表示">
+                    {making === 'portrait' ? '作成中…' : '縦長 9:16'}
                   </button>
                 </span>
               )}
@@ -319,6 +332,22 @@ export default function TestPlay() {
           </div>
           <IssueReport db={db} st={stats} />
         </>
+      )}
+      {preview && (
+        <Modal title="結果画像のプレビュー" onClose={() => setPreview(null)}>
+          <div className="row small" style={{ gap: 6 }}>
+            {(['landscape', 'portrait'] as const).map((sh) => (
+              <button key={sh} className={preview.shape === sh ? 'primary' : ''} disabled={!!making} onClick={() => preview.shape !== sh && showImage(sh)}>
+                {making === sh ? '作成中…' : sh === 'landscape' ? '横長 16:9' : '縦長 9:16'}
+              </button>
+            ))}
+            <span className="grow" />
+            <button className="primary" onClick={saveImage}>
+              保存
+            </button>
+          </div>
+          <img className="result-preview" src={preview.url} alt="テストプレイの結果画像" style={preview.shape === 'landscape' ? { width: 'min(860px, 88vw)' } : { height: 'min(70vh, 1200px)' }} />
+        </Modal>
       )}
     </div>
   );
