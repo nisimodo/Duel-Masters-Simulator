@@ -24,7 +24,9 @@ export function coverage() {
     miss[k] = (miss[k] ?? 0) + 1;
   };
   for (const c of cards)
-    for (const f of c.f) {
+    for (const f0 of c.f) {
+      // (カードデータと同じく、1行につながっている Dスイッチ を別の行にする)
+      const f = { ...f0, x: f0.x.flatMap((l: string) => l.split(/\*\*(?=Dスイッチ)/).map((x) => x.trim()).filter(Boolean)) };
       const sp = splitAbilities(mergeModal(f.x));
       const lines = [...sp.main, ...sp.groups.flatMap((g) => g.lines)];
       const abilityLines = expandKwLines(lines, defs);

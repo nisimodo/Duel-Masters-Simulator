@@ -1799,8 +1799,14 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
-  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'))) return false;
+  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid)) return false;
   return true;
+}
+
+/** 「そのターン、自分の他のクリーチャーが相手プレイヤーを攻撃できない効果はすべて無効」の対象か */
+function hasteByOther(s: GameState, iid: number): boolean {
+  const h = s.players[s.cards[iid].owner].hasteOthers;
+  return !!h && h.turn === s.turn && h.except !== iid;
 }
 
 export function attackTargets(s: GameState, L: Lookup, iid: number): { players: number[]; cards: number[] } {
@@ -1810,7 +1816,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   const opps = opponentsOf(s, c.owner);
   const k = kwOf(s, L, iid);
   const mine = ownStatics(s, L, iid);
-  const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可'));
+  const sickOnlyMach = c.sick && !k.speedAttacker && !mine.some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid);
   // 「相手のクリーチャーは出たターン、自分を攻撃できない」
   const guarded = (o: number) =>
     (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) ||
@@ -1832,6 +1838,8 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       if (tc.justDive != null || isSealed(s, t) || notCreatureNow(s, L, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk || untappedSel.some((sel) => matchesSel(s, L, t, { ...sel, owner: 'any' }))) cards.push(t);
     }
+  // 「そのターン相手のクリーチャーが攻撃する時、可能であればクリーチャーを攻撃する」
+  if (s.players[c.owner].mustAttackCreature === s.turn && cards.length) return { players: [], cards };
   return { players, cards };
 }
 
@@ -3005,6 +3013,13 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         if (picks.length < top.min || picks.length > top.max) return top.min === top.max ? `${top.min}枚選んでください` : `${top.min}～${top.max}枚選んでください`;
         if (top.sumPowerMax != null && picks.reduce((a2, i) => a2 + power(s, L, i), 0) > top.sumPowerMax) return `パワーの合計が${top.sumPowerMax}以下になるように選んでください`;
         if (top.sumCostMax != null && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) > top.sumCostMax) return `コストの合計が${top.sumCostMax}以下になるように選んでください`;
+        if (top.distinct) {
+          const keys = picks.map((i) => {
+            const cd = L(s.cards[i].cid);
+            return top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
+          });
+          if (new Set(keys).size !== keys.length) return top.distinct === 'cost' ? 'コストが異なるカードを選んでください' : 'カードタイプが異なるカードを選んでください';
+        }
         if (top.sumCostMin != null && picks.length && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) < top.sumCostMin) return `コストの合計が${top.sumCostMin}以上になるように選んでください`;
         s.pending.shift();
         resumeExec(s, L, top.exec, { picks });

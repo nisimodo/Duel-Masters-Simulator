@@ -203,6 +203,9 @@ const db = buildDB(
     cr('carrot', 1, 1000, ['このクリーチャーが出た時、このターン中にバトルゾーンから、墓地またはマナゾーンに置かれた自分のカードを好きな枚数、手札に戻す。']),
     cr('tsukkomi', 1, 1000, ['相手のターン中、相手が自身のマナゾーンのカードをタップせずにクリーチャーを出した時、', '「マナコストはちゃんと払えよ！」とツッコんでもよい。そうしたら、相手はそれを山札の下に置く。']),
     cr('obli', 1, 1000, ['相手のターンに、相手が自身のマナゾーンのカードをタップせずにカードを実行した時、相手は自身のクリーチャーを１体選び、破壊する。']),
+    { id: 'ignoreEnter', n: 'ignoreEnter', img: '', f: [{ n: 'ignoreEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['クリーチャーを1体、自分の手札から出す。これらのクリーチャーが出ることによって起こる効果やルールはすべて無視する。'] }] },
+    cr('romanov', 1, 1000, ['このクリーチャーが出た時、各プレイヤーは自身のクリーチャーを１体選び、残りの自身のクリーチャーをすべて持ち主のマナゾーンに置く。']),
+    { id: 'diffType', n: 'diffType', img: '', f: [{ n: 'diffType', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札の上から３枚を表向きにする。その中から、異なるカードタイプを持つカードを好きな数選び、手札に加える。残りを好きな順序で山札の下に置く。'] }] },
     cr('frB', 1, 5000, ['極限ファイナル革命：このクリーチャーがバトルゾーンに出た時、このゲーム中に他の「ファイナル革命」をまだ使っていなければ、カードを１枚引く。']),
     { id: 'mega', n: 'mega', img: '', f: [{ n: 'mega', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['メガ・コマンド・ドラゴン', '生徒会組'], x: ['自分の生徒会組すべてに「スピードアタッカー」を与える。'] }] },
     { id: 'seito', n: 'seito', img: '', f: [{ n: 'seito', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['生徒会組'], x: [] }] },
@@ -1913,6 +1916,54 @@ describe('named mechanics', () => {
       const ov = find(o, 0, 'hand', 'vanilla')!;
       o = drain(act(o, 0, { t: 'move', iid: ov, to: 'battle' }));
       expect(o.cards[ov].zone).toBe('battle');
+    });
+  });
+
+  describe('多く使われていた未対応の効果', () => {
+    it('「これらのクリーチャーが出ることによって起こる効果はすべて無視する」', () => {
+      let s = setup([
+        { p: 0, cid: 'ignoreEnter', zone: 'hand' },
+        { p: 0, cid: 'ordA', zone: 'hand' },
+      ]);
+      const deck = s.players[0].deck.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'ignoreEnter')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: top.options.filter((i) => s.cards[i].cid === 'ordA').slice(0, 1) } : { t: 'resolve', use: true });
+      }
+      expect(s.cards[find(s, 0, 'battle', 'ordA')!].zone).toBe('battle');
+      // ordA の「出た時、カードを1枚引く」は無視された
+      expect(s.players[0].deck.length).toBe(deck);
+    });
+
+    it('各プレイヤーは自身のクリーチャーを1体残し、残りをマナゾーンに置く', () => {
+      let s = setup([
+        { p: 0, cid: 'vanilla', zone: 'battle' },
+        { p: 0, cid: 'big', zone: 'battle' },
+        { p: 0, cid: 'romanov', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'big', zone: 'battle' },
+      ]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'romanov')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        if (top.kind !== 'choice') break;
+        // それぞれ big を残す
+        s = act(s, top.player, { t: 'choose', picks: top.options.filter((i) => s.cards[i].cid === 'big').slice(0, 1) });
+      }
+      expect(s.players[0].battle.map((i) => s.cards[i].cid)).toEqual(['big']);
+      expect(s.players[1].battle.map((i) => s.cards[i].cid)).toEqual(['big']);
+    });
+
+    it('「異なるカードタイプを持つカードを好きな数選ぶ」は同じタイプを2枚選べない', () => {
+      let s = setup([{ p: 0, cid: 'diffType', zone: 'hand' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'diffType')!, face: 0, pay: freeMana(s, 0, 1) });
+      const top = s.pending[0];
+      expect(top?.kind === 'choice' && top.distinct).toBe('type');
+      if (top?.kind !== 'choice') return;
+      // 山札は全部クリーチャー (vanilla): 2枚選ぶとエラー、1枚ならよい
+      expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 2) }, L).error).toMatch(/カードタイプが異なる/);
+      expect(applyAction(s, 0, { t: 'choose', picks: top.options.slice(0, 1) }, L).error).toBeFalsy();
     });
   });
 });

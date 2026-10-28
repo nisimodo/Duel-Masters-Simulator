@@ -115,7 +115,9 @@ export function cardImageSmall(card: Card, face = 0): string {
   return `https://wsrv.nl/?url=${encodeURIComponent(cardImage(card, face))}&w=300&output=webp&q=75`;
 }
 
-function toFace(f: RawFace, defs: Map<string, KwDef>): Face {
+function toFace(f0: RawFace, defs: Map<string, KwDef>): Face {
+  // 「(注釈)**Dスイッチ:〜」のように1行につながっている Dスイッチ を別の行にする
+  const f = { ...f0, x: f0.x.flatMap((l) => l.split(/\*\*(?=Dスイッチ)/).map((x) => x.trim()).filter(Boolean)) };
   // 名前のある能力は定義 (注釈) に展開して解釈する
   const sp = splitAbilities(mergeModal(f.x));
   const abilityLines = expandKwLines(sp.main, defs);

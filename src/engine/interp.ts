@@ -89,7 +89,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
     const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : s.active];
     const lim = sel.costVs.by === 'mana' ? ctl.mana.length : sel.costVs.by === 'shield' ? ctl.shield.length : ctl.hand.length;
     const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
-    if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : !(cost <= lim)) return false;
+    if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : sel.costVs.cmp === 'gt' ? !(cost > lim) : !(cost <= lim)) return false;
   }
   if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
   if (sel.notCreature && L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.isCreature) return false;
@@ -329,6 +329,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const have = new Set(me.mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
       return (['L', 'W', 'D', 'F', 'N'] as const).every((x) => have.has(x));
     }
+    case 'attackUsed':
+      return !!s.attack?.used?.includes(c.key);
     case 'turnStat': {
       const who = c.who === 'self' ? [ex.player] : c.who === 'opp' ? opps(s, ex.player) : s.players.map((_, i) => i);
       const val = (p: number) => (c.what === 'draws' ? (s.players[p].draws?.turn === s.turn ? s.players[p].draws!.n : 0) : turnStat(s, p)[c.what]);
@@ -697,6 +699,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           sumPowerMax: cnt.sumPowerMax,
           // 「コストの合計がその選んだクリーチャーのコスト以下になるよう」
           sumCostMin: cnt.sumCostMin,
+          distinct: cnt.distinct,
           sumCostMax: cnt.sumCostIt ? (L(s.cards[ex.it[0] ?? -1]?.cid ?? '')?.faces[0]?.cost ?? 0) : cnt.sumCostMax,
         });
         return;
@@ -840,6 +843,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           if (op.mode === 'put') {
             log(s, ex.player, `${q(card.faces[fi].name)} をバトルゾーンに出した`);
             moveCard(s, L, i, 'battle', { face: fi });
+            (ex.putIds ??= []).push(i);
             if (/ドラグハート・ウエポン/.test(card.faces[fi].type)) equipWeapon(s, L, ex, i);
           } else {
             const owner = c.owner;
@@ -1166,6 +1170,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = s.players.filter((pl) => !pl.lost).length;
         } else if (op.underSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? s.cards[ex.src].under.length : 0;
+        } else if (op.racesExcept != null) {
+          // 「バトルゾーンにある自分の、ミステリー・トーテム以外の種族1種類につき」
+          const races = s.players[ex.player].battle.filter((b) => faceOf(s, L, b)?.isCreature).flatMap((b) => faceOf(s, L, b)?.races ?? []);
+          ex.count = new Set(races.filter((r) => r !== op.racesExcept)).size;
         } else if (op.civsOf) {
           const ids = op.civsOf === 'mana' ? s.players[ex.player].mana : s.players[ex.player].battle;
           ex.count = new Set(ids.flatMap((i) => L(s.cards[i].cid)?.civs ?? [])).size;
@@ -1397,6 +1405,63 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `次の自分のターンのはじめまで、相手はコスト${cost}のカードを実行できない`);
         break;
       }
+      case 'cancelEnterOf': {
+        const put = new Set(ex.putIds ?? []);
+        const before = s.pending.length;
+        s.pending = s.pending.filter((x) => !(x.kind === 'ability' && ((put.has(x.src) && x.event === 'enter') || (x.subject != null && put.has(x.subject) && /Enter$/.test(x.event)))));
+        if (s.pending.length < before) log(s, ex.player, '出ることによって起こる効果を無視した');
+        break;
+      }
+      case 'moveOtherCreatures': {
+        const who = op.owner === 'self' ? ex.player : mainOpp(s, ex.player);
+        const keep = new Set(ex.it);
+        for (const b of [...s.players[who].battle]) if (!keep.has(b) && faceOf(s, L, b)?.isCreature) moveTo(s, L, ex, b, op.to, true);
+        break;
+      }
+      case 'psychicPerLooked': {
+        // 置いたカード1枚ごとに、そのカード以下のコストのサイキック・クリーチャーを1体まで選んで出す
+        const more: Op[] = [];
+        for (const g of ex.looked.filter((i) => s.cards[i].zone === 'grave')) {
+          const co = L(s.cards[g].cid)?.faces[0]?.cost ?? 0;
+          more.push(
+            { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hyper'], kind: 'creature', costMax: co }, count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `コスト${co}以下のサイキック・クリーチャーを1体まで選んで出す` },
+            { op: 'play', target: { ref: 'it' }, mode: 'put' },
+            { op: 'setIt', ids: [] },
+          );
+        }
+        ex.ops.splice(1, 0, ...more);
+        break;
+      }
+      case 'setIt':
+        ex.it = [...op.ids];
+        break;
+      case 'millItCost': {
+        const i = ex.it[0];
+        const n = i != null ? (L(s.cards[i].cid)?.faces[0]?.cost ?? 0) : 0;
+        const deck = s.players[ex.player].deck;
+        for (const t of deck.slice(-n).reverse()) moveTo(s, L, ex, t, 'grave', true);
+        break;
+      }
+      case 'randomOwnHand': {
+        const hand = s.players[ex.player].hand;
+        for (let k = 0; k < op.n && hand.length; k++) {
+          const pick = hand[Math.floor(rand(s) * hand.length)];
+          moveTo(s, L, ex, pick, op.to, true);
+        }
+        log(s, ex.player, `手札を${op.n}枚、相手に選ばせて${op.to === 'deckBottom' ? '山札の下' : '墓地'}に置いた`);
+        break;
+      }
+      case 'markAttack':
+        if (s.attack) (s.attack.used ??= []).push(op.key);
+        break;
+      case 'oppMustAttackCreature':
+        for (const o of opps(s, ex.player)) s.players[o].mustAttackCreature = s.turn;
+        log(s, ex.player, 'このターン、相手のクリーチャーは可能であればクリーチャーを攻撃する');
+        break;
+      case 'hasteOthers':
+        s.players[ex.player].hasteOthers = { turn: s.turn, except: ex.src };
+        log(s, ex.player, 'このターン、自分の他のクリーチャーは相手プレイヤーを攻撃できる');
+        break;
       case 'freezeWhile': {
         for (const i of ex.it) if (s.cards[i]?.zone === 'battle') s.cards[i].frozenBy = ex.src;
         break;

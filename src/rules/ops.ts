@@ -29,7 +29,7 @@ export interface Sel {
   /** サイキックではない */
   notPsychic?: boolean;
   /** コストが (自分のマナの枚数 / 手札の枚数) より小さい・以下 */
-  costVs?: { by: 'mana' | 'hand' | 'shield'; cmp: 'lt' | 'le' | 'ge'; ofOwner?: boolean };
+  costVs?: { by: 'mana' | 'hand' | 'shield'; cmp: 'lt' | 'le' | 'ge' | 'gt'; ofOwner?: boolean };
   /** この効果のカード自身 */
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
@@ -100,7 +100,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; sumCostMin?: number; fromCount?: boolean } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -156,6 +156,8 @@ export type Cond =
   | { c: 'manaAllCiv'; civ: Civ }
   /** 「そのターン、相手が〜を3体以上召喚していれば」など。who: any はどのプレイヤーでも (シールドが手札に加えられていたら) */
   | { c: 'turnStat'; who: 'self' | 'opp' | 'any'; what: 'summons' | 'enters' | 'freeEnters' | 'hyperEnters' | 'shieldAdds' | 'shieldsToHand' | 'toGrave' | 'left' | 'spellTamaCost' | 'draws'; n: number }
+  /** この攻撃中に使った (逆転撃など) */
+  | { c: 'attackUsed'; key: string }
   /** 「その相手のクリーチャーが自分より4体以上多く」 */
   | { c: 'oppMoreCreaturesBy'; n: number }
   /** 「自分のマナゾーンにあるカードがすべてアビス・カードなら」 */
@@ -271,7 +273,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean }
+  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -338,6 +340,24 @@ export type Op =
   | { op: 'destroyMinCost' }
   /** 選んだカードは、このカードがバトルゾーンにある間アンタップしない */
   | { op: 'freezeWhile' }
+  /** 「これらのクリーチャーが出ることによって起こる効果はすべて無視する」: この効果で出したカードの「出た時」の誘発を取り消す */
+  | { op: 'cancelEnterOf' }
+  /** 選んだカード (it) 以外の、そのプレイヤーのクリーチャーをすべて置く (「残りの自身のクリーチャーをすべてマナゾーンに置く」) */
+  | { op: 'moveOtherCreatures'; owner: 'self' | 'opp'; to: 'mana' | 'grave' | 'hand' | 'deckBottom' }
+  /** こうして墓地に置いた (looked) カード1枚につき、そのカード以下のコストのサイキック・クリーチャーを1体、超次元ゾーンから出してもよい */
+  | { op: 'psychicPerLooked' }
+  /** 選んだクリーチャー (it) のコストと同じ枚数、自分の山札の上から墓地に置く */
+  | { op: 'millItCost' }
+  /** 自分の手札を相手にN枚見ないで選ばせ、山札の下に置く */
+  | { op: 'randomOwnHand'; n: number; to: 'deckBottom' | 'grave' }
+  /** この攻撃中に使ったものとして記録する (「その攻撃中に「逆転撃」を使っていなければ」) */
+  | { op: 'markAttack'; key: string }
+  /** そのターン、自分の他のクリーチャーが相手プレイヤーを攻撃できない効果をすべて無効にする */
+  | { op: 'hasteOthers' }
+  /** そのターン、相手のクリーチャーが攻撃する時、可能であればクリーチャーを攻撃する */
+  | { op: 'oppMustAttackCreature' }
+  /** (内部) 「それ」を指定のカードにする */
+  | { op: 'setIt'; ids: number[] }
   /** このターン、選んだクリーチャーのパワーを2倍にする */
   | { op: 'powerDouble' }
   /** 次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない */

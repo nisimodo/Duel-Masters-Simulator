@@ -808,6 +808,19 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   };
   const ranked = [...top.options].sort((a, b) => (casting ? castScore(b) - castScore(a) : score(b) - score(a)));
   const n = top.purpose === 'sacrifice' ? top.min : top.max;
+  if (top.distinct) {
+    // 異なるカードタイプ・コストのものだけ: 価値の高い順に、同じ種類は1枚まで
+    const seen = new Set<string>();
+    const picks: number[] = [];
+    for (const i of [...top.options].sort((a, b) => ownValue(s, L, b) - ownValue(s, L, a))) {
+      const cd = L(s.cards[i].cid);
+      const key = top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
+      if (seen.has(key) || picks.length >= top.max) continue;
+      seen.add(key);
+      picks.push(i);
+    }
+    return { t: 'choose', picks };
+  }
   if (top.sumCostMin != null) {
     // コストの合計の下限: 価値の低い順に、合計が届くまで選ぶ (届かなければ選ばない)
     const picks: number[] = [];

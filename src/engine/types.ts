@@ -180,6 +180,10 @@ export interface PlayerState {
   summonLockCost?: number;
   /** 「自分はゲームに負けず、相手はゲームに勝てない」 */
   noLose?: { turn?: number; until?: number };
+  /** 「そのターン、自分の他のクリーチャーが相手プレイヤーを攻撃できない効果はすべて無効」 */
+  hasteOthers?: { turn: number; except: number };
+  /** そのターン、このプレイヤーのクリーチャーは可能であればクリーチャーを攻撃する */
+  mustAttackCreature?: number;
   /** 「相手のカードの効果によって、自分のクリーチャーは離れない」(このプレイヤーのターンのはじめまで) */
   leaveGuard?: { until: number };
   /** 「相手はその数字と同じコストのカードを実行できない」(until のプレイヤーのターンのはじめまで) */
@@ -229,6 +233,8 @@ export type Pending =
       sumCostMax?: number;
       /** 選んだカードのコストの合計の下限 */
       sumCostMin?: number;
+      /** 異なるカードタイプ・コストのカードだけを選ぶ */
+      distinct?: 'type' | 'cost';
       exec: Exec;
     }
   | {
@@ -276,6 +282,8 @@ export interface Exec {
   wins?: number;
   /** 種族・文明・数字の選択肢 */
   valueLabels?: string[];
+  /** この効果でバトルゾーンに出したカード */
+  putIds?: number[];
   /** プレイヤーが使うと決めた能力 (「〜してもよい。その後〜してもよい」を続けて処理する) */
   activated?: boolean;
   /** 最初の「〜してもよい」をもう使うと決めた */
@@ -299,6 +307,8 @@ export interface AttackState {
   preFired?: boolean;
   /** この攻撃中に革命チェンジ・侵略で使った/戻ったカード */
   usedOpts?: number[];
+  /** この攻撃中に使った能力 (「逆転撃」など) */
+  used?: string[];
   /** この攻撃でシールドをブレイクした (キリフダッシュ) */
   broke?: boolean;
 }
