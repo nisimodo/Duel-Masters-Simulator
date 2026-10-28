@@ -232,6 +232,8 @@ const db = buildDB(
     cr('dolfal', 1, 30000, ['スピードアタッカー', 'このクリーチャーが攻撃する時、相手のクリーチャーをすべて破壊する。', 'クリーチャーが破壊された時、自分はカードを１枚引いてもよい。', '自分がカードを引いた時、相手のマナゾーンにあるカードを１枚選び、タップする。次の自分のターンのはじめまで、それはアンタップしない。']),
     cr('deathMarch', 1, 3000, ['このクリーチャーがバトルする時、そのバトルの終わりまで、バトルしている相手クリーチャーのパワーは－4000される。']),
     cr('big9', 1, 9000, []),
+    { id: 'cloneC', n: 'cloneC', img: '', f: [{ n: 'cloneC', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['バトルゾーンにある相手のクリーチャーを１体選ぶ。その後、すべての墓地にある《cloneC》１枚につき、バトルゾーンにある相手の他のクリーチャーを１体選んでもよい。選んだクリーチャーをすべて破壊する。'] }] },
+    { id: 'te20', n: 'te20', img: '', f: [{ n: 'te20', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札または超GRの上から１枚目を見る。それをその一番下に置いてもよい。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2032,6 +2034,44 @@ describe('named mechanics', () => {
       // 6000-4000 = 2000 < 3000
       expect(s.cards[foe].zone).toBe('grave');
       expect(find(s, 0, 'battle', 'deathMarch')).toBeDefined();
+    });
+  });
+
+  describe('山札または超GRを見る', () => {
+    it('見た山札の一番上のカードを一番下に置く', () => {
+      let s = setup([{ p: 0, cid: 'te20', zone: 'hand' }]);
+      const top = s.players[0].deck.at(-1)!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'te20')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const p0 = s.pending[0];
+        s = act(s, p0.player, p0.kind === 'choice' ? (p0.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', options: [0] }) : { t: 'resolve', use: true });
+      }
+      expect(s.players[0].deck[0]).toBe(top);
+      expect(s.cards[top].zone).toBe('deck');
+    });
+  });
+
+  describe('クローン系', () => {
+    it('墓地の同じ名前のカードの枚数だけ、他のクリーチャーを追加で選べる', () => {
+      let s = setup([
+        { p: 0, cid: 'cloneC', zone: 'hand' },
+        { p: 0, cid: 'cloneC', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      const [c1, c2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'cloneC');
+      moveCard(s, L, c2, 'grave');
+      s = act(s, 0, { t: 'play', iid: c1, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        if (top.kind === 'choice') {
+          // 2回目の選択は1枚まで (墓地の cloneC は1枚)
+          if (top.options.length === 2) expect(top.max).toBe(1);
+          s = act(s, 0, { t: 'choose', picks: top.options.slice(0, top.max) });
+        } else s = act(s, top.player, { t: 'resolve', use: true });
+      }
+      expect(s.players[1].battle).toHaveLength(1);
     });
   });
 

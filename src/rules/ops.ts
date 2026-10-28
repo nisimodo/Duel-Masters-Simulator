@@ -79,6 +79,12 @@ export interface Sel {
   costEqIt?: boolean;
   /** このターンにバトルゾーンを離れたカード */
   leftThisTurn?: boolean;
+  /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
+  attackingNow?: boolean;
+  /** 先に選んで保存したカード (saved) ではない (「他の〜」) */
+  notSaved?: boolean;
+  /** 能力を誘発させたカード (「召喚したクリーチャー」) と同じ名前 */
+  sameNameSubject?: boolean;
   /** いまバトルしているクリーチャー (「バトルしている相手クリーチャー」は owner: 'opp' と組み合わせる) */
   battling?: boolean;
   /** そのカード (it) と同じカードタイプ (クリーチャー・呪文・タマシード・フィールド等) */
@@ -221,9 +227,11 @@ export type Cond =
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' | 'itOwner' }
   /** 山札の上から N 枚を移動する / 見る / 表向きにする */
-  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp'; nth?: boolean }
+  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp' | 'gr'; nth?: boolean }
+  /** 見たカードを、それがあった山札 (または超GR) の一番下に置く */
+  | { op: 'lookedToBottom' }
   /** 自分の山札をすべて見る (サーチ) */
-  | { op: 'lookDeck' }
+  | { op: 'lookDeck'; who?: 'opp' }
   /** カードを選んで it に入れる */
   | { op: 'choose'; target: Target; purpose: Purpose; prompt: string }
   | { op: 'move'; target: Target; to: Dest; reveal?: boolean }
@@ -233,7 +241,7 @@ export type Op =
   | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp'; untilEnd?: boolean }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }
-  | { op: 'shuffle'; who?: 'opp' }
+  | { op: 'shuffle'; who?: 'opp' | 'looked' }
   | { op: 'battle'; a: Target; b: Target }
   | { op: 'breakShield'; n: number; own?: boolean }
   /** シールド・山札を見る (自分だけに見える。見たカードは looked) */
@@ -442,6 +450,8 @@ export type Op =
   | { op: 'revealUntil'; sel: Sel }
   /** 今選んでいるカードを保存 (2つ目の選択のため) */
   | { op: 'save' }
+  /** 保存しておいたカード (saved) を it に加える (「選んだクリーチャーをすべて〜」) */
+  | { op: 'addSaved' }
   /** 手札をすべて山札に加える */
   | { op: 'handToDeck' }
   | { op: 'note'; text: string };

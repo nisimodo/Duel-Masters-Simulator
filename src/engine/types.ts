@@ -265,6 +265,8 @@ export type Pending =
 /** 実行中の効果プログラム */
 export interface Exec {
   player: number;
+  /** 能力を誘発させたカード (「召喚したクリーチャー」など。it が変わっても残る) */
+  subject?: number;
   src: number;
   ops: Op[];
   it: number[];

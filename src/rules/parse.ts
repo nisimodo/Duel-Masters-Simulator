@@ -456,6 +456,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // 「そのクリーチャーは、可能であればそのターン攻撃する」
+    .replace(/^(.+?)は、?可能(であれば|なら)、?(この|その)ターン攻撃する$/, '$1は、$3ターン、可能$2攻撃する')
+    // 「このターン、このクリーチャーはシールドをもう1枚ブレイクする」
+    .replace(/シールドをもう(\d+)(?:枚|つ)ブレイクする$/, 'シールドをさらに$1つブレイクする')
+    .replace(/バトルゾーンにあるこのクリーチャー/g, 'このクリーチャー')
+    .replace(/アンタップされているクリーチャーを攻撃できる/g, 'アンタップしているクリーチャーを攻撃できる')
+    // コーライル 「持ち主の山札の1番上に置く」
+    .replace(/山札の1番上/g, '山札の一番上')
+    // 日向草 「バトルゾーンにある、日向草以外の自分のクリーチャーをすべてアンタップする」
+    .replace(/^バトルゾーンにある、[^、]+?以外の自分のクリーチャーをすべてアンタップする$/, '自分の他のクリーチャーをすべてアンタップする')
     .replace(/^プレイヤー1人につき、(?:自分は)?カードを(\d+)枚引く$/, 'このゲームに参加しているプレイヤー1人につき、カードを$1枚引く')
     // 漲る混沌 ハッポウマントラ 「(攻撃された)そのプレイヤーの手札を1枚見ないで選び、捨てさせる」
     .replace(/^そのプレイヤーの手札を(\d+)枚見ないで選び、捨てさせる$/, '相手の手札を$1枚見ないで選び、捨てさせる')
@@ -925,6 +935,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^\d+枚しかない場合は、相手はその\d+枚を(?:持ち主の墓地に置く|捨てる)$/.test(s)) return [];
   if (/^(?:その)?攻撃を中止する$/.test(s)) return [{ op: 'cancelAttack' }];
   if (/^攻撃しているクリーチャーを破壊する$/.test(s)) return [{ op: 'destroyAttacker' }];
+  // バイバイ・アメーバ 「(バトルの後、)攻撃クリーチャーを持ち主の手札に戻す」
+  {
+    const ak = s.match(/^(?:その|相手の)?攻撃(?:クリーチャー|しているクリーチャー)を、?(.+)$/);
+    const aops = ak && verbOps(ak[1], { ref: 'it' });
+    if (aops)
+      return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', attackingNow: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, ...aops];
+  }
   if (/^裏返し、1体のクリーチャーとして合体させる$/.test(s)) return [{ op: 'flip', target: { ref: 'self' }, to: 'creature' }];
   if (/^この零龍星雲を自分の《[^》]+》にリンク(?:する|してもよい)$/.test(s)) return /てもよい$/.test(s) ? [{ op: 'optional', body: [{ op: 'zeroLink' }], prompt: s0 }] : [{ op: 'zeroLink' }];
   // 「〜を数える」「その数だけ〜」
@@ -1383,6 +1400,81 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'powerDouble' },
       { op: 'grant', target: { ref: 'it' }, kws: ['パワード・ブレイカー', 'すべてのバトルに勝つ'], until: 'turn' },
     ];
+  // 憎悪と怒りの獄門 「自分のシールドと同じ枚数のシールドを、相手は自身のシールドゾーンから選ぶ。相手は残りのシールドを持ち主の手札に加える」
+  if (/^自分のシールドと同じ(?:枚数|数)のシールドを、相手は(?:自分自身|自身)のシールドゾーンから選ぶ$/.test(s))
+    return [
+      { op: 'countSet', sel: { owner: 'self', zones: ['shield'], kind: 'card' } },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { n: 99, upTo: false, fromCount: true }, chooser: 'opp' }, purpose: 'benefit', prompt: '残すシールドを選ぶ' },
+      { op: 'save' },
+    ];
+  if (/^相手は残りのシールドを(?:持ち主の|自身の)?手札に加える$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card', notSaved: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 冥界の手 「自分のシールドをすべて裏向きにし、シャッフルして並べる」
+  if (/^自分のシールドをすべて裏向きにし、シャッフルして並べる$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'faceDown', target: { ref: 'it' } },
+    ];
+  // 「(相手の手札を見る。)その中から1枚選び、捨てさせる」「その中から光の呪文以外の呪文をすべて捨てさせる」
+  if ((mm = s.match(/^その中から(\d+)枚選び、捨てさせる$/)))
+    return [{ op: 'choose', target: { ref: 'looked', count: { n: +mm[1], upTo: false } }, purpose: 'hostile', prompt: '捨てさせるカードを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }];
+  {
+    const ds = s.match(/^その中から(.+?)を(?:すべて|(\d+)枚選び、)捨てさせる$/);
+    // 「光の呪文以外の呪文」
+    const exc = ds?.[1].match(/^(光|水|闇|火|自然)の呪文以外の呪文$/);
+    const dsel = exc ? ({ owner: 'opp', zones: ['hand'], kind: 'spell', civNot: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[exc[1] as '光']] } as Sel) : ds && parseSel(ds[1]);
+    if (ds && dsel)
+      return [
+        { op: 'choose', target: { ref: 'looked', sel: { ...dsel, owner: 'opp', zones: ['hand'] }, count: ds[2] ? { n: +ds[2], upTo: false } : { all: true } }, purpose: 'hostile', prompt: ds[2] ? '捨てさせるカードを選ぶ' : 'all' },
+        { op: 'move', target: { ref: 'it' }, to: 'grave' },
+      ];
+  }
+  // 「(パワーが同じ) 2体以上ある場合、好きなほうを選ぶ」(選ぶ時に自分で選ぶので、そのまま)
+  if (/^\d+(?:体|枚|つ)以上ある場合、好きな(?:ほう|もの)を選ぶ$/.test(s)) return [];
+  // 「相手のシールドを1つ選び、表向きにする」
+  if ((mm = s.match(/^相手のシールドを(\d+)(?:つ|枚)選び、表向きにする$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card', shieldFaceDown: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '表向きにする相手のシールドを選ぶ' },
+      { op: 'faceUp', target: { ref: 'it' } },
+    ];
+  // 凶骨の邪将クエイクス 「相手の手札の枚数がそれ以下の場合には、相手は手札すべてを持ち主の墓地に置く」(選べる分だけ置くので、そのまま)
+  if (/^相手の手札(?:の枚数)?がそれ以下の場合(?:に)?は、相手は(?:自身の)?手札(?:を)?すべて(?:を)?持ち主の墓地に置く$/.test(s)) return [];
+  // ピーカプ・リザード 「ただし、両クリーチャーはタップしたままである」
+  if (/^ただし、両クリーチャーはタップしたままである$/.test(s)) return [];
+  // 蒸神兵カイン 「ただし、その「S・トリガー」は使えない」(墓地に置くので使えない)
+  if (/^ただし、その「S・トリガー」は使えない$/.test(s)) return [];
+  // 蒸神兵カイン 「自分のシールドが1枚でもあれば、その中から裏向きのまま1枚選び、自分の墓地に置く」
+  if ((mm = s.match(/^自分のシールドが\d+(?:枚|つ)(?:でも|以上)あれば、その中から裏向きのまま(\d+)(?:枚|つ)選び、(?:自分の)?墓地に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: '墓地に置くシールドを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  // 二刀流トレーニング 「そのクリーチャーがこのターンはじめてタップされた時、アンタップする」
+  if (/^そのクリーチャーがこのターンはじめてタップされた時、アンタップする$/.test(s)) return [{ op: 'grant', target: { ref: 'it' }, kws: ['初回タップでアンタップ'], until: 'turn' }];
+  // ロスト・チャージャー 「自分または相手の山札を見る」
+  if (/^自分または相手の山札を見る$/.test(s))
+    return [
+      {
+        op: 'modal',
+        pick: 1,
+        options: [
+          { label: '自分の山札', body: [{ op: 'lookDeck' }] },
+          { label: '相手の山札', body: [{ op: 'lookDeck', who: 'opp' }] },
+        ],
+      },
+    ];
+  if (/^その後、?そのカードの持ち主は(?:自身の)?山札をシャッフルする$/.test(s)) return [{ op: 'shuffle', who: 'looked' }];
+  // 神秘と創造の石碑 「(自分のクリーチャーを召喚した時、自分の山札を見る。)その中から、召喚したクリーチャーと同じ名前のクリーチャーを1体選び、バトルゾーンに出してもよい」
+  if ((mm = s.match(/^その中から、?召喚したクリーチャーと同じ名前のクリーチャーを(\d+)体選び、バトルゾーンに出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'creature', sameNameSubject: true }, count: { n: +mm[1], upTo: true } }, purpose: 'benefit', prompt: '召喚したクリーチャーと同じ名前のクリーチャーを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  // ラリシウス 「相手の山札の上から1枚目と手札を見てもよい」
+  if ((mm = s.match(/^相手の山札の上から(\d+)枚目と手札を見る$/))) return [{ op: 'top', n: +mm[1], to: 'look', who: 'opp' }];
   // 死神術士デスマーチ 「(バトルする時、)そのバトルの終わりまで、バトルしている相手クリーチャーのパワーは-4000される」
   // ワンダーチューン・MOTORS 「バトルしている自分のクリーチャーのパワーを、バトルの終わりまで+5000する」
   if (
@@ -1428,6 +1520,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:その|この)ターン(?:、)?このクリーチャーが攻撃してい(?:たら|れば)、(?:このクリーチャーを)?破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'selfAttacked' }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // キャンベロ 「次の相手のターン、相手はクリーチャーを1体しか出せない」
   if ((mm = s.match(/^次の相手のターン(?:の終わりまで)?、相手はクリーチャーを(\d+)体しか(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterLimit', n: +mm[1] }];
+  // 予知 TE-20 「自分の山札または超GRの上から1枚目を見る。それをその一番下に置いてもよい」
+  if ((mm = s.match(/^自分の山札または超GRの上から(\d+)枚(?:目)?を見る$/)))
+    return [
+      {
+        op: 'modal',
+        pick: 1,
+        options: [
+          { label: '山札', body: [{ op: 'top', n: +mm[1], to: 'look', who: 'self' }] },
+          { label: '超GR', body: [{ op: 'top', n: +mm[1], to: 'look', who: 'gr' }] },
+        ],
+      },
+    ];
+  if (/^(?:それ|そのカード)をその(?:一番)?下に置く$/.test(s)) return [{ op: 'lookedToBottom' }];
   // ホーンテッド・チョイス 「いずれかのプレイヤーの山札の上から1枚目を見る」: 自分か相手かを選ぶ
   if ((mm = s.match(/^いずれかのプレイヤーの山札の上から(\d+)枚(?:目)?を見る$/)))
     return [
@@ -3029,8 +3134,59 @@ function fixPurposes(ops: Op[]) {
   }
 }
 
+/** いちばん後の選択 (「〜してもよい」の中も見る) */
+function lastChoose(ops: Op[]): Extract<Op, { op: 'choose' }> | undefined {
+  for (let k = ops.length - 1; k >= 0; k--) {
+    const o = ops[k];
+    if (o.op === 'choose') return o;
+    if (o.op === 'optional' || o.op === 'if') {
+      const x = lastChoose(o.body);
+      if (x) return x;
+    }
+  }
+  return undefined;
+}
+
 /** 効果テキスト (複数の文) を解釈する */
 export function parseEffect(text: string): Program {
+  // クローン系 「Xを1体選ぶ。その後、すべての墓地にある《クローン・〜》1枚につき、他のXを1体選んでもよい。選んだクリーチャーをすべて〜」
+  {
+    const cl = normText(text).replace(/\s+/g, '').match(/^(.+?)を(\d+)体選ぶ。その後、すべての墓地にある《([^》]+)》(\d+)枚につき、(.*?)他の(.*?)クリーチャーを(\d+)体選んでもよい。選んだクリーチャーをすべて、?(.+?)。?$/);
+    const first = cl && sentence(`${cl[1]}を${cl[2]}体選ぶ`, { looked: false, chosen: false });
+    const ch = first && lastChoose(first);
+    const verb = cl && verbOps(cl[8], { ref: 'it' });
+    // (唱えている呪文自身は墓地の枚数に数えない)
+    if (cl && first && ch && ch.target.ref === 'sel' && verb)
+      return {
+        ops: [
+          ...first,
+          { op: 'save' },
+          { op: 'countSet', sel: { owner: 'any', zones: ['grave'], kind: 'card', name: cl[3], other: true } },
+          { op: 'choose', target: { ref: 'sel', sel: { ...ch.target.sel, notSaved: true }, count: { n: 99, upTo: true, fromCount: true }, chooser: 'self' }, purpose: ch.purpose, prompt: `他のクリーチャーを選ぶ (《${cl[3]}》の枚数まで)` },
+          { op: 'addSaved' },
+          ...verb,
+        ],
+        complete: true,
+        unparsed: [],
+      };
+    // クローン・バイス 「相手の手札を1枚見ないで選ぶ。その後、すべての墓地にある《クローン・バイス》1枚につき、相手の手札から他の1枚を見ないで選んでもよい。選んだ手札をすべて捨てさせる」
+    const cv = normText(text).replace(/\s+/g, '').match(/^相手の手札を(\d+)枚見ないで選ぶ。その後、すべての墓地にある《([^》]+)》(\d+)枚につき、相手の手札から他の(\d+)枚を見ないで選んでもよい。選んだ手札をすべて捨てさせる。?$/);
+    if (cv)
+      return {
+        ops: [
+          { op: 'discard', who: 'opp', count: { n: +cv[1], upTo: false }, how: 'random' },
+          { op: 'countSet', sel: { owner: 'any', zones: ['grave'], kind: 'card', name: cv[2], other: true } },
+          { op: 'repeatCount', body: [{ op: 'discard', who: 'opp', count: { n: +cv[4], upTo: false }, how: 'random' }] },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // キング・アクエリアス 「このターンが終わるまで、バトルゾーンにある自分の水のクリーチャーはすべて、次の能力を得る。「このクリーチャーはブロックされない」」
+  {
+    const qa = normText(text).replace(/\s+/g, '').match(/^(.*?)(?:このターンが終わるまで|このターン)、(?:バトルゾーンにある)?(自分の.+?)はすべて、次の能力を得る。「このクリーチャーは(ブロックされない|タップされていないクリーチャーを攻撃できる)。?」。?(.*)$/);
+    if (qa) return parseEffect(qa[3] === 'ブロックされない' ? `${qa[1]}このターン、${qa[2]}すべてに「ブロックされない」を与える。${qa[4]}` : `${qa[1]}このターン、${qa[2]}はすべて、アンタップしているクリーチャーを攻撃できる。${qa[4]}`);
+  }
   // ファイナル革命・極限ファイナル革命: 効果全体をその条件で (後の文の「その中から〜」なども含めて)
   const fr = normText(text).match(/^\s*(?:その|この)(ターン|ゲーム)(?:中)?に、?(?:自分が|自分の)?他の「ファイナル革命」を(?:まだ)?使っていなければ、([\s\S]*)$/);
   if (fr) {
@@ -3216,6 +3372,14 @@ function parseEffectRaw(text: string): Program {
       const body = sentence(el[1], ctx) ?? verbOps(el[1], { ref: 'it' });
       if (body) {
         last.else = body;
+        continue;
+      }
+    }
+    // 「ただし、進化クリーチャーを選ぶことはできない」: 直前の選択の条件
+    if (/^ただし、進化クリーチャー(?:を選ぶことはできない|は選べない)$/.test(s.replace(/\s+/g, ''))) {
+      const ch = lastChoose(ops);
+      if (ch && ch.target.ref === 'sel') {
+        ch.target.sel = { ...ch.target.sel, nonEvolution: true };
         continue;
       }
     }

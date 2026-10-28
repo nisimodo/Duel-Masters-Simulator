@@ -184,6 +184,9 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.attackingNow && s.attack?.attacker !== iid) continue;
+        if (sel.notSaved && (ex.saved ?? []).includes(iid)) continue;
+        if (sel.sameNameSubject && !(ex.subject != null && L(s.cards[iid].cid)?.name === L(s.cards[ex.subject].cid)?.name)) continue;
         if (sel.battling && !(s.battleNow && (s.battleNow.att === iid || s.battleNow.def === iid))) continue;
         if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
@@ -469,7 +472,7 @@ function sameCardType(L: Lookup, a: string, b: string): boolean {
 
 /** 効果プログラムの実行を開始する */
 export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number, activated?: boolean) {
-  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy, ...(activated ? { activated } : {}) });
+  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy, ...(subject != null && s.cards[subject] ? { subject } : {}), ...(activated ? { activated } : {}) });
 }
 
 /** 続けて処理している「〜してもよい」を、何も選ばなかったので使わなかったことにする */
@@ -617,8 +620,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'top': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
-        const deck = s.players[who].deck;
+        const who = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        // 'gr': 自分の超GRの上 (配列の末尾が上)
+        const deck = op.who === 'gr' ? s.players[who].gr : s.players[who].deck;
         const ids = deck.slice(-op.n).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
@@ -641,10 +645,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'lookedToBottom': {
+        for (const i of ex.looked) {
+          const z = s.cards[i]?.zone;
+          if (z !== 'deck' && z !== 'gr') continue;
+          moveCard(s, L, i, z, { pos: 'bottom' });
+          log(s, ex.player, `${z === 'gr' ? '超GR' : '山札'}の一番下に置いた`);
+        }
+        break;
+      }
       case 'lookDeck': {
-        ex.looked = [...s.players[ex.player].deck];
+        const lw = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        ex.looked = [...s.players[lw].deck];
         ex.it = [];
-        log(s, ex.player, '山札を見た');
+        log(s, ex.player, op.who === 'opp' ? '相手の山札を見た' : '山札を見た');
         break;
       }
       case 'choose': {
@@ -813,7 +827,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'shuffle': {
-        const who = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        // 'looked': 見た山札の持ち主 (「自分または相手の山札を見る。…その後、そのカードの持ち主は山札をシャッフルする」)
+        const who = op.who === 'opp' ? mainOpp(s, ex.player) : op.who === 'looked' && ex.looked.length ? s.cards[ex.looked[0]].owner : ex.player;
         shuffleArr(s, s.players[who].deck);
         s.players[who].peek = [];
         log(s, ex.player, '山札をシャッフル');
@@ -946,6 +961,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       case 'save':
         ex.saved = [...ex.it];
+        break;
+      case 'addSaved':
+        ex.it = [...new Set([...(ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone'), ...ex.it])];
         break;
       case 'payPlay': {
         const c = s.cards[ex.src];

@@ -2320,6 +2320,12 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
       c.attackedTurn = s.turn;
+      // 二刀流トレーニング 「そのクリーチャーがこのターンはじめてタップされた時、アンタップする」
+      if ((c.grants ?? []).some((g) => g.kws.includes('初回タップでアンタップ'))) {
+        c.grants = c.grants!.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '初回タップでアンタップ') }));
+        c.tapped = false;
+        log(s, p, `${q(nameOf(s, L, a.attacker))} はこのターンはじめてタップされたのでアンタップ`);
+      }
       countAct(s, p, 'atk');
       const me0 = s.players[p];
       me0.attacks = me0.attacks?.turn === s.turn ? { turn: s.turn, n: me0.attacks.n + 1 } : { turn: s.turn, n: 1 };
