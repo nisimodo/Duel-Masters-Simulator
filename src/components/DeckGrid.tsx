@@ -1,8 +1,35 @@
 // デッキのグリッド表示 (サムネ・デッキ名・枚数・文明・オリジナル/アドバンス)
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CIV_COLOR, CIV_NAME, type CardDB } from '../lib/cards';
 import { countOf, deckCivs, deckFormat, FORMAT_LABEL, mainSize, type Deck, type DeckFormat } from '../lib/deck';
 import { DeckThumb } from './CardView';
+
+/** 1行に収まらない文字は、切らずに横幅を縮めて (文字の縦横比を変えて) 収める */
+export function FitText({ text, className }: { text: string; className?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    const b = box.current;
+    const i = inner.current;
+    if (!b || !i) return;
+    // (offsetWidth は縮める前の幅)
+    // (幅は整数に丸められるので、端の文字が欠けないよう少し余裕を持たせる)
+    const update = () => setScale(i.offsetWidth > b.clientWidth && b.clientWidth > 0 ? (b.clientWidth - 2) / (i.offsetWidth + 1) : 1);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(b);
+    ro.observe(i);
+    return () => ro.disconnect();
+  }, [text]);
+  return (
+    <div ref={box} className={`fit-text${className ? ` ${className}` : ''}`} title={text}>
+      <span ref={inner} style={scale < 1 ? { transform: `scaleX(${scale})` } : undefined}>
+        {text}
+      </span>
+    </div>
+  );
+}
 
 export function FormatBadge({ format }: { format: DeckFormat }) {
   return <span className={`badge fmt-${format}`}>{FORMAT_LABEL[format]}</span>;
@@ -34,35 +61,35 @@ export function DeckTile({ db, deck, title, issues = [], okNote, caution, select
   const body = (
     <>
       <div className="deck-tile-thumb">{deck ? <DeckThumb db={db} deck={deck} width="100%" /> : <div className="deck-thumb-empty deck-tile-random">?</div>}</div>
-      <div className="deck-tile-name" title={title ?? deck?.name}>
-        {title ?? deck?.name}
-      </div>
-      {deck && (
-        <div className="deck-tile-info small muted">
-          <span>{mainSize(deck)}枚</span>
-          {hyper > 0 && <span>超次元{hyper}</span>}
-          {gr > 0 && <span>GR{gr}</span>}
-          <span className="deck-tile-civs">
-            {deckCivs(db, deck).map((c) => (
-              <span key={c} className="civdot" style={{ background: CIV_COLOR[c] }} title={CIV_NAME[c]} />
-            ))}
-          </span>
+      <div className="deck-tile-body">
+        <FitText className="deck-tile-name" text={title ?? deck?.name ?? ''} />
+        {deck && (
+          <div className="deck-tile-info muted">
+            <span>{mainSize(deck)}枚</span>
+            {hyper > 0 && <span>超次元{hyper}</span>}
+            {gr > 0 && <span>GR{gr}</span>}
+            <span className="deck-tile-civs">
+              {deckCivs(db, deck).map((c) => (
+                <span key={c} className="civdot" style={{ background: CIV_COLOR[c] }} title={CIV_NAME[c]} />
+              ))}
+            </span>
+          </div>
+        )}
+        <div className="deck-tile-badges">
+          {fmt && <FormatBadge format={fmt} />}
+          {selected && <span className="badge sel">選択中</span>}
         </div>
-      )}
-      <div className="deck-tile-badges">
-        {fmt && <FormatBadge format={fmt} />}
-        {selected && <span className="badge sel">選択中</span>}
+        {caution && issues.length === 0 && <div className="small caution deck-tile-note">⚠ {caution}</div>}
+        {issues.length > 0 ? (
+          <div className="small warn deck-tile-note" title={issues.join('\n')}>
+            ⚠ {issues[0]}
+            {issues.length > 1 ? ` 他${issues.length - 1}件` : ''}
+          </div>
+        ) : (
+          okNote && <div className="small ok deck-tile-note">✓ {okNote}</div>
+        )}
+        {showUpdated && deck && deck.updatedAt > 0 && <div className="small muted">更新 {new Date(deck.updatedAt).toLocaleDateString()}</div>}
       </div>
-      {caution && issues.length === 0 && <div className="small caution deck-tile-note">⚠ {caution}</div>}
-      {issues.length > 0 ? (
-        <div className="small warn deck-tile-note" title={issues.join('\n')}>
-          ⚠ {issues[0]}
-          {issues.length > 1 ? ` 他${issues.length - 1}件` : ''}
-        </div>
-      ) : (
-        okNote && <div className="small ok deck-tile-note">✓ {okNote}</div>
-      )}
-      {showUpdated && deck && deck.updatedAt > 0 && <div className="small muted">更新 {new Date(deck.updatedAt).toLocaleDateString()}</div>}
     </>
   );
   return (
