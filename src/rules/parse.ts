@@ -456,6 +456,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // 水晶武装N: 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」(名前のついた条件)
+    .replace(/^水晶武装\d+[:：]/, '')
     // 黙示録の水晶 「相手は、自身のコスト5以下の無色ではないエレメントをすべて、好きな順序で山札の下に置く」
     .replace(/^相手は、?自身の(.+?)をすべて、?(?:好きな順序で)?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/, '相手の$1をすべて持ち主の山札の下に置く')
     // プロキオン・ドラグーン 「そうした場合、その後、そのカードを自分の墓地からマナゾーンに戻す」
@@ -1456,6 +1458,25 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
     return [{ op: 'asPlayer', who: 'subjectOwner', body: mm[2] === 'く' ? body : [{ op: 'optional', body, prompt: s0 }] }];
   }
+  // シャングリラ・クリスタル 「自分の山札の上から1枚目を裏向きのまま、タップしてマナゾーンに置く」
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚(?:目)?を裏向きのまま、?タップしてマナゾーンに置く$/))) return [{ op: 'top', n: +mm[1], to: 'manaDownTapped', who: 'self' }];
+  // 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」
+  {
+    const dc = s.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば、(.+)$/);
+    const body = dc && sentence(dc[2], ctx);
+    if (dc && body) return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +dc[1] }, body }];
+  }
+  // 蠅の王 クリス=タブラ=ラーサ 「各プレイヤーは自身の手札をすべて裏向きでマナゾーンに置く」
+  if (/^各プレイヤーは、?自身の手札をすべて裏向き(?:で|のまま)、?(?:自身の)?マナゾーンに置く$/.test(s))
+    return [
+      {
+        op: 'forEachPlayer',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+          { op: 'move', target: { ref: 'it' }, to: 'manaDown' },
+        ],
+      },
+    ];
   // ---- Dスイッチの効果 ----
   // ワールド・ストップ
   if (/^次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない$/.test(s)) return [{ op: 'dLock' }];

@@ -198,7 +198,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^これをクロスしたクリーチャーが破壊される時、.*かわりに/.test(line.replace(/\s+/g, ''))) continue;
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     // 汎用の置換効果 (「〜が破壊される時、かわりに〜」「〜が出る時、かわりに〜」・鬼S-MAX進化・5.S.D.) は常在型能力として処理
-    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant', 'destroyTo'].includes(x.s))) continue;
+    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant', 'destroyTo', 'oppCipNull'].includes(x.s))) continue;
     // S・トリガー・プラスで与えられる {x+} 能力は、効果の側に印を残す (条件は効果を解釈する時に付ける)
     const stPlus = /^\{x\+\}/.test(line);
     const m = line.replace(/^\{x\+\}\s*/, '').match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);

@@ -728,7 +728,14 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
     if (o.op === 'draw') v += (o.who === 'self' ? (low ? -6 : handFull ? 1 : 4) : -4) * o.n;
     else if (o.op === 'top' && o.who === 'self' && low && o.to !== 'look' && o.to !== 'reveal') v -= 6 * o.n;
     else if (o.op === 'top') v += o.to === 'mana' || o.to === 'manaTapped' ? 3 * o.n : o.to === 'shield' ? 4 * o.n : o.to === 'hand' ? 4 * o.n : 1;
-    else if (o.op === 'choose' && o.target.ref === 'sel') {
+    // 「その中から〜を1枚、手札に加える」: 山札から探す
+    else if (o.op === 'choose' && o.target.ref === 'looked' && nx?.op === 'move' && nx.to === 'hand') v += 4;
+    // 「自分のマナゾーンにあるカードを1枚、裏向きにする」: 水晶ソウルのカードを使うデッキなら得
+    else if (o.op === 'choose' && o.target.ref === 'sel' && o.target.sel.zones.includes('mana') && o.target.sel.owner === 'self' && nx?.op === 'faceDown') {
+      const pl = s.players[p];
+      v += [...pl.hand, ...pl.deck].some((i) => L(s.cards[i].cid)?.faces.some((f) => crystalOf(f) != null)) ? 3 : -2;
+      k++;
+    } else if (o.op === 'choose' && o.target.ref === 'sel') {
       const sel = o.target.sel;
       const hostile = o.purpose === 'hostile';
       const pool = opps(s, p).flatMap((x) => s.players[x].battle);
@@ -766,7 +773,8 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
     if (op?.op === 'optional' && opsValue(s, p, L, op.body) < 0 && !top.exec.ops.slice(1).some((o) => o.op === 'if' && o.cond.c === 'did'))
       return { t: 'choose', yes: false };
     // タブラサ・チャンタラム 「(マナゾーンに置いた) それを裏向きにしてもよい」: 水晶ソウルのカードを使うデッキの時だけ
-    if (c0?.op === 'faceDown' && op?.op === 'optional' && op.body.length === 1) {
+    // (水晶設計図・ワスプメリサ 「自分のマナゾーンにあるカードを1枚、裏向きにしてもよい」も)
+    if (op?.op === 'optional' && (c0?.op === 'faceDown' ? op.body.length === 1 : c0?.op === 'choose' && c1?.op === 'faceDown' && op.body.length === 2)) {
       const pl = s.players[p];
       const hasCrystal = [...pl.hand, ...pl.deck].some((i) => L(s.cards[i].cid)?.faces.some((f) => crystalOf(f) != null));
       return { t: 'choose', yes: hasCrystal };

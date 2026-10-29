@@ -126,6 +126,8 @@ export type StaticSpec =
   | { s: 'lure' }
   /** 相手は呪文を唱えることができない */
   | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean; all?: boolean }
+  /** 蠅の王 クリス=タブラ=ラーサ 「相手は、自分のマナゾーンにある裏向きのカードの枚数よりコストが小さい呪文を唱えられない」 */
+  | { s: 'oppSpellLockDownMana' }
   /** このクリーチャーの攻撃中、相手は「G・ストライク」を使えない */
   | { s: 'noGStrike' }
   /** 召喚する時、手札から〇〇をN枚見せれば召喚コストがD少なくなる (見せられれば自動で見せる) */
@@ -510,6 +512,20 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?攻撃可能であれば、?必ず攻撃しなければならない$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^このクリーチャーはバトルに勝っても、バトルの(後|あと)、(破壊される|持ち主の墓地に置かれる)$/.test(t0)) return [{ s: 'dieAfterBattle' }];
   if (/^相手は呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLock' }];
+  if (/^相手は、?自分のマナゾーンにある裏向きのカードの枚数よりコストが小さい呪文を唱えられない$/.test(t0)) return [{ s: 'oppSpellLockDownMana' }];
+  // 水晶武装N: 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」
+  {
+    // (「水晶武装N:」は上で外している)
+    const ca = t0.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば、(.+)$/);
+    const cond: StaticCond | null = ca && { c: 'countAtLeast', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, n: +ca[1] };
+    // 偽りの名 ワスプメリサ 「相手のクリーチャーの「このクリーチャーが出た時」で始まる能力がトリガーする時、かわりにトリガーしない」
+    if (ca && cond && /^相手のクリーチャーの「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力がトリガーする時、かわりにトリガーしない$/.test(ca[2])) return [{ s: 'oppCipNull', cond }];
+  }
+  // 「奇妙」の頂天 クリス=バアル 「G・ゼロ：自分のマナゾーンに裏向きのカードが5枚以上あれば」
+  {
+    const gd = t0.match(/^G・ゼロ[:：]自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば/);
+    if (gd) return [{ s: 'gzero', cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, n: +gd[1] } }];
+  }
   if ((m = t0.match(/^相手は、?(.+?)の?呪文を唱えられない$/))) {
     const ph = m[1].replace(/ではない$/, '以外の');
     const sel = parseSel(ph + '呪文') ?? parseSel(ph + 'の呪文');

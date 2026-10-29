@@ -416,6 +416,7 @@ const DEST_ZONE: Record<Dest, ZoneName> = {
   mana: 'mana',
   manaTapped: 'mana',
   manaDown: 'mana',
+  manaDownTapped: 'mana',
   hyper: 'hyper',
   shield: 'shield',
   shieldUp: 'shield',
@@ -438,10 +439,11 @@ function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal
   const zone = DEST_ZONE[to];
   moveCard(s, L, iid, zone, {
     pos: to === 'deckBottom' ? 'bottom' : 'top',
-    tapped: to === 'manaTapped' || to === 'battleTapped' || (zone === 'mana' && multi),
+    // (裏向きのマナは文明を持たないので、多色でもタップしない)
+    tapped: to === 'manaTapped' || to === 'manaDownTapped' || to === 'battleTapped' || (zone === 'mana' && multi && to !== 'manaDown'),
     faceUp: zone === 'shield' ? to === 'shieldUp' : undefined,
   });
-  if (to === 'manaDown') s.cards[iid].manaDown = true;
+  if (to === 'manaDown' || to === 'manaDownTapped') s.cards[iid].manaDown = true;
   const hidden = zone === 'hand' || zone === 'deck' || zone === 'shield';
   log(s, ex.player, `${hidden && !reveal ? 'カード' : q(nm)} を${ZONE_JA[zone]}へ`);
 }

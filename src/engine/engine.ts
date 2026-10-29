@@ -2871,6 +2871,9 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (!a.force)
         return me.spellLockCostEq != null ? `コスト${me.spellLockCostEq}の呪文は唱えられません` : me.spellLockCost != null ? `コスト${me.spellLockCost}以下の呪文は唱えられません` : 'このターンは呪文を唱えられません';
     }
+    // 蠅の王: 相手の裏向きのマナの枚数よりコストが小さい呪文は唱えられない
+    const downLock = activeStatics(s, L).filter((x) => x.spec.s === 'oppSpellLockDownMana' && x.owner !== p).map((x) => s.players[x.owner].mana.filter((m) => s.cards[m].manaDown).length);
+    if (!a.force && downLock.some((n) => (face.cost ?? 0) < n)) return `相手の能力で、コスト${Math.max(...downLock)}より小さい呪文は唱えられません`;
     if (!a.force && activeStatics(s, L).some((x) => x.spec.s === 'oppSpellLock' && (x.owner !== p || !!x.spec.all) && (!x.spec.ownTurn || s.active === x.owner) && (!x.spec.sel || matchesSel(s, L, a.iid, { ...x.spec.sel, zones: [c.zone as never] })))) return '相手の能力で呪文を唱えられません';
     const charger = face.kw.charger || face.text.some((l) => /この呪文を、?自分の墓地ではなく(自分の)?マナゾーンに置く/.test(normText(l)));
     const fi = card.faces.indexOf(face);

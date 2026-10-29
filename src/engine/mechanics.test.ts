@@ -247,6 +247,9 @@ const db = buildDB(
     { id: 'inochi', n: 'inochi', img: '', f: [{ n: 'inochi', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['{GS} G・ストライク（この呪文を自分のシールドゾーンから手札に加える時、表向きにし、相手のクリーチャーを１体選んでもよい。このターン、そのクリーチャーは攻撃できない）', '自分の山札の上から２枚を裏向きのままマナゾーンに置く。'] }] },
     { id: 'dHell', n: 'dHell', img: '', f: [{ n: 'dHell', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['Dスイッチ：自分のターンの終わりに、このD２フィールドをゲーム中で一度上下逆さまにしてもよい。そうしたら、そのターン中に破壊された自分のクリーチャーをすべて、墓地からバトルゾーンに戻してもよい。'] }] },
     { id: 'dCradle', n: 'dCradle', img: '', f: [{ n: 'dCradle', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['Dスイッチ：自分のターンに、１枚目のカードを引いた時、このD２フィールドをゲーム中で一度上下逆さまにしてもよい。そうしたら、自分のクリーチャーをすべてアンタップする。'] }] },
+    { id: 'wasp', n: 'wasp', img: '', f: [{ n: 'wasp', t: 'クリーチャー', c: 'N', co: 1, p: '7000', r: ['アンノウン'], x: ['水晶武装４：自分のマナゾーンに裏向きのカードが４枚以上あれば、相手のクリーチャーの「このクリーチャーが出た時」で始まる能力がトリガーする時、かわりにトリガーしない。'] }] },
+    { id: 'flyKing', n: 'flyKing', img: '', f: [{ n: 'flyKing', t: 'クリーチャー', c: '', co: 1, p: '30000', r: ['ゼニス・セレス'], x: ['このクリーチャーが出た時、各プレイヤーは自身の手札をすべて裏向きでマナゾーンに置く。', '相手は、自分のマナゾーンにある裏向きのカードの枚数よりコストが小さい呪文を唱えられない。'] }] },
+    { id: 'shangri', n: 'shangri', img: '', f: [{ n: 'shangri', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札の上から１枚目を裏向きのまま、タップしてマナゾーンに置く。', '水晶武装２：自分のマナゾーンに裏向きのカードが２枚以上あれば、自分の山札の上から１枚目を裏向きのままマナゾーンに置く。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2212,6 +2215,51 @@ describe('named mechanics', () => {
       // ターンのはじめのアンタップ → 1枚引いた時に Dスイッチ (アンタップ済みなので、使ったかどうかで確かめる)
       s = yes(s);
       expect(s.onceGame ?? []).toContain(find(s, 0, 'battle', 'dCradle'));
+    });
+  });
+
+  describe('水晶武装・裏向きのマナ', () => {
+    it('ワスプメリサ: 裏向きのマナが4枚以上の時だけ、相手の出た時の能力はトリガーしない', () => {
+      let s = setup([{ p: 0, cid: 'wasp', zone: 'battle' }, { p: 1, cid: 'cipDraw', zone: 'hand' }, { p: 1, cid: 'cipDraw', zone: 'hand' }], 4);
+      s = act(s, 0, { t: 'endTurn' });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      const [c1, c2] = s.players[1].hand.filter((i) => s.cards[i].cid === 'cipDraw');
+      let hand = s.players[1].hand.length;
+      s = act(s, 1, { t: 'play', iid: c1, face: 0, pay: freeMana(s, 1, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.players[1].hand.length).toBe(hand); // 1枚出して1枚引いた
+      for (const m of s.players[0].mana) s.cards[m].manaDown = true;
+      hand = s.players[1].hand.length;
+      s = act(s, 1, { t: 'play', iid: c2, face: 0, pay: freeMana(s, 1, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.players[1].hand.length).toBe(hand - 1); // 引かない
+    });
+
+    it('蠅の王: 各プレイヤーの手札をすべて裏向きでマナへ。相手は裏向きのマナの枚数より小さいコストの呪文を唱えられない', () => {
+      let s = setup([{ p: 0, cid: 'flyKing', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }, { p: 1, cid: 'kill', zone: 'hand' }], 3);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'flyKing')!, face: 0, pay: freeMana(s, 0, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.players[0].hand).toHaveLength(0);
+      expect(s.players[1].hand).toHaveLength(0);
+      expect(s.players[0].mana.filter((m) => s.cards[m].manaDown).length).toBeGreaterThanOrEqual(2);
+      // 相手の手札に呪文を戻して、唱えられないことを確かめる
+      const k = s.players[1].mana.find((m) => s.cards[m].cid === 'kill')!;
+      moveCard(s, L, k, 'hand');
+      s = act(s, 0, { t: 'endTurn' });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(applyAction(s, 1, { t: 'play', iid: k, face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/唱えられません/);
+    });
+
+    it('シャングリラ・クリスタル: 1枚目は裏向きでタップして、水晶武装2ならもう1枚', () => {
+      let s = setup([{ p: 0, cid: 'shangri', zone: 'hand' }], 3);
+      s.cards[s.players[0].mana[0]].manaDown = true;
+      const mana = s.players[0].mana.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'shangri')!, face: 0, pay: freeMana(s, 0, 1, s.players[0].mana[0]) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      const added = s.players[0].mana.slice(mana);
+      expect(added).toHaveLength(2);
+      expect(added.every((m) => s.cards[m].manaDown)).toBe(true);
+      expect(s.cards[added[0]].tapped).toBe(true);
     });
   });
 
