@@ -341,6 +341,8 @@ export type Op =
   | { op: 'oncePerGame' }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */
   | { op: 'stackUnder'; what: 'it' | 'self' }
+  /** 自分の山札の上からN枚を、このカード (シールド・クリーチャー) の下に裏向きで置く */
+  | { op: 'topUnderSelf'; n: number }
   /** マナゾーンのカードを裏向き/表向きにする */
   | { op: 'faceDown' | 'faceUp'; target: Target }
   /** タップしていればアンタップ、していなければタップ */

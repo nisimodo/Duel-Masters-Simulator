@@ -330,8 +330,8 @@ export function moveCard(
     return from as ZoneName;
   }
   // 「次の相手のターン、相手はクリーチャーをN体しか出せない」
-  if (to === 'battle' && from !== 'battle' && enterLimitHit(s, c.owner) && card?.faces[opts.face ?? c.face]?.isCreature) {
-    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (このターンはクリーチャーを${s.players[c.owner].enterLimit!.n}体しか出せない)`);
+  if (to === 'battle' && from !== 'battle' && enterLimitHit(s, c.owner, L) && card?.faces[opts.face ?? c.face]?.isCreature) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (このターンはもうクリーチャーを出せない)`);
     return from as ZoneName;
   }
   // 「相手のクリーチャーがバトルゾーンに出る時、かわりにマナゾーン/墓地へ」
@@ -1123,9 +1123,18 @@ export function noteMove(s: GameState, iid: number, from: ZoneName | 'under' | '
 }
 
 /** 「クリーチャーをN体しか出せない」の上限に達しているか (そのプレイヤーのターン中だけ) */
-function enterLimitHit(s: GameState, p: number): boolean {
+function enterLimitHit(s: GameState, p: number, L?: Lookup): boolean {
   const lim = s.players[p].enterLimit;
-  return !!lim && s.active === p && turnStat(s, p).enters >= lim.n;
+  if (lim && s.active === p && turnStat(s, p).enters >= lim.n) return true;
+  // DG-パルテノン 「すべてのプレイヤーは、各ターン、クリーチャーを3体までしか出せない」
+  const cap = L && capOf(s, L, 'enterCap');
+  return cap != null && turnStat(s, p).enters >= cap;
+}
+
+/** 各ターンに出せる・唱えられる数の上限 (いちばん小さいもの) */
+function capOf(s: GameState, L: Lookup, kind: 'enterCap' | 'spellCap'): number | undefined {
+  const ns = activeStatics(s, L).flatMap((x) => (x.spec.s === kind ? [x.spec.n] : []));
+  return ns.length ? Math.min(...ns) : undefined;
 }
 
 /** そのプレイヤーのこのターンの記録 (ターンが変わっていれば数え直す) */
@@ -1796,10 +1805,29 @@ export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[]): 
 }
 
 /** 支払いに使うマナを自動選択 (足りなければ null) */
-export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: number): number[] | null {
+export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: number, crystal?: number): number[] | null {
   const avail = s.players[p].mana.filter((i) => !s.cards[i].tapped);
-  if (avail.length < cost) return null;
   if (cost === 0) return [];
+  // 水晶ソウルN: 裏向きのマナは1枚でN枚分。文明に必要なカード → 裏向きのカード → 残り の順に選ぶ
+  if (crystal && crystal > 1 && avail.some((i) => s.cards[i].manaDown)) {
+    const up = avail.filter((i) => !s.cards[i].manaDown);
+    const civPay = need.length ? autoPay(s, L, p, need, need.length) : [];
+    if (!civPay || civPay.some((i) => s.cards[i].manaDown)) return null;
+    const chosen = [...civPay];
+    let left = cost - chosen.length;
+    for (const i of avail.filter((x) => s.cards[x].manaDown)) {
+      if (left <= 0) break;
+      chosen.push(i);
+      left -= crystal;
+    }
+    for (const i of up.filter((x) => !chosen.includes(x))) {
+      if (left <= 0) break;
+      chosen.push(i);
+      left--;
+    }
+    return left <= 0 ? chosen : null;
+  }
+  if (avail.length < cost) return null;
   const rainbow = rainbowMana(s, L, p);
   const civsOf = (i: number) => (rainbow ? ALL_CIVS : manaCivs(s, L, i));
   // 必要文明を少ない文明のカードから優先で確保
@@ -1823,6 +1851,17 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
 }
 
 export const untappedMana = (s: GameState, p: number) => s.players[p].mana.filter((i) => !s.cards[i].tapped).length;
+
+/** 水晶ソウルN のN (なければ undefined) */
+export function crystalOf(f: { statics?: { s: string }[] } | undefined): number | undefined {
+  const x = (f?.statics ?? []).find((y) => y.s === 'crystalSoul') as { n: number } | undefined;
+  return x?.n;
+}
+
+/** 支払うマナの枚数分の値 (水晶ソウルでは裏向きのマナを N 枚分として数える) */
+export function payValue(s: GameState, pay: number[], crystal?: number): number {
+  return pay.reduce((n, m) => n + (crystal && s.cards[m].manaDown ? crystal : 1), 0);
+}
 
 // ---------- 攻撃関連 ----------
 export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
@@ -2597,7 +2636,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
-  if (face.isCreature && enterLimitHit(s, p)) return `このターンはクリーチャーを${s.players[p].enterLimit!.n}体しか出せません`;
+  if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
+  // DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文を3枚までしか唱えられない」
+  const spellCap = face.isSpell ? capOf(s, L, 'spellCap') : undefined;
+  if (spellCap != null && (s.players[p].spellsCast?.turn === s.turn ? s.players[p].spellsCast!.n : 0) >= spellCap) return `このターンは呪文を${spellCap}枚までしか唱えられません`;
   // 「相手はその数字と同じコストのカードを実行できない」(効果で使う時も)
   if (s.players[p].execLock && (face.cost ?? 0) === s.players[p].execLock.cost) return `効果により、コスト${face.cost}のカードは実行できません`;
   const fromOk =

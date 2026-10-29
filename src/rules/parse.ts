@@ -456,6 +456,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // プロキオン・ドラグーン 「そうした場合、その後、そのカードを自分の墓地からマナゾーンに戻す」
+    .replace(/^そうした場合、その後、/, 'そうしたら、')
+    .replace(/^(そうしたら、)?そのカードを(?:自分の)?墓地から(?:自分の)?マナゾーンに(?:戻す|置く)$/, '$1そのカードをマナゾーンに置く')
+    // 「戦鬼」の頂天 ベートーベン 「残りを裏向きにして、マナゾーンに置く」
+    .replace(/を裏向きにして、?(?:自分の)?マナゾーンに置/, 'を裏向きのままマナゾーンに置')
     // 「そのクリーチャーは、可能であればそのターン攻撃する」
     .replace(/^(.+?)は、?可能(であれば|なら)、?(この|その)ターン攻撃する$/, '$1は、$3ターン、可能$2攻撃する')
     // 「このターン、このクリーチャーはシールドをもう1枚ブレイクする」
@@ -1439,6 +1444,16 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     return [
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card', shieldFaceDown: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '表向きにする相手のシールドを選ぶ' },
       { op: 'faceUp', target: { ref: 'it' } },
+    ];
+  // 神羅の銀月 ザ・ラムーン 「自分の山札の上から2枚を裏向きでこのシールドの下に置く」
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚を裏向き(?:で|のまま)、?この(?:シールド|クリーチャー)の下に置く$/))) return [{ op: 'topUnderSelf', n: +mm[1] }];
+  // Dの寺院 タブラサ・チャンタラム 「(自分のマナゾーンにカードを置いた時、)それを裏向きにしてもよい」
+  if (/^(?:それ|そのカード)を裏向きにする$/.test(s)) return [{ op: 'faceDown', target: { ref: 'it' } }];
+  // 「自分のマナゾーンにある裏向きのカードをすべてアンタップする」
+  if (/^自分のマナゾーンにある裏向きのカードをすべてアンタップする$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'untap', target: { ref: 'it' } },
     ];
   // 凶骨の邪将クエイクス 「相手の手札の枚数がそれ以下の場合には、相手は手札すべてを持ち主の墓地に置く」(選べる分だけ置くので、そのまま)
   if (/^相手の手札(?:の枚数)?がそれ以下の場合(?:に)?は、相手は(?:自身の)?手札(?:を)?すべて(?:を)?持ち主の墓地に置く$/.test(s)) return [];

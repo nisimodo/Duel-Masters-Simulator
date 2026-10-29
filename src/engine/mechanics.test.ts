@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { abilityPick, applyAction, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { abilityPick, applyAction, autoPay, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { cpuPlan } from './cpu';
 import { parseSel } from '../rules/selector';
@@ -237,6 +237,10 @@ const db = buildDB(
     { id: 'te20', n: 'te20', img: '', f: [{ n: 'te20', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札または超GRの上から１枚目を見る。それをその一番下に置いてもよい。'] }] },
     { id: 'gCastle', n: 'gCastle', img: '', f: [{ n: 'gCastle', t: 'G城', c: 'F', co: 1, p: null, r: [], x: ['（G城は実行したら、表向きでシールド化される。このカードが表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く）', 'このG城が表向きで自分のシールドゾーンに置かれた時、自分の山札の上から１枚をタップしてマナゾーンに置く。', '相手のクリーチャーが召喚以外の方法で出る時、かわりにマナゾーンに置く。'] }] },
     cr('megaB', 1, 9000, ['このクリーチャーが出た時、相手のクリーチャーを１体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。']),
+    { id: 'zenith7', n: 'zenith7', img: '', f: [{ n: 'zenith7', t: 'クリーチャー', c: '', co: 7, p: '12000', r: ['ゼニス'], x: ['水晶ソウル３（このクリーチャーを召喚する時、自分のマナゾーンにある裏向きのカードのマナの数字は３になる）'] }] },
+    { id: 'tabulasa', n: 'tabulasa', img: '', f: [{ n: 'tabulasa', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['各ターンに一度、自分のマナゾーンにカードを置いた時、それを裏向きにしてもよい。'] }] },
+    { id: 'parthenon', n: 'parthenon', img: '', f: [{ n: 'parthenon', t: 'DGフィールド', c: 'F', co: 1, p: null, r: [], x: ['すべてのプレイヤーは、各ターン、クリーチャーを３体までしかバトルゾーンに出せない。', 'すべてのプレイヤーは、各ターン、呪文を３枚までしか唱えられない。'] }] },
+    { id: 'drawSp', n: 'drawSp', img: '', f: [{ n: 'drawSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['カードを１枚引く。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2060,6 +2064,63 @@ describe('named mechanics', () => {
     });
   });
 
+  describe('水晶ソウル', () => {
+    it('裏向きのマナは1枚で3枚分として支払える (自動の支払いも)', () => {
+      let s = setup([{ p: 0, cid: 'zenith7', zone: 'hand' }], 3);
+      for (const m of s.players[0].mana) s.cards[m].manaDown = true;
+      const z = find(s, 0, 'hand', 'zenith7')!;
+      const pay = autoPay(s, L, 0, [], 7, 3)!;
+      expect(pay).toHaveLength(3);
+      s = act(s, 0, { t: 'play', iid: z, face: 0, pay });
+      expect(s.cards[z].zone).toBe('battle');
+    });
+
+    it('表向きのマナだけでは足りない', () => {
+      const s = setup([{ p: 0, cid: 'zenith7', zone: 'hand' }], 3);
+      expect(autoPay(s, L, 0, [], 7, 3)).toBeNull();
+      expect(applyAction(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'zenith7')!, face: 0, pay: freeMana(s, 0, 3) }, L).error).toBeTruthy();
+    });
+
+    it('CPUは裏向きのマナを使って召喚する', () => {
+      const s = setup([{ p: 0, cid: 'zenith7', zone: 'hand' }], 3);
+      for (const m of s.players[0].mana) s.cards[m].manaDown = true;
+      s.players[0].charged = true;
+      const plan = cpuPlan(s, 0, L);
+      expect(plan.some((a) => a.t === 'play' && s.cards[a.iid].cid === 'zenith7')).toBe(true);
+    });
+  });
+
+  describe('Dの寺院 タブラサ・チャンタラム / DG-パルテノン', () => {
+    it('各ターンに一度、マナゾーンに置いたカードを裏向きにしてもよい', () => {
+      let s = setup([{ p: 0, cid: 'tabulasa', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);
+      const [h1, h2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      s = act(s, 0, { t: 'charge', iid: h1 });
+      for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, 0, s.pending[0].kind === 'choice' ? { t: 'choose', yes: true } : { t: 'resolve', use: true });
+      expect(s.cards[h1].manaDown).toBe(true);
+      // 2枚目は (同じターンなので) 誘発しない
+      moveCard(s, L, h2, 'mana');
+      expect(s.pending.filter((x) => x.kind === 'ability')).toHaveLength(0);
+      expect(s.cards[h2].manaDown).toBeFalsy();
+    });
+
+    it('各ターン、クリーチャーは3体・呪文は3枚までしか出せない・唱えられない', () => {
+      let s = setup([
+        { p: 0, cid: 'parthenon', zone: 'battle' },
+        ...Array.from({ length: 4 }, () => ({ p: 0, cid: 'vanilla', zone: 'hand' as const })),
+        ...Array.from({ length: 4 }, () => ({ p: 0, cid: 'drawSp', zone: 'hand' as const })),
+      ], 10);
+      const vs = s.players[0].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      for (const v of vs.slice(0, 3)) s = act(s, 0, { t: 'play', iid: v, face: 0, pay: freeMana(s, 0, 1) });
+      expect(applyAction(s, 0, { t: 'play', iid: vs[3], face: 0, pay: freeMana(s, 0, 1) }, L).error).toMatch(/もうクリーチャーを出せません/);
+      const sp = s.players[0].hand.filter((i) => s.cards[i].cid === 'drawSp');
+      for (const x of sp.slice(0, 3)) {
+        s = act(s, 0, { t: 'play', iid: x, face: 0, pay: [] });
+        while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      }
+      expect(applyAction(s, 0, { t: 'play', iid: sp[3], face: 0, pay: [] }, L).error).toMatch(/3枚までしか唱えられません/);
+    });
+  });
+
   describe('実行できないS・トリガー', () => {
     it('「相手はコスト1のカードを実行できない」間は、CPUはS・トリガーを使わずに進める', () => {
       let s = setup([{ p: 1, cid: 'superS', zone: 'hand' }]);
@@ -2160,7 +2221,7 @@ describe('named mechanics', () => {
       while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
       const hand = s.players[1].hand.filter((i) => s.cards[i].cid === 'vanilla');
       s = act(s, 1, { t: 'play', iid: hand[0], face: 0, pay: freeMana(s, 1, 1) });
-      expect(applyAction(s, 1, { t: 'play', iid: hand[1], face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/1体しか出せません/);
+      expect(applyAction(s, 1, { t: 'play', iid: hand[1], face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/もうクリーチャーを出せません/);
     });
   });
 });

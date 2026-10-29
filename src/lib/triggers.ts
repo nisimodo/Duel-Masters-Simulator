@@ -262,7 +262,8 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/墓地に置かれた時/.test(clause) && self) ev.add('toGrave');
     if (/ブレイク(した|する)時/.test(clause) && self) ev.add('breakShield');
     if (/ブレイクされた時/.test(clause) && /自分のシールド/.test(clause)) ev.add('ownShieldBroken');
-    const manaPut = clause.match(/自分のマナゾーンに(.+?)が置かれた時/);
+    // (Dの寺院 タブラサ・チャンタラム 「自分のマナゾーンにカードを置いた時」も)
+    const manaPut = clause.match(/自分のマナゾーンに(.+?)が置かれた時/) ?? clause.match(/自分のマナゾーンに(カード)を置いた時/);
     if (manaPut) ev.add('ownManaPut');
     if (/この(カード|クリーチャー)を(自分の)?(手札から)?マナゾーンに置いた時/.test(clause)) ev.add('toManaSelf');
     if (/表向きで(自分の)?シールドゾーンに置かれた時/.test(clause) && self) ev.add('toShieldFaceUp');

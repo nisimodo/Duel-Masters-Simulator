@@ -1130,6 +1130,22 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'topUnderSelf': {
+        const self = s.cards[ex.src];
+        if (!self || (self.zone !== 'battle' && self.zone !== 'shield')) break;
+        const deck = s.players[ex.player].deck;
+        let n = 0;
+        for (; n < op.n && deck.length; n++) {
+          const u = deck.pop()!;
+          const uc = s.cards[u];
+          uc.zone = 'under';
+          uc.parent = ex.src;
+          uc.faceUp = false;
+          self.under.push(u);
+        }
+        log(s, ex.player, `山札の上から${n}枚を ${q(nameOf(s, L, ex.src))} の下に置いた`);
+        break;
+      }
       case 'stackUnder': {
         const self = s.cards[ex.src];
         const others = ex.it.filter((i) => s.cards[i].zone !== 'gone' && i !== ex.src);

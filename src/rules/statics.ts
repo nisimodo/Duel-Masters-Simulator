@@ -144,6 +144,10 @@ export type StaticSpec =
   | { s: 'linkRelease' }
   /** エターナル・Κ: 離れる時、かわりに裏向きのマナをN枚表向きにする */
   | { s: 'eternalK'; n: number }
+  /** DG-パルテノン 「すべてのプレイヤーは、各ターン、クリーチャーをN体までしかバトルゾーンに出せない」 */
+  | { s: 'enterCap'; n: number }
+  /** DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文をN枚までしか唱えられない」 */
+  | { s: 'spellCap'; n: number }
   /** 水晶ソウルN: 召喚する時、裏向きのマナはN枚分になる */
   | { s: 'crystalSoul'; n: number }
   /**
@@ -644,6 +648,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = t0.match(/^これをクロスしたクリーチャーが破壊される時、(?:墓地に置く)?かわりに、?(.+)$/))) return [{ s: 'replaceLeave', on: 'destroy', effect: m[1], cross: true }];
   if (/^エターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3) }];
   if ((m = t0.match(/^水晶ソウル(\d+)/))) return [{ s: 'crystalSoul', n: +m[1] }];
+  if ((m = t0.match(/^すべてのプレイヤーは、?各ターン、?クリーチャーを(\d+)体までしか(?:バトルゾーンに)?出せない$/))) return [{ s: 'enterCap', n: +m[1] }];
+  if ((m = t0.match(/^すべてのプレイヤーは、?各ターン、?呪文を(\d+)枚までしか唱えられない$/))) return [{ s: 'spellCap', n: +m[1] }];
   if ((m = t0.match(/^パワード・ブロッカー\+?(\d+)/))) return [{ s: 'power', target: { t: 'self' }, delta: +m[1], when: 'block' }];
   if (/^このクリーチャーは、?可能(であれば|なら(ば)?)、?毎ターン攻撃する$/.test(t0)) return [{ s: 'mustAttack' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら(ば)?)、?このクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure' }];

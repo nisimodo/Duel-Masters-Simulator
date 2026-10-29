@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
-import { autoPay, faceOf, nameOf, payCovers, playCost, power, type Lookup } from '../engine/engine';
+import { autoPay, crystalOf, faceOf, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 
 export function Modal({ children, onClose, title }: { children: React.ReactNode; onClose?: () => void; title?: string }) {
@@ -98,12 +98,14 @@ export function PayDialog({
   const cost = costNow({ sasa, he, gzero });
   const costErr = playCost(s, L, me, { t: 'play', iid, face, pay: [], sasa, he, gzero, alt, taps }, face);
   const tapCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
-  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost) ?? []);
+  // 水晶ソウル: 裏向きのマナはN枚分
+  const crystal = crystalOf(f);
+  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost, crystal) ?? []);
   const sasaCands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'));
   const heCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
   const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = costNow(opts);
-    if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c) ?? []);
+    if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c, crystal) ?? []);
   };
   const [showAll, setShowAll] = useState(false);
   const ef = statics.find((x) => x.s === 'evoFrom');
@@ -126,7 +128,12 @@ export function PayDialog({
       : cost;
   const realCost = typeof costEvo === 'number' ? costEvo : cost;
   const totalCost = realCost != null && buzz && buzz.s === 'buzz' ? realCost + buzzN * buzz.n : realCost;
-  const ok = totalCost != null && pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[]));
+  const upPay = pay.filter((m) => !s.cards[m].manaDown);
+  const ok =
+    totalCost != null &&
+    (crystal && pay.some((m) => s.cards[m].manaDown)
+      ? payValue(s, pay, crystal) >= totalCost && pay.length <= totalCost && payCovers(L, s, upPay.length ? upPay : pay, f.civs as Civ[])
+      : pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[])));
   const needEvo = (f.isEvolution && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);
@@ -134,7 +141,7 @@ export function PayDialog({
     <Modal title={`${f.name} を${verb}`} onClose={onClose}>
       <div className="small">
         コスト {cost ?? '-'}
-        {cost != null && cost !== f.cost ? ` (元のコスト ${f.cost})` : ''} / 文明 {f.civs.length ? f.civs.join(',') : '無色'} ・ 選択中 {pay.length}枚{' '}
+        {cost != null && cost !== f.cost ? ` (元のコスト ${f.cost})` : ''} / 文明 {f.civs.length ? f.civs.join(',') : '無色'} ・ 選択中 {pay.length}枚{crystal && pay.some((m) => s.cards[m].manaDown) ? ` (水晶ソウル: ${payValue(s, pay, crystal)}枚分)` : ''}{' '}
         {ok ? <span className="ok">✓ 支払い可能</span> : <span className="warn">{typeof costErr === 'string' ? costErr : 'コスト・文明が合いません'}</span>}
       </div>
       {gz && (

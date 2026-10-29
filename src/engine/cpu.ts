@@ -15,6 +15,7 @@ import {
   applyAction,
   attackTargets,
   autoPay,
+  crystalOf,
   canAttackWith,
   crossCost,
   luresFor,
@@ -403,10 +404,15 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         )),
     ),
   );
+  // 水晶ソウル: 裏向きのマナは1枚でN枚分として使える
+  const manaBase = mana;
+  const downMana = me.mana.filter((i) => !s.cards[i].tapped && s.cards[i].manaDown).length;
   for (const h of [...me.hand, ...me.partner.filter((i) => s.cards[i].faceUp), ...fromOtherZones]) {
     const card = L(s.cards[h].cid);
     if (!card) continue;
     card.faces.forEach((f, fi) => {
+      const crystal = crystalOf(f);
+      const mana = crystal ? manaBase + downMana * (crystal - 1) : manaBase;
       if (card.hyper && fi > 0) return;
       if (s.cards[h].zone === 'partner' && !f.isCreature) return;
       if (s.cards[h].zone !== 'hand' && s.cards[h].zone !== 'partner' && !f.isCreature) return;
@@ -520,7 +526,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       const bz = st.find((x) => x.s === 'buzz');
       const buzz = bz && bz.s === 'buzz' && !alt && !gz ? Math.floor((mana - cost) / bz.n) : 0;
       cost += buzz * (bz && bz.s === 'buzz' ? bz.n : 0);
-      const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost);
+      const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost, crystalOf(f));
       if (!pay) return;
       const rv = removalValue(card, fi);
       if (f.isCreature) {
@@ -759,6 +765,12 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
     }
     if (op?.op === 'optional' && opsValue(s, p, L, op.body) < 0 && !top.exec.ops.slice(1).some((o) => o.op === 'if' && o.cond.c === 'did'))
       return { t: 'choose', yes: false };
+    // タブラサ・チャンタラム 「(マナゾーンに置いた) それを裏向きにしてもよい」: 水晶ソウルのカードを使うデッキの時だけ
+    if (c0?.op === 'faceDown' && op?.op === 'optional' && op.body.length === 1) {
+      const pl = s.players[p];
+      const hasCrystal = [...pl.hand, ...pl.deck].some((i) => L(s.cards[i].cid)?.faces.some((f) => crystalOf(f) != null));
+      return { t: 'choose', yes: hasCrystal };
+    }
     return { t: 'choose', yes: true };
   }
   if (top.mode === 'modal') {
