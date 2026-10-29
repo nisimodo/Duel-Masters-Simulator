@@ -25,6 +25,8 @@ export function coverage() {
   };
   for (const c of cards)
     for (const f0 of c.f) {
+      // COVER_NAMES=名前,名前 で一部のカードだけ調べる
+      if (process.env.COVER_NAMES && !process.env.COVER_NAMES.split(',').includes(f0.n)) continue;
       // (カードデータと同じく、1行につながっている Dスイッチ を別の行にする)
       const f = { ...f0, x: f0.x.flatMap((l: string) => l.split(/\*\*(?=Dスイッチ)/).map((x) => x.trim()).filter(Boolean)) };
       const sp = splitAbilities(mergeModal(f.x));

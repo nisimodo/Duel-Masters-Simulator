@@ -614,7 +614,10 @@ export function moveCard(
     c.formerUnder = [...under];
     for (const u of under) s.cards[u].leftBattleTurn = s.turn;
   }
-  if (dest === 'grave' && from !== 'grave') turnStat(s, c.owner).toGrave++;
+  if (dest === 'grave' && from !== 'grave') {
+    turnStat(s, c.owner).toGrave++;
+    c.graveTurn = s.turn;
+  }
   // (山札からのシールド化に限らず、シールドゾーンに置かれたカード)
   if (dest === 'shield' && from !== 'shield') turnStat(s, c.owner).shieldAdds++;
   if (from === 'shield' && dest === 'hand') turnStat(s, c.owner).shieldsToHand++;
@@ -1934,7 +1937,12 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
     // 「自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない」
     activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && power(s, L, iid, true) < power(s, L, x.src)) ||
     // (効果で一時的に得たもの)
-    s.players[o].battle.some((b) => (s.cards[b].grants ?? []).some((g) => g.kws.includes('低パワーから守る')) && power(s, L, iid, true) < power(s, L, b));
+    s.players[o].battle.some((b) => (s.cards[b].grants ?? []).some((g) => g.kws.includes('低パワーから守る')) && power(s, L, iid, true) < power(s, L, b)) ||
+    attackedOnce(o);
+  // 衒影の精霊 リアリテル 「相手は各ターンに一度しか、自分または自分のクリーチャーを攻撃できない」
+  function attackedOnce(o: number) {
+    return s.players[o].attackedOnTurn === s.turn && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppAttackOnce');
+  }
   const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
@@ -1947,6 +1955,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
+      if (attackedOnce(o)) continue;
       if (hasFlying(s, L, t) && !hasFlying(s, L, iid)) continue;
       if (tc.justDive != null || isSealed(s, t) || notCreatureNow(s, L, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk || untappedSel.some((sel) => matchesSel(s, L, t, { ...sel, owner: 'any' }))) cards.push(t);
@@ -2420,6 +2429,13 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (targetPlayer === p || s.players[targetPlayer]?.lost) return '攻撃対象が不正です';
       c.tapped = true;
       c.attackedTurn = s.turn;
+      s.players[targetPlayer].attackedOnTurn = s.turn;
+      // 「このターン、クリーチャーが攻撃する時、〜」
+      for (let k = 0; k < s.players.length; k++) {
+        const at = s.players[k].onAttackThisTurn;
+        if (at && at.turn === s.turn && s.cards[at.src])
+          s.pending.push({ kind: 'ability', player: k, src: at.src, cid: s.cards[at.src].cid, face: 0, event: 'attack', text: `このターン、クリーチャーが攻撃する時: ${at.effect}`, effect: at.effect, optional: false, auto: false });
+      }
       // 二刀流トレーニング 「そのクリーチャーがこのターンはじめてタップされた時、アンタップする」
       if ((c.grants ?? []).some((g) => g.kws.includes('初回タップでアンタップ'))) {
         c.grants = c.grants!.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '初回タップでアンタップ') }));
@@ -3184,12 +3200,16 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         if (picks.length < top.min || picks.length > top.max) return top.min === top.max ? `${top.min}枚選んでください` : `${top.min}～${top.max}枚選んでください`;
         if (top.sumPowerMax != null && picks.reduce((a2, i) => a2 + power(s, L, i), 0) > top.sumPowerMax) return `パワーの合計が${top.sumPowerMax}以下になるように選んでください`;
         if (top.sumCostMax != null && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) > top.sumCostMax) return `コストの合計が${top.sumCostMax}以下になるように選んでください`;
-        if (top.distinct) {
+        // 「異なる種族を持つ」: どの2枚も同じ種族を持たない
+        if (top.distinct === 'race') {
+          const rs = picks.map((i) => new Set(L(s.cards[i].cid)?.faces.flatMap((f) => f.races) ?? []));
+          if (rs.some((a2, k) => rs.slice(k + 1).some((b2) => [...a2].some((r) => b2.has(r))))) return '種族が異なるクリーチャーを選んでください';
+        } else if (top.distinct) {
           const keys = picks.map((i) => {
             const cd = L(s.cards[i].cid);
-            return top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
+            return top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
           });
-          if (new Set(keys).size !== keys.length) return top.distinct === 'cost' ? 'コストが異なるカードを選んでください' : 'カードタイプが異なるカードを選んでください';
+          if (new Set(keys).size !== keys.length) return top.distinct === 'zone' ? 'それぞれのゾーンから1体ずつ選んでください' : top.distinct === 'cost' ? 'コストが異なるカードを選んでください' : 'カードタイプが異なるカードを選んでください';
         }
         if (top.sumCostMin != null && picks.length && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) < top.sumCostMin) return `コストの合計が${top.sumCostMin}以上になるように選んでください`;
         s.pending.shift();
@@ -3198,7 +3218,19 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         s.pending.shift();
         resumeExec(s, L, top.exec, { yes: !!a.yes });
       } else {
+        // カード名を検索して選んだ (選択肢にない名前)
+        if (a.value && top.exec.ops[0]?.op === 'chooseValue' && top.exec.ops[0].kind === 'name') {
+          s.pending.shift();
+          resumeExec(s, L, top.exec, { value: a.value });
+          return null;
+        }
         const opts = [...new Set(a.options ?? [])].filter((x) => x >= 0 && x < (top.labels?.length ?? 0));
+        // (選択肢が1つもないカード名の選択は、選ばずに進める)
+        if (!(top.labels ?? []).length && top.exec.ops[0]?.op === 'chooseValue') {
+          s.pending.shift();
+          resumeExec(s, L, top.exec, { options: [] });
+          return null;
+        }
         if (opts.length < top.min || opts.length > top.max) return `${top.min}つ選んでください`;
         s.pending.shift();
         resumeExec(s, L, top.exec, { options: opts });

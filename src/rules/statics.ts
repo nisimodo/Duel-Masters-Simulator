@@ -19,6 +19,8 @@ export type StaticCond =
   | { c: 'powerAtLeast'; n: number }
   | { c: 'totalShieldsLE'; n: number } // 鬼タイム: 自分と相手のシールドの合計
   | { c: 'countAtLeast'; sel: Sel; n: number }
+  /** このゲームがN人以上の相手がいる状態で始まった */
+  | { c: 'startOpps'; n: number }
   /** このターン、自分が呪文をN枚以上唱えている */
   | { c: 'spellsThisTurn'; n: number }
   /** 自分のシールドが N 枚以下 */
@@ -47,7 +49,7 @@ export type StaticSpec =
   | { s: 'summonOnlyIf'; cond: StaticCond }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
   | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number }
-  | { s: 'untargetable'; bySpellOnly: boolean }
+  | { s: 'untargetable'; bySpellOnly: boolean; cond?: StaticCond }
   | { s: 'noAttacked' }
   | { s: 'attackUntapped'; sel?: Sel }
   | { s: 'cantAttackCreatures' }
@@ -231,6 +233,10 @@ export type StaticSpec =
   | { s: 'breakToDeckBottom' }
   /** 「異形」の頂天 クリス=ゼ=ブブ 「クリーチャーは、パワーではなくコストの大きさを比べてバトルする」 */
   | { s: 'battleByCost' }
+  /** 神聖龍 エモーショナル・ハードコア 「選んだ名前を持つクリーチャーの能力をすべて無視する」 */
+  | { s: 'ignoreChosenName' }
+  /** 衒影の精霊 リアリテル 「相手は各ターンに一度しか、自分または自分のクリーチャーを攻撃できない」 */
+  | { s: 'oppAttackOnce' }
   /** 偽りの名 シャーロック 「誰も、サイキック・クリーチャーをバトルゾーンに出すことはできない」(超次元ゾーンから出せない) */
   | { s: 'noHyperEnter'; all?: boolean }
   /** このクリーチャーの攻撃の終わりに、自分のシールドがN以上あればゲームに勝つ */
@@ -492,6 +498,12 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 「相手のクリーチャーが攻撃している間、このクリーチャーは「ブロッカー」を得る」: ブロックできるのは相手の攻撃中だけなので常に持つ
   if (/^相手のクリーチャーが攻撃している間、このクリーチャーは「ブロッカー」を得る$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['ブロッカー'], when: 'always' }];
   if (/^相手はこのクリーチャーを選べない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
+  // 「相手がクリーチャーを選ぶ時、バトルゾーンに自分の他のオラクルがあれば、このクリーチャーは選ばれない」
+  {
+    const uo = t0.match(/^相手がクリーチャーを選ぶ時、バトルゾーンに自分の他の(.+?)があれば、このクリーチャーは選ばれない$/);
+    const usel = uo && parseSel(uo[1]);
+    if (usel) return [{ s: 'untargetable', bySpellOnly: false, cond: { c: 'countAtLeast', sel: { ...usel, owner: 'self', zones: ['battle'], other: true }, n: 1 } }];
+  }
   if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?バトルゾーンを離れず、すべてのバトルに勝つ$/)))
     return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
   if ((m = t0.match(/^自分のマナゾーンにある文明(\d+)つにつき、このクリーチャーのパワーを\+(\d+)する$/) ?? t0.match(/^このクリーチャーのパワーは、?自分のマナゾーンにある文明(ひとつ|1つ)につき\+(\d+)される$/)))
@@ -588,6 +600,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/.test(t0)) return [{ s: 'breakToDeckBottom' }];
   if (/^クリーチャーは、?パワーではなくコストの大きさを比べてバトルする$/.test(t0)) return [{ s: 'battleByCost' }];
+  if (/^選んだ名前を持つクリーチャーの能力をすべて無視する$/.test(t0)) return [{ s: 'ignoreChosenName' }];
+  if (/^相手は各ターンに(?:一|1)度しか、?自分または自分のクリーチャーを攻撃できない$/.test(t0)) return [{ s: 'oppAttackOnce' }];
+  // ドラゴカリプス・デイ 「このゲームが2人以上の相手がいる状態で始まっていて、この呪文がシールドゾーンにあれば、この呪文に「S・トリガー」を与える」
+  {
+    const so = t0.match(/^このゲームが(\d+)人以上の相手がいる状態で始まっていて、この呪文がシールドゾーンにあれば、この(?:呪文|クリーチャー)に「S・トリガー」を与える$/);
+    if (so) return [{ s: 'grant', target: { t: 'self' }, kws: ['S・トリガー'], when: 'always', cond: { c: 'startOpps', n: +so[1] } }];
+  }
   if (/^誰も、?サイキック・クリーチャーをバトルゾーンに出すことはできない$|^誰も、?超次元ゾーンからバトルゾーンにカードを出せない$/.test(t0)) return [{ s: 'noHyperEnter', all: true }];
   if ((m = t0.match(/^このクリーチャーの攻撃の終わりに、自分のシールドが(\d+)(?:つ|枚)?以上あれば、自分はゲームに勝つ$/))) return [{ s: 'winAfterAttack', shields: +m[1] }];
   if ((m = t0.match(/^誰もパワー(\d+)以下のクリーチャーを召喚できず、/))) return [{ s: 'summonPowerLock', powerMax: +m[1] }];

@@ -69,6 +69,10 @@ export interface CardInst {
   replTurn?: number;
   /** マナを支払わずに (効果・コスト0で) バトルゾーンに出た */
   enteredFree?: boolean;
+  /** 墓地に置かれたターン */
+  graveTurn?: number;
+  /** このカードの効果で選んだカード名 (神聖龍 エモーショナル・ハードコア) */
+  chosenName?: string;
   /** 効果で唱えた呪文の、唱えた後の行き先 (墓地のかわりに) */
   castDest?: 'deckBottom' | 'shieldUp';
   /** バトルゾーンを離れた時に下に重なっていたカード (「下に重ねてあったカード」) */
@@ -202,6 +206,12 @@ export interface PlayerState {
   dLock?: { until: number };
   /** 「次の相手のターン中、相手はパワーN以下のクリーチャーを出せない」 */
   enterPowerLock?: { until: number; max: number };
+  /** このターンに攻撃されたか (自分または自分のクリーチャー) */
+  attackedOnTurn?: number;
+  /** 「自分のエレメントは、呪文によって選ばれない」: turn はかけたターン。nextOwn なら次の自分のターンのはじめまで。civ はその文明の呪文だけ */
+  spellGuard?: { turn: number; nextOwn: boolean; civ?: string }[];
+  /** 調和と暴動の混乱 「このターン、クリーチャーが攻撃する時、〜」: そのターンに攻撃のたびに使う効果 */
+  onAttackThisTurn?: { turn: number; effect: string; src: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */
@@ -246,7 +256,7 @@ export type Pending =
       /** 選んだカードのコストの合計の下限 */
       sumCostMin?: number;
       /** 異なるカードタイプ・コストのカードだけを選ぶ */
-      distinct?: 'type' | 'cost';
+      distinct?: 'type' | 'cost' | 'zone' | 'race';
       exec: Exec;
     }
   | {
@@ -273,6 +283,10 @@ export type Pending =
 /** 実行中の効果プログラム */
 export interface Exec {
   player: number;
+  /** 「こうして出したクリーチャー」 */
+  kept?: number[];
+  /** 「プレイヤーを2人選ぶ」: 選んだプレイヤー */
+  chosenPlayers?: number[];
   /** 「相手1人につき」「各相手の」: いま処理している相手 (「相手の」をこのプレイヤーに絞る) */
   focusOpp?: number;
   /** 能力を誘発させたカード (「召喚したクリーチャー」など。it が変わっても残る) */
@@ -477,7 +491,7 @@ export type Action =
   | { t: 'trigger'; use: boolean; face?: number; target?: number | null }
   | { t: 'partner'; yes: boolean }
   | { t: 'resolve'; use: boolean }
-  | { t: 'choose'; picks?: number[]; yes?: boolean; options?: number[] }
+  | { t: 'choose'; picks?: number[]; yes?: boolean; options?: number[]; /** カード名を選ぶ時: 検索して選んだ名前 */ value?: string }
   | { t: 'endTurn' }
   | { t: 'concede' }
   // ---- 手動操作 (カード固有の効果を処理するため) ----

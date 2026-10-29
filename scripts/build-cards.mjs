@@ -22,10 +22,17 @@ function num(s) {
 }
 
 function face(f, name) {
-  const text = f.skills
+  const lines = f.skills
     .flatMap((s) => norm(s).split(/\n+/))
     .map((s) => s.trim())
     .filter(Boolean);
+  // 公式のテキストで文の途中 (「〜を」「〜、」等) で改行されている行は、次の行とつなげる
+  const text = [];
+  for (const l of lines) {
+    const prev = text[text.length - 1];
+    if (prev != null && /[をにがはでと、の]$/.test(prev) && !/[。）)」]$/.test(prev)) text[text.length - 1] = prev + l;
+    else text.push(l);
+  }
   return {
     n: name,
     t: norm(f.type),

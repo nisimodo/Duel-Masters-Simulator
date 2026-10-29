@@ -15,6 +15,7 @@ import {
   applyAction,
   attackTargets,
   autoPay,
+  nameOf,
   crystalOf,
   canAttackWith,
   crossCost,
@@ -796,6 +797,12 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
       const good = ids.some((i) => s.cards[i].owner === p && (L(s.cards[i].cid)?.faces[0]?.cost ?? 0) >= 4);
       return { t: 'choose', options: [good ? 0 : 1] };
     }
+    // カード名: 相手のいちばん強いクリーチャーの名前 (なければ見えている名前の1つ目)
+    if (op?.op === 'chooseValue' && op.kind === 'name') {
+      const strongest = oppCreaturesByThreat(s, p, L).map((i) => nameOf(s, L, i)).find((n) => n !== op.exclude);
+      if (strongest) return { t: 'choose', value: strongest };
+      return { t: 'choose', options: (top.labels ?? []).length ? [0] : [] };
+    }
     if (op?.op === 'chooseValue') {
       // 有利な効果なら自分の、不利な効果なら相手のクリーチャーで一番多い種族・文明・コスト
       const who = op.hostile ? s.players.filter((_, i) => i !== p).flatMap((pl) => pl.battle) : [...s.players[p].battle, ...s.players[p].hand];
@@ -814,6 +821,12 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
         if (n > bestN) (best = i), (bestN = n);
       });
       return { t: 'choose', options: [best] };
+    }
+    // プレイヤーを選ぶ: 自分を入れて、残りは順に
+    if (op?.op === 'choosePlayers') {
+      const ids = top.exec.chosenPlayers ?? [];
+      const order = [ids.indexOf(p), ...ids.map((_, k) => k).filter((k) => ids[k] !== p)].filter((k) => k >= 0);
+      return { t: 'choose', options: order.slice(0, top.min) };
     }
     if (op?.op !== 'modal') return { t: 'choose', options: [0] };
     const scored = op.options.map((o, i) => ({ i, v: opsValue(s, p, L, o.body) })).sort((a, b) => b.v - a.v);
@@ -838,13 +851,17 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
   const n = top.purpose === 'sacrifice' ? top.min : top.max;
   if (top.distinct) {
     // 異なるカードタイプ・コストのものだけ: 価値の高い順に、同じ種類は1枚まで
+    // (ゾーンが異なる・種族が異なるものも同じ。コストの合計の上限があれば超えないように)
     const seen = new Set<string>();
     const picks: number[] = [];
+    let sum = 0;
     for (const i of [...top.options].sort((a, b) => ownValue(s, L, b) - ownValue(s, L, a))) {
       const cd = L(s.cards[i].cid);
-      const key = top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
-      if (seen.has(key) || picks.length >= top.max) continue;
-      seen.add(key);
+      const keys = top.distinct === 'race' ? (cd?.faces.flatMap((f) => f.races) ?? []) : [top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '')];
+      const cost = cd?.faces[0]?.cost ?? 0;
+      if (keys.some((k) => seen.has(k)) || picks.length >= top.max || (top.sumCostMax != null && sum + cost > top.sumCostMax)) continue;
+      for (const k of keys) seen.add(k);
+      sum += cost;
       picks.push(i);
     }
     return { t: 'choose', picks };

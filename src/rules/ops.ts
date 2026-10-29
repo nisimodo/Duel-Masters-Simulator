@@ -79,6 +79,12 @@ export interface Sel {
   costEqIt?: boolean;
   /** このターンにバトルゾーンを離れたカード */
   leftThisTurn?: boolean;
+  /** このターンに墓地に置かれたカード */
+  toGraveThisTurn?: boolean;
+  /** それ (直前に選んだカード) ではない (「この呪文の効果によって選ばなかった」) */
+  notIt?: boolean;
+  /** いま攻撃しているクリーチャーよりパワーが小さい */
+  powerLtAttacker?: boolean;
   /** 表向きのカード (シールドは表向き、マナは裏向きでないもの) */
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
@@ -112,7 +118,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; /** コストの合計の上限を数えた数 (countSet) にする */ sumCostCount?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; /** コストの合計の上限を数えた数 (countSet) にする */ sumCostCount?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' | 'zone' | 'race' } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'manaDownTapped' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -128,7 +134,8 @@ export type Target =
   | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
   | { ref: 'underIt' } // 選んだクリーチャーの下にあるカードすべて
   | { ref: 'leftBehind' }
-  | { ref: 'formerUnder' } // バトルゾーンを離れた時に下に重なっていたカード // スター進化で離れた時、下にあったクリーチャー
+  | { ref: 'formerUnder' } // バトルゾーンを離れた時に下に重なっていたカード
+  | { ref: 'kept' } // 「こうして出したクリーチャー」(keep で覚えたカード) // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
 /** 選択の目的 (CPU が選ぶ基準になる) */
@@ -270,6 +277,8 @@ export type Op =
   | { op: 'forEachPlayer'; body: Op[] }
   /** 「相手1人につき」「各相手の」: 相手ごとに body を実行する (exceptAttacked: 攻撃されている相手は除く「他の各相手」) */
   | { op: 'forEachOpp'; body: Op[]; exceptAttacked?: boolean }
+  /** プレイヤーをN人選び、それらのプレイヤーそれぞれが body を行う */
+  | { op: 'choosePlayers'; n: number; body: Op[] }
   | { op: 'setFocus'; p: number | null }
   /** 選んだシールド (it) をブレイクする */
   | { op: 'breakIt' }
@@ -353,7 +362,7 @@ export type Op =
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
   | { op: 'unseal'; from: 'self' | 'any'; n: number }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
-  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean }
+  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** このターンの終わりに、このクリーチャーを山札の下に置く */
@@ -364,6 +373,10 @@ export type Op =
   | { op: 'dLock' }
   /** 次の相手のターン、相手はパワーN以下のクリーチャーを出せない */
   | { op: 'enterPowerLock'; max: number }
+  /** 自分のエレメントは呪文 (civRef: 選んだ文明の呪文) によって選ばれない */
+  | { op: 'spellGuard'; nextOwn: boolean; civRef?: boolean }
+  /** このターン、クリーチャーが攻撃するたびに effect を使う */
+  | { op: 'onAttackThisTurn'; effect: string }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */
   | { op: 'stackUnder'; what: 'it' | 'self' }
   /** Dの天牢 ジェイルハウスロック: 選んだカードを、表向きのまま新しい1つのシールドにまとめて持ち主のシールドゾーンに置く */
@@ -407,6 +420,10 @@ export type Op =
   | { op: 'oppMustAttackCreature' }
   /** (内部) 「それ」を指定のカードにする */
   | { op: 'setIt'; ids: number[] }
+  /** 「もう1枚」: 見たカードのうち選ばなかったものを「それ」にする */
+  | { op: 'itRest' }
+  /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
+  | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */
   | { op: 'powerDouble' }
   /** 次の自分のターンのはじめまで、相手のカードの効果によって、自分のクリーチャーは離れない */

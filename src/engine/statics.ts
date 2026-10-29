@@ -191,6 +191,8 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
       const sc = s.players[a.owner].spellsCast;
       return sc?.turn === s.turn && sc.n >= cond.n;
     }
+    case 'startOpps':
+      return s.players.length - 1 >= cond.n;
   }
 }
 
@@ -257,7 +259,16 @@ export function isSealed(s: GameState, iid: number): boolean {
 /** 効果で能力を無視されているか (「相手のクリーチャーの能力すべてを無視する」「その数字と同じコストの相手のエレメントの能力を無視し」) */
 export function abilitiesIgnored(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
-  if (!c || c.zone !== 'battle' || !s.ignoreAbil?.length) return false;
+  if (!c || c.zone !== 'battle') return false;
+  // 神聖龍 エモーショナル・ハードコア: バトルゾーンにある間、選んだ名前のクリーチャーの能力を無視する
+  const nm = L(c.cid)?.faces[c.face]?.name;
+  for (const pl of s.players)
+    for (const b of pl.battle) {
+      const bc = s.cards[b];
+      if (b === iid || !bc.chosenName || bc.chosenName !== nm) continue;
+      if ((L(bc.cid)?.faces[bc.face]?.statics ?? []).some((x) => x.s === 'ignoreChosenName')) return true;
+    }
+  if (!s.ignoreAbil?.length) return false;
   return s.ignoreAbil.some((x) => x.by !== c.owner && (x.iid == null || x.iid === iid) && (x.turn == null || x.turn === s.turn) && (x.costEq == null || (L(c.cid)?.faces[c.face]?.cost ?? -1) === x.costEq));
 }
 
@@ -276,13 +287,19 @@ export function ownStatics(s: GameState, L: Lookup, iid: number): StaticSpec[] {
 }
 
 /** 相手 (chooser) がこのカードを選べるか */
-export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: number, bySpell = false): boolean {
+export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: number, bySpell = false, src?: number): boolean {
   const c = s.cards[iid];
   if (c.zone === 'battle' && isSealed(s, iid)) return false;
   if (c.owner === chooser || c.zone !== 'battle') return true;
+  // 英知の防壁・衒影の精霊 リアリテル 「自分のエレメントは、(その文明を持つ)呪文によって選ばれない」
+  if (bySpell) {
+    const civs = src != null && s.cards[src] ? (L(s.cards[src].cid)?.civs ?? []) : [];
+    const guarded = (s.players[c.owner].spellGuard ?? []).some((g) => (g.nextOwn ? !(s.turn > g.turn && s.active === c.owner) : s.turn === g.turn) && (!g.civ || (civs as string[]).includes(g.civ)));
+    if (guarded) return false;
+  }
   if (c.justDive != null) return false;
   if ((c.grants ?? []).some((g) => g.kws.includes('選ばれない'))) return false;
-  return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell));
+  return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell) && (!x.cond || staticCondOk(s, L, { src: iid, owner: c.owner, spec: x })));
 }
 
 /** 手札以外 (墓地・マナゾーン・超次元ゾーン) から召喚・詠唱できるか (「このクリーチャーを墓地から召喚してもよい」「〇〇を自分の墓地から召喚してもよい」) */

@@ -508,6 +508,9 @@ export function PendingDialog({
             </div>
           </Modal>
         );
+      // カード名を選ぶ: 見えている名前のほか、全カードから検索して選べる
+      const cv = pending.exec.ops[0];
+      if (pending.mode === 'modal' && cv?.op === 'chooseValue' && cv.kind === 'name') return <NamePicker db={db} pending={pending} creature={!!cv.creature} exclude={cv.exclude} onSubmit={onSubmit} />;
       if (pending.mode === 'modal')
         return (
           <Modal title="効果を選ぶ">
@@ -687,6 +690,46 @@ export function PendingDialog({
 }
 
 /** ゾーンの中身を一覧表示 (墓地・超次元・山札サーチなど) */
+/** カード名を選ぶ (見えているカードの名前、または全カードから検索) */
+function NamePicker({ db, pending, creature, exclude, onSubmit }: { db: CardDB; pending: Extract<Pending, { kind: 'choice' }>; creature: boolean; exclude?: string; onSubmit: (a: Action) => void }) {
+  const [q, setQ] = useState('');
+  const hits = useMemo(() => {
+    const k = q.trim();
+    if (!k) return [];
+    const out = new Set<string>();
+    for (const c of db.cards)
+      for (const f of c.faces) if ((!creature || f.isCreature) && f.name !== exclude && (f.name.includes(k) || c.readings?.some((r) => r.includes(k)))) out.add(f.name);
+    return [...out].slice(0, 40);
+  }, [db, q, creature, exclude]);
+  return (
+    <Modal title="カード名を選ぶ">
+      <div className="small">{pending.prompt}</div>
+      {(pending.labels ?? []).length > 0 && (
+        <>
+          <div className="small muted">見えているカード</div>
+          <div className="row" style={{ flexWrap: 'wrap', gap: 4 }}>
+            {(pending.labels ?? []).map((l, i) => (
+              <button key={l} className="small" onClick={() => onSubmit({ t: 'choose', options: [i] })}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="small muted">カード名で検索</div>
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="カード名の一部 (ひらがな可)" />
+      <div className="col" style={{ maxHeight: 260, overflowY: 'auto', gap: 2 }}>
+        {hits.map((n) => (
+          <button key={n} className="small" style={{ textAlign: 'left' }} onClick={() => onSubmit({ t: 'choose', value: n })}>
+            {n}
+          </button>
+        ))}
+        {q.trim() && !hits.length && <span className="small muted">見つかりません</span>}
+      </div>
+    </Modal>
+  );
+}
+
 /** マナゾーンの裏向きのカードに「裏マナ」と出す */
 function DownTag({ s, iid }: { s: GameState; iid: number }) {
   return s.cards[iid].zone === 'mana' && s.cards[iid].manaDown ? <span className="tag">裏マナ</span> : null;

@@ -190,6 +190,9 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.attackingNow && s.attack?.attacker !== iid) continue;
+        if (sel.toGraveThisTurn && s.cards[iid].graveTurn !== s.turn) continue;
+        if (sel.notIt && ex.it.includes(iid)) continue;
+        if (sel.powerLtAttacker && !(s.attack && s.cards[s.attack.attacker]?.zone === 'battle' && power(s, L, iid) < power(s, L, s.attack.attacker, true))) continue;
         if (sel.faceUpCard && (s.cards[iid].zone === 'shield' ? !s.cards[iid].faceUp : s.cards[iid].zone === 'mana' ? !!s.cards[iid].manaDown : false)) continue;
         if (sel.notSaved && (ex.saved ?? []).includes(iid)) continue;
         if (sel.sameNameSubject && !(ex.subject != null && L(s.cards[iid].cid)?.name === L(s.cards[ex.subject].cid)?.name)) continue;
@@ -198,7 +201,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
-        if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false)) continue;
+        if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false, ex.src)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
     }
@@ -396,6 +399,8 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       return ex.looked.filter((i) => !ex.it.includes(i));
     case 'saved':
       return (ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone');
+    case 'kept':
+      return (ex.kept ?? []).filter((i) => s.cards[i].zone === 'battle');
     case 'formerUnder':
       return (s.cards[ex.src]?.formerUnder ?? []).filter((i) => s.cards[i].zone !== 'gone' && s.cards[i].zone !== 'under' && s.cards[i].zone !== 'battle');
     case 'leftBehind': {
@@ -498,7 +503,7 @@ function skipOptional(ex: Exec) {
 }
 
 /** 選択への回答を受けて再開する */
-export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: number[]; yes?: boolean; options?: number[] }) {
+export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: number[]; yes?: boolean; options?: number[]; value?: string }) {
   const op = ex.ops[0];
   if (!op) return;
   if (op.op === 'choose' && ex.zeroOk) {
@@ -546,11 +551,18 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     ex.pendingIds = undefined;
   } else if (op.op === 'chooseValue') {
     ex.ops.shift();
-    const v = (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
+    const v = op.kind === 'name' && answer.value ? answer.value : (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
     if (v != null) {
       s.chosenValue = op.kind === 'race' ? { race: v } : op.kind === 'civ' ? { civ: v } : op.kind === 'name' ? { name: v } : { num: +v };
-      log(s, ex.player, `${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : '数字'}「${v}」を選んだ`);
+      // カード名は、選んだカード自身にも覚えておく (「選んだ名前を持つクリーチャー」はずっと続く)
+      if (op.kind === 'name' && s.cards[ex.src]) s.cards[ex.src].chosenName = v;
+      log(s, ex.player, `${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}「${v}」を選んだ`);
     }
+  } else if (op.op === 'choosePlayers') {
+    ex.ops.shift();
+    const me0 = ex.player;
+    const ps = (answer.options ?? []).map((k) => ex.chosenPlayers?.[k]).filter((k): k is number => k != null).slice(0, op.n);
+    ex.ops.unshift(...ps.flatMap((q): Op[] => [{ op: 'setPlayer', p: q }, ...op.body]), { op: 'setPlayer', p: me0 });
   } else if (op.op === 'modal') {
     ex.ops.shift();
     const picked = (answer.options ?? [0]).slice(0, op.pick);
@@ -561,13 +573,15 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
 }
 
 /** 種族・文明・数字の選択肢 (種族はバトルゾーンと手札にあるものを多い順に) */
-export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number' | 'name', max?: number, exclude?: string): string[] {
-  // カード名: ゲームに使われているカードの名前 (相手のカードを先に)
+export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number' | 'name', max?: number, exclude?: string, creature?: boolean): string[] {
+  // カード名: 表向きで見えている (バトルゾーン・墓地・表向きのマナ・表向きのシールド・見せた) カードの名前。
+  // それ以外の名前は、画面の検索で全カードから選ぶ
   if (kind === 'name') {
     const names = new Set<string>();
     for (const c of s.cards) {
-      const card = L(c.cid);
-      if (card) for (const f of card.faces) names.add(f.name);
+      const seen = c.zone === 'battle' || c.zone === 'grave' || (c.zone === 'mana' && !c.manaDown) || (c.zone === 'shield' && c.faceUp) || c.revealed;
+      const card = seen ? L(c.cid) : undefined;
+      if (card) for (const f of card.faces) if ((!creature || f.isCreature) && f.name !== exclude) names.add(f.name);
     }
     return [...names].slice(0, 120);
   }
@@ -953,6 +967,19 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
         continue;
       }
+      case 'choosePlayers': {
+        const alive = s.players.map((_, k) => k).filter((k) => !s.players[k].lost);
+        // 全員を選ぶことになる時は聞かない
+        if (alive.length <= op.n) {
+          ex.ops.shift();
+          const me0 = ex.player;
+          ex.ops.unshift(...alive.flatMap((q): Op[] => [{ op: 'setPlayer', p: q }, ...op.body]), { op: 'setPlayer', p: me0 });
+          continue;
+        }
+        ex.chosenPlayers = alive;
+        ask(s, ex, { player: ex.player, mode: 'modal', prompt: `${ex.name}: プレイヤーを${op.n}人選ぶ`, options: [], labels: alive.map((k) => s.players[k].name), min: op.n, max: op.n, purpose: 'benefit' });
+        return;
+      }
       case 'forEachOpp': {
         ex.ops.shift();
         const att = s.attack?.targetPlayer;
@@ -962,6 +989,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'setFocus':
         ex.focusOpp = op.p ?? undefined;
+        break;
+      case 'keep':
+        ex.kept = ex.it.filter((i) => s.cards[i].zone === 'battle');
+        break;
+      case 'itRest':
+        ex.it = ex.looked.filter((i) => !ex.it.includes(i) && s.cards[i].zone !== 'gone');
         break;
       case 'saveAdd':
         ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
@@ -1152,8 +1185,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'chooseValue': {
-        const labels = valueLabels(s, L, op.kind, op.max, op.exclude);
-        if (!labels.length) break;
+        const labels = valueLabels(s, L, op.kind, op.max, op.exclude, op.creature);
+        // (カード名は検索でも選べるので、見えている名前がなくても聞く)
+        if (!labels.length && op.kind !== 'name') break;
         ex.valueLabels = labels;
         ask(s, ex, {
           player: op.byOpp ? oppOf(s, ex) : ex.player,
@@ -1207,6 +1241,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         }
         break;
       }
+      case 'spellGuard': {
+        // (選んだ文明は「光」等の名前なので、カードの文明の記号にする)
+        const civName = op.civRef ? s.chosenValue?.civ : undefined;
+        const civ = civName ? Object.keys(CIV_NAME).find((k) => CIV_NAME[k as keyof typeof CIV_NAME] === civName) : undefined;
+        if (op.civRef && !civ) break;
+        const pl = s.players[ex.player];
+        pl.spellGuard = [...(pl.spellGuard ?? []), { turn: s.turn, nextOwn: op.nextOwn, civ }];
+        log(s, ex.player, `${op.nextOwn ? '次の自分のターンのはじめまで' : 'このターン'}、自分のエレメントは${civName ? `${civName}の` : ''}呪文によって選ばれない`);
+        break;
+      }
+      case 'onAttackThisTurn':
+        s.players[ex.player].onAttackThisTurn = { turn: s.turn, effect: op.effect, src: ex.src };
+        log(s, ex.player, `このターン、クリーチャーが攻撃する時: ${op.effect}`);
+        break;
       case 'enterPowerLock': {
         for (const o of opps(s, ex.player)) s.players[o].enterPowerLock = { until: ex.player, max: op.max };
         log(s, ex.player, `次の相手のターン、相手はパワー${op.max}以下のクリーチャーを出せない`);

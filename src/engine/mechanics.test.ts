@@ -5,7 +5,7 @@ import { abilityPick, applyAction, autoPay, attackTargets, battle, decider, brea
 import { matchesSel, programOf, startExec } from './interp';
 import { cpuPlan } from './cpu';
 import { parseSel } from '../rules/selector';
-import { costOf } from './statics';
+import { abilitiesIgnored, costOf } from './statics';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
@@ -276,6 +276,12 @@ const db = buildDB(
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
     { id: 'alien', n: 'alien', img: '', f: [{ n: 'alien', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['エイリアン'], x: [] }] },
+    { id: 'neon', n: 'neon', img: '', f: [{ n: 'neon', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['火の進化ではないクリーチャーを１体、自分のマナゾーンからバトルゾーンに出し、その後、相手のクリーチャーを１体選ぶ。その２体をバトルさせる。このターンの終わりに、こうしてバトルゾーンに出した自分のクリーチャーをマナゾーンに置く。'] }] },
+    cr('ruma', 1, 1000, ['このクリーチャーが破壊された時、自分の山札の上からカードを２枚表向きにする。そのうちの１枚をマナゾーンに置く。もう１枚がクリーチャーなら手札に加え、それ以外なら墓地に置く。']),
+    { id: 'nego', n: 'nego', img: '', f: [{ n: 'nego', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['プレイヤーを２人選ぶ。それらのプレイヤーはカードを３枚まで引く。', 'プレイヤーを２人選ぶ。それらのプレイヤーは自身の山札の上から１枚目をシールド化する。'] }] },
+    { id: 'harmony', n: 'harmony', img: '', f: [{ n: 'harmony', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターン、クリーチャーが攻撃する時、それよりパワーが小さい相手のクリーチャーを１体破壊する。'] }] },
+    { id: 'seven', n: 'seven', img: '', f: [{ n: 'seven', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から１枚目を自分のマナゾーンに置く。', 'メタモーフ(自分のマナゾーンに７枚以上カードがあれば、この呪文は次の能力を得る)', '自分の山札の上から１枚目のかわりに、上から３枚を自分のマナゾーンに置く。'] }] },
+    cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
   [],
@@ -2479,6 +2485,97 @@ describe('named mechanics', () => {
       s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'xanadu')!, face: 0, pay: [] }));
       expect(s.cards[st].zone).toBe('shield');
       expect(s.cards[st].faceUp).toBe(true);
+    });
+  });
+
+  describe('デュエパのプリセットの効果 (2)', () => {
+    const run = (s: GameState) => {
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : top.mode === 'modal' ? { t: 'choose', options: Array.from({ length: Math.max(1, top.min) }, (_, i) => i) } : { t: 'choose', picks: top.options.slice(0, Math.max(1, top.min)) }) : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+    it('ネオン・ジオング: マナから出してバトルさせ、ターンの終わりにマナへ', () => {
+      let s = setup([{ p: 0, cid: 'neon', zone: 'hand' }, { p: 0, cid: 'big', zone: 'mana' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+      const big = find(s, 0, 'mana', 'big')!;
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'neon')!, face: 0, pay: [] }));
+      expect(s.cards[big].zone).toBe('battle');
+      expect(s.cards[v].zone).toBe('grave');
+      s = run(act(s, 0, { t: 'endTurn' }));
+      expect(s.cards[big].zone).toBe('mana');
+    });
+    it('腐頼 ルマウス-2: 2枚表向きにし、1枚をマナ、もう1枚 (クリーチャー) を手札へ', () => {
+      let s = setup([{ p: 0, cid: 'ruma', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle', tapped: true }]);
+      const mana = s.players[0].mana.length;
+      const hand = s.players[0].hand.length;
+      const [a, b] = s.players[0].deck.slice(-2);
+      s = run(act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'ruma')!, player: 1, card: find(s, 1, 'battle', 'big')! }));
+      expect(s.players[0].mana.length).toBe(mana + 1);
+      expect(s.players[0].hand.length).toBe(hand + 1);
+      expect([s.cards[a].zone, s.cards[b].zone].sort()).toEqual(['hand', 'mana']);
+    });
+    it('偽衒学者の交渉: 選んだプレイヤーがそれぞれ引き、シールドを増やす', () => {
+      let s = setup([{ p: 0, cid: 'nego', zone: 'hand' }]);
+      const h0 = s.players[0].hand.length;
+      const h1 = s.players[1].hand.length;
+      const sh0 = s.players[0].shield.length;
+      const sh1 = s.players[1].shield.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'nego')!, face: 0, pay: [] }));
+      expect(s.players[0].hand.length).toBeGreaterThan(h0 - 1);
+      expect(s.players[1].hand.length).toBeGreaterThan(h1);
+      expect(s.players[0].shield.length).toBe(sh0 + 1);
+      expect(s.players[1].shield.length).toBe(sh1 + 1);
+    });
+    it('調和と暴動の混乱: このターン、攻撃する時にパワーが小さい相手のクリーチャーを破壊', () => {
+      let s = setup([{ p: 0, cid: 'harmony', zone: 'hand' }, { p: 0, cid: 'sa', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      const big = find(s, 1, 'battle', 'big')!;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'harmony')!, face: 0, pay: [] }));
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+      for (let k = 0; k < 10 && s.pending[0]?.player === 0 && s.cards[v].zone === 'battle'; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: top.options.slice(0, 1) } : { t: 'resolve', use: true });
+      }
+      expect(s.cards[v].zone).toBe('grave');
+      expect(s.cards[big].zone).toBe('battle');
+    });
+    it('セブンス・タワー: メタモーフ (マナ7枚以上) なら3枚、そうでなければ1枚', () => {
+      let s = setup([{ p: 0, cid: 'seven', zone: 'hand' }]);
+      let m = s.players[0].mana.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'seven')!, face: 0, pay: [] }));
+      expect(s.players[0].mana.length).toBe(m + 1);
+      s = setup([{ p: 0, cid: 'seven', zone: 'hand' }], 7);
+      m = s.players[0].mana.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'seven')!, face: 0, pay: [] }));
+      expect(s.players[0].mana.length).toBe(m + 3);
+    });
+    it('エモーショナル・ハードコア: 検索した名前を選び、その名前のクリーチャーの能力を無視する', () => {
+      let s = setup([{ p: 0, cid: 'emo', zone: 'hand' }, { p: 1, cid: 'tapGuard', zone: 'battle' }]);
+      const tg = find(s, 1, 'battle', 'tapGuard')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'emo')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 5 && s.pending[0]?.kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
+      const top = s.pending[0];
+      expect(top?.kind === 'choice' && top.mode).toBe('modal');
+      // 見えているカード (バトルゾーンの tapGuard) が選択肢にあり、検索した名前でも答えられる
+      expect(top?.kind === 'choice' && top.labels).toContain('tapGuard');
+      s = act(s, 0, { t: 'choose', value: 'tapGuard' });
+      expect(s.cards[find(s, 0, 'battle', 'emo')!].chosenName).toBe('tapGuard');
+      expect(abilitiesIgnored(s, L, tg)).toBe(true);
+    });
+    it('カーペラー・キリテム・ロマノグリラ・龍世界・灰撫の能力を解釈できる', () => {
+      const texts = [
+        'このクリーチャーがバトルに勝った時、コスト７以下のクリーチャーを１体、自分のマナゾーンから出してもよい。',
+        'このクリーチャーが攻撃する時、コストの合計が、自分のマナゾーンにあるカードの枚数以下になるよう、自分のマナゾーンと墓地からクリーチャーを最大１体ずつ選び、出す。',
+        '自分のターンのはじめに、自分の山札の上から１枚目を墓地に置く。それが進化ではないドラゴンなら、このドラゴニック・フィールドを墓地に置いてもよい。そうしたら、そのドラゴンをバトルゾーンに出す。',
+        'このクリーチャーが攻撃する時、バトルゾーンにある自分のクリーチャー１体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱えてもよい。',
+      ];
+      for (const x of texts) {
+        const tr = parseTriggers([x]);
+        expect(tr.length).toBe(1);
+        expect(programOf(tr[0].effect).complete).toBe(true);
+      }
     });
   });
 

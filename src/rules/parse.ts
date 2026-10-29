@@ -820,6 +820,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/、それぞれ新しいシールドとして/, '、新しいシールドとして')
     .replace(/^(自分の)?山札の上から(\d+)枚まで、/, '自分の山札の上から$2枚を')
     .replace(/^自分の山札のカードを、?上から(\d+)枚表向きにする$/, '自分の山札の上から$1枚を表向きにする')
+    .replace(/^自分の山札の上からカードを(\d+)枚表向きにする$/, '自分の山札の上から$1枚を表向きにする')
     .replace(/ジョーカーズ・クリーチャー/g, 'ジョーカーズ')
     .replace(/(その|選んだ|選ばれた)種族(?:の|を持つ)/g, '〈種族〉の')
     .replace(/(その|選んだ|選ばれた)文明の/g, '〈文明〉の')
@@ -880,6 +881,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const cv = s.match(/^(?:(.+?)以外の)?(種族|文明)を(?:ひとつ|1つ)選ぶ$/);
     if (cv) return [{ op: 'chooseValue', kind: cv[2] === '種族' ? 'race' : 'civ', exclude: cv[1], hostile: false }];
     if (/^カード名を1つ選ぶ$/.test(s)) return [{ op: 'chooseValue', kind: 'name', hostile: false }];
+    // 神聖龍 エモーショナル・ハードコア 「《神聖龍 エモーショナル・ハードコア》以外のクリーチャーの名前を1つ選ぶ」
+    {
+      const nm = s.match(/^《([^》]+)》以外のクリーチャーの名前を1つ選ぶ$/);
+      if (nm) return [{ op: 'chooseValue', kind: 'name', hostile: true, exclude: nm[1], creature: true }];
+    }
     const ov = s.match(/^相手に(種族|文明)を(?:ひとつ|1つ)選ばせる$/);
     if (ov) return [{ op: 'chooseValue', kind: ov[1] === '種族' ? 'race' : 'civ', hostile: false, byOpp: true }];
     const nv = s.match(/^(?:(\d+)以下の)?数字を(?:ひとつ|1つ)選ぶ$/);
@@ -1661,6 +1667,67 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'move', target: { ref: 'it' }, to: 'battle' },
       ];
   }
+  // グレート・流星弾 「このターン自分の墓地に置かれた火のクリーチャーを好きな数墓地から選び、出す」
+  {
+    const gt = s.match(/^(?:この|その)ターン、?自分の墓地に置かれた(.+?)を99(?:枚|体)まで、?(?:自分の)?墓地から選び、(?:バトルゾーンに)?出す$/);
+    const gsel = gt && parseSel(gt[1]);
+    if (gsel) return [{ op: 'choose', target: { ref: 'sel', sel: { ...gsel, owner: 'self', zones: ['grave'], toGraveThisTurn: true }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'battle' }];
+  }
+  // サスペンス・ザイン 「このターン、この呪文の効果によって選ばなかった相手のクリーチャーすべてのパワーを-6000する」
+  if ((mm = s.match(/^(?:この|その)ターン、この呪文の効果によって選ばなかった相手のクリーチャーすべてのパワーを-(\d+)する$/)))
+    return [{ op: 'power', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', notIt: true }, count: { all: true }, chooser: 'self' }, delta: -mm[1], until: 'turn' }];
+  // 零獄接続王 ロマノグリラ0世 「コストの合計が、自分のマナゾーンにあるカードの枚数以下になるよう、自分のマナゾーンと墓地からクリーチャーを最大1体ずつ選び、出す」
+  if (/^コストの合計が、?自分のマナゾーンにあるカードの枚数以下になるよう(?:に)?、?自分のマナゾーンと墓地からクリーチャーを最大1体(?:ずつ)?選び、(?:バトルゾーンに)?出す$/.test(s))
+    return [
+      { op: 'countSet', sel: { owner: 'self', zones: ['mana'], kind: 'card' } },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana', 'grave'], kind: 'creature' }, count: { n: 2, upTo: true, sumCostCount: true, distinct: 'zone' }, chooser: 'self' }, purpose: 'benefit', prompt: 'マナゾーンと墓地から1体ずつまで選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  // 調和と暴動の混乱 「このターン、クリーチャーが攻撃する時、それよりパワーが小さい相手のクリーチャーを1体破壊する」
+  if (/^(?:この|その)ターン、クリーチャーが攻撃する時、それよりパワーが小さい相手のクリーチャーを1体破壊する$/.test(s)) return [{ op: 'onAttackThisTurn', effect: '攻撃しているクリーチャーよりパワーが小さい相手のクリーチャーを1体破壊する' }];
+  if (/^攻撃しているクリーチャーよりパワーが小さい相手のクリーチャーを1体破壊する$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', powerLtAttacker: true }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '破壊するクリーチャーを選ぶ' }, { op: 'destroy', target: { ref: 'it' } }];
+  // 龍世界 ～龍の降臨する地～ 「それが進化ではないドラゴンなら、このドラゴニック・フィールドを墓地に置く」
+  {
+    const df = s.match(/^それが(.+?)なら、このドラゴニック・フィールドを墓地に置く$/);
+    const dsel = df && parseSel(df[1]);
+    if (dsel) return [{ op: 'if', cond: { c: 'itMatches', sel: { ...dsel, owner: 'any', zones: ['grave', 'deck', 'mana', 'hand', 'battle', 'shield'] } }, body: [{ op: 'move', target: { ref: 'self' }, to: 'grave' }] }];
+  }
+  // 腐頼 ルマウス-2 「(そのうちの1枚をマナゾーンに置く。)もう1枚がクリーチャーなら手札に加え、それ以外なら墓地に置く」
+  {
+    const mo = s.match(/^もう1枚が(.+?)なら(?:自分の)?手札に加え、それ以外なら(?:自分の)?墓地に置く$/);
+    const msel = mo && parseSel(mo[1]);
+    if (msel) return [{ op: 'itRest' }, { op: 'if', cond: { c: 'itMatches', sel: { ...msel, owner: 'any', zones: ['grave', 'deck', 'mana', 'hand', 'battle', 'shield'] } }, body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }], else: [{ op: 'move', target: { ref: 'it' }, to: 'grave' }] }];
+  }
+  // 偽りの名 ダスニゼス 「(召喚してもよい。)自分のゼニス・クリーチャー1体と相手のクリーチャーを1体選ぶ。その2体をバトルさせる。その後、こうして出したクリーチャーを破壊する」
+  {
+    const dz = s.match(/^自分の(.+?)(\d+)体と相手のクリーチャーを(\d+)体選ぶ$/);
+    const zsel = dz && parseSel(dz[1]);
+    if (dz && zsel)
+      return [
+        { op: 'keep' },
+        { op: 'choose', target: { ref: 'sel', sel: { ...zsel, owner: 'self', zones: ['battle'] }, count: { n: +dz[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: 'バトルさせる自分のクリーチャーを選ぶ' },
+        { op: 'save' },
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: +dz[3], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: 'バトルさせる相手のクリーチャーを選ぶ' },
+      ];
+  }
+  if (/^(?:その後、)?こうして出したクリーチャーを破壊する$/.test(s)) return [{ op: 'destroy', target: { ref: 'kept' } }];
+  // 英知の防壁 「このターン、自分のエレメントは、呪文によって選ばれない」
+  if (/^(?:この|その)ターン、自分の(?:エレメント|クリーチャー)は、?呪文によって選ばれない$/.test(s)) return [{ op: 'spellGuard', nextOwn: false }];
+  // 「この記憶もロック完了だね」 「(文明を1つ選ぶ。)次の自分のターンのはじめまで、自分と自分のクリーチャーはその文明を持つ呪文で選ばれない」
+  if (/^次の自分のターンのはじめまで、自分と自分のクリーチャーは、?その文明を持つ呪文(?:で|によって)選ばれない$/.test(s)) return [{ op: 'spellGuard', nextOwn: true, civRef: true }];
+  // 英知の防壁 「(破壊する。)その相手は、この呪文を、コストを支払わずに唱えてもよい」
+  if (/^その相手は、?この呪文を、?コストを支払わずに唱え(?:る|てもよい)$/.test(s)) return [{ op: 'asPlayer', who: 'itOwner', body: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'self' }, mode: 'cast', byMe: true }], prompt: 'この呪文をコストを支払わずに唱える' }] }];
+  // D-Jealousy-灰撫 「バトルゾーンにある自分のクリーチャー1体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱える」
+  if (/^(?:バトルゾーンにある)?自分のクリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(?:る|てもよい)$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', twinpact: true }, count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '呪文側を唱えるクリーチャーを選ぶ' },
+      { op: 'castSelfSpell', it: true },
+    ];
+  // ネオン・ジオング 「このターンの終わりに、こうしてバトルゾーンに出した自分のクリーチャーをマナゾーンに置く」(出したクリーチャーは保存してある)
+  if (/^(?:この|その)ターンの終わりに、こうしてバトルゾーンに出した自分のクリーチャーを(?:持ち主の)?マナゾーンに置く$/.test(s)) return [{ op: 'atTurnEnd', body: [{ op: 'move', target: { ref: 'saved' }, to: 'mana' }] }];
+  // 英知の防壁 「その後、その相手は山札の上から1枚目をシールド化する」
+  if (/^その相手は、?(?:自身の)?山札の上から1枚目をシールド化する$/.test(s)) return [{ op: 'asPlayer', who: 'itOwner', body: [{ op: 'top', n: 1, to: 'shield', who: 'self' }] }];
   // 飛翔龍 5000VT
   if ((mm = s.match(/^次の相手のターン(?:中)?、相手はパワー(\d+)以下のクリーチャーを(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterPowerLock', max: +mm[1] }];
   // 驚異的終斗 アレキサンドライト / 常氷接続 オプティマス・ブリザード 「このターン、(カードが)自分のシールドゾーンに(カードが)置かれていれば、〜」
@@ -2030,6 +2097,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'card' }, count: { n: 99, upTo: true, distinct: 'type' } }, purpose: 'benefit', prompt: 'カードタイプが異なるカードを好きな数選ぶ' },
       { op: 'move', target: { ref: 'it' }, to: 'hand' },
     ];
+  // 種族選別 「その中から異なる種族を持つクリーチャーを好きな数選ぶ」
+  if (/^その中から、?異なる種族を持つクリーチャーを(?:好きな数|99(?:枚|体)まで)選ぶ$/.test(s))
+    return [{ op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'creature' }, count: { n: 99, upTo: true, distinct: 'race' } }, purpose: 'benefit', prompt: '種族が異なるクリーチャーを好きな数選ぶ' }];
   if (/^その中からコストが異なるクリーチャーを(?:好きな数|99枚まで)、?手札に加え、残りをマナゾーンに置く$/.test(s))
     return [
       { op: 'choose', target: { ref: 'looked', sel: { owner: 'any', zones: ['deck'], kind: 'creature' }, count: { n: 99, upTo: true, distinct: 'cost' } }, purpose: 'benefit', prompt: 'コストが異なるクリーチャーを好きな数選ぶ' },
@@ -3533,6 +3603,13 @@ function fixPurposes(ops: Op[]) {
     if (a.op !== 'choose' || a.target.ref !== 'sel' || a.target.sel.owner !== 'self' || a.purpose !== 'sacrifice') continue;
     if ((b.op === 'power' && b.delta > 0) || b.op === 'grant' || b.op === 'untap') a.purpose = 'benefit';
   }
+  // 「Xを出し、その後、相手のクリーチャーを1体選ぶ。その2体をバトルさせる」: 先に出したクリーチャーを保存しておく
+  for (let i = 2; i < ops.length; i++) {
+    const o = ops[i];
+    if (o.op !== 'battle' || o.a.ref !== 'saved' || ops.slice(0, i).some((x) => x.op === 'save')) continue;
+    if (ops[i - 1].op === 'choose') ops.splice(i - 1, 0, { op: 'save' });
+    break;
+  }
 }
 
 /** いちばん後の選択 (「〜してもよい」の中も見る) */
@@ -3598,6 +3675,37 @@ export function parseEffect(text: string): Program {
       complete: true,
       unparsed: [],
     };
+  // 偽衒学者の交渉 「プレイヤーを2人選ぶ。それらのプレイヤーは〜」
+  {
+    const nt = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace(/。+/g, '。');
+    if (/^(?:プレイヤーを\d+人選ぶ。それらのプレイヤーは[^。]+。?)+$/.test(nt)) {
+      const ops: Op[] = [];
+      for (const cp of nt.matchAll(/プレイヤーを(\d+)人選ぶ。それらのプレイヤーは([^。]+)/g)) {
+        const body = parseEffect(cp[2].replace(/^自身の/, '自分の'));
+        if (!body.complete) return { ops: [], complete: false, unparsed: [cp[0]] };
+        ops.push({ op: 'choosePlayers', n: +cp[1], body: body.ops });
+      }
+      return { ops, complete: true, unparsed: [] };
+    }
+  }
+  // 龍世界 ～龍の降臨する地～ 「〜。それが進化ではないドラゴンなら、このドラゴニック・フィールドを墓地に置いてもよい。そうしたら、そのドラゴンをバトルゾーンに出す」
+  {
+    const dw = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace(/。+/g, '。').match(/^(.+?)。それが(.+?)なら、このドラゴニック・フィールドを墓地に置いてもよい。そうしたら、その(?:ドラゴン|クリーチャー)をバトルゾーンに出す。?$/);
+    const pre = dw && parseEffect(dw[1]);
+    const dsel = dw && parseSel(dw[2]);
+    if (dw && pre?.complete && dsel)
+      return {
+        ops: [...pre.ops, { op: 'if', cond: { c: 'itMatches', sel: { ...dsel, owner: 'any', zones: ['grave', 'deck', 'mana', 'hand', 'battle', 'shield'] } }, body: [{ op: 'optional', body: [{ op: 'move', target: { ref: 'self' }, to: 'grave' }, { op: 'move', target: { ref: 'it' }, to: 'battle' }], prompt: 'このドラゴニック・フィールドを墓地に置き、そのドラゴンを出す' }] }],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // セブンス・タワー (メタモーフ) 「自分の山札の上から1枚目を自分のマナゾーンに置く。自分の山札の上から1枚目のかわりに、上から3枚を自分のマナゾーンに置く」
+  {
+    // (メタモーフ: 自分のマナゾーンに7枚以上カードがあれば、かわりの能力を使う)
+    const st = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace(/。+/g, '。').match(/^自分の山札の上から1枚目を(?:自分の)?マナゾーンに置く。?自分の山札の上から1枚目のかわりに、上から(\d+)枚を(?:自分の)?マナゾーンに置く。?$/);
+    if (st) return { ops: [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '>=', n: 7 }, body: [{ op: 'top', n: +st[1], to: 'mana', who: 'self' }], else: [{ op: 'top', n: 1, to: 'mana', who: 'self' }] }], complete: true, unparsed: [] };
+  }
   // アカシック・ゼット 「その呪文を相手の墓地からコストを支払わずに唱えてもよい。そうしたら、呪文を唱えた後、墓地のかわりに相手の山札の下に置く」
   if (/^その呪文を相手の墓地からコストを支払わずに唱えてもよい。そうしたら、呪文を唱えた後、墓地のかわりに相手の山札の(?:一番)?下に置く。?$/.test(normText(text).replace(/\s+/g, '')))
     return { ops: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true, after: 'deckBottom' }], prompt: 'その呪文を相手の墓地から唱える' }], complete: true, unparsed: [] };
