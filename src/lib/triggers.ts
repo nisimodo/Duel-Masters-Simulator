@@ -152,6 +152,8 @@ export interface TriggerSpec {
   howEnter?: 'notSummon' | 'summon' | 'revChange' | 'free' | 'freeExec' | 'exec' | 'ddd';
   /** 「プレイヤーを攻撃する時」「クリーチャーを攻撃する時」 */
   attackWhat?: 'player' | 'creature';
+  /** 「(自身の)ターンに最初のカードを引いた時」 */
+  firstDraw?: boolean;
   /** 「自分のターン中に」「相手のターン中に」だけ誘発する */
   turn?: 'own' | 'opp';
 }
@@ -295,6 +297,14 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
     if (/^カードが(?:どこからでも)?相手の墓地に置かれた時$|^相手の墓地にカードが置かれた時$/.test(clause)) ev.add('oppToGrave');
+    // Dの揺籠 メリーボーイラウンド 「自分のターンに、1枚目のカードを引いた時」/ Dの牢閣 メメント守神宮 「いずれかのプレイヤーが自身のターンに最初のカードを引いた時」
+    const firstDraw = /(?:自分の|自身の)ターンに、?(?:1|一)枚目のカードを引いた時|自身のターンに最初のカードを引いた時/.test(clause);
+    if (firstDraw) {
+      ev.add('ownDraw');
+      if (/いずれかのプレイヤー/.test(clause)) ev.add('oppDraw');
+    }
+    // Dの機動 ヴァイス・ヴァーチュー 「クリーチャーが自分を攻撃する時」
+    if (/^クリーチャーが自分を攻撃する時/.test(clause)) (ev.delete('ownAttack'), ev.add('oppAttack'));
     if (/相手がカードを引いた時/.test(clause)) ev.add('oppDraw');
     else if (/自分がカードを引いた時/.test(clause)) ev.add('ownDraw');
     if (/^自分の[^、]+?がバトルに勝った時/.test(clause) && !self) ev.add('ownWinBattle');
@@ -362,7 +372,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     const turn = turnM ? (turnM[1] === '自分' ? ('own' as const) : ('opp' as const)) : undefined;
     const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;
     const attackWhat = /プレイヤーを攻撃する時/.test(clause) ? ('player' as const) : /クリーチャーを攻撃する時/.test(clause) ? ('creature' as const) : undefined;
-    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined, includeSelf, howEnter, turn, attackWhat });
+    out.push({ events: [...ev], text: raw, effect, optional, auto: isAutoEffect(effect, optional), subject, oncePerTurn, fromHand: fromHand || fromGrave || undefined, fromGrave: fromGrave || undefined, includeSelf, howEnter, turn, attackWhat: /^クリーチャーが自分を攻撃する時/.test(clause) ? 'player' : attackWhat, ...(firstDraw ? { firstDraw } : {}) });
   }
   return out;
 }

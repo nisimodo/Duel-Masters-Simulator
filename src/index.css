@@ -245,6 +245,29 @@ input[type='radio'] {
   object-fit: cover;
   display: block;
 }
+/* 横向きのカードの枠 (縦のカードと同じ面積で、幅と高さを入れかえる) */
+.card.wide {
+  width: calc(var(--w, var(--card-w)) * 1.4);
+  aspect-ratio: 7 / 5;
+}
+/* 画像の向きが枠と違う時は回して全体を見せる */
+.card img.rot-cw,
+.card img.rot-ccw {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  object-fit: fill;
+}
+.card img.rot-cw {
+  width: 140%;
+  height: 71.43%;
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.card img.rot-ccw {
+  width: 71.43%;
+  height: 140%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
 .card.tapped {
   transform: rotate(90deg) scale(0.86);
   margin: 0 calc(var(--w, var(--card-w)) * 0.2);

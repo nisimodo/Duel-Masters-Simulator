@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { backend } from '../backend';
-import { CardBack, CardDetail, CardImg } from '../components/CardView';
+import { CardBack, CardDetail, CardImg, isWideCard } from '../components/CardView';
 import { useApp } from '../context';
 import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
@@ -491,6 +491,8 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         card={card}
         face={c.face}
         width={opts.width}
+        // バトルゾーンのフィールドなどは横向きに置く
+        wide={c.zone === 'battle' && isWideCard(f?.type ?? '')}
         tapped={c.tapped}
         target={isTarget}
         selected={selected}
@@ -500,12 +502,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         onContextMenu={(e) => openMenu(e, nameOf(s, L, iid), cardMenu(iid))}
       >
         {opts.showPower && pw != null && <span className={`pw${c.powerMod ? ' mod' : ''}`}>{pw}</span>}
-        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown)) && (
+        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown) || (s.onceGame ?? []).includes(iid)) && (
           <span className="tag">
             {c.under.length > 0 && `+${c.under.length} `}
             {c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker && '酔 '}
             {c.noAttack && '✕攻'}
             {c.zone === 'mana' && c.manaDown && '裏'}
+            {c.zone === 'battle' && (s.onceGame ?? []).includes(iid) && /フィールド/.test(f?.type ?? '') && 'D済'}
           </span>
         )}
       </CardImg>

@@ -29,7 +29,7 @@ export interface Sel {
   /** サイキックではない */
   notPsychic?: boolean;
   /** コストが (自分のマナの枚数 / 手札の枚数) より小さい・以下 */
-  costVs?: { by: 'mana' | 'hand' | 'shield'; cmp: 'lt' | 'le' | 'ge' | 'gt'; ofOwner?: boolean };
+  costVs?: { by: 'mana' | 'hand' | 'shield'; cmp: 'lt' | 'le' | 'ge' | 'gt'; ofOwner?: boolean; /** カードの持ち主の相手のマナ・手札と比べる */ ofOpp?: boolean };
   /** この効果のカード自身 */
   self?: boolean;
   /** 「その種族の」「選んだ文明の」「その数字と同じコストの/パワーの」 (直前に選んだ値) */
@@ -138,6 +138,8 @@ export type Cond =
   | { c: 'shieldsLess'; who: 'self' | 'opp'; n: number }
   | { c: 'handCount'; who: 'self' | 'opp'; cmp: '>=' | '<=' | '=='; n: number }
   | { c: 'itMatches'; sel: Sel } // 「そのカードがクリーチャーなら」
+  /** 「このD2フィールドの下にシノビがN枚以上あれば」 */
+  | { c: 'underSelfRace'; race: string; n: number }
   | { c: 'itCount'; cmp: '>=' | '<=' | '=='; n: number }
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
@@ -261,7 +263,7 @@ export type Op =
   | { op: 'forEachPlayer'; body: Op[] }
   /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */
   | { op: 'setPlayer'; p: number }
-  | { op: 'asPlayer'; who: 'self' | 'opp'; body: Op[] }
+  | { op: 'asPlayer'; who: 'self' | 'opp' | 'subjectOwner'; body: Op[] }
   /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
   | { op: 'repeatIt'; sel?: Sel; body: Op[]; saved?: boolean }
   /** キーワード能力を一時的に与える */
@@ -339,8 +341,14 @@ export type Op =
   | { op: 'endOfTurnBottom' }
   /** ゲーム中に一度だけ (2回目以降は「そうしたら」が成立しない) */
   | { op: 'oncePerGame' }
+  /** 次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない */
+  | { op: 'dLock' }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */
   | { op: 'stackUnder'; what: 'it' | 'self' }
+  /** Dの天牢 ジェイルハウスロック: 選んだカードを、表向きのまま新しい1つのシールドにまとめて持ち主のシールドゾーンに置く */
+  | { op: 'bundleShield' }
+  /** Dの悪意 ワルスラー研究所: 自分のクリーチャー1体につき、同じコストのクリーチャーを1体手札から出す */
+  | { op: 'sameCostFromHand' }
   /** 自分の山札の上からN枚を、このカード (シールド・クリーチャー) の下に裏向きで置く */
   | { op: 'topUnderSelf'; n: number }
   /** マナゾーンのカードを裏向き/表向きにする */

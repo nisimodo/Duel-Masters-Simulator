@@ -544,9 +544,13 @@ export function PendingDialog({
               </div>
             ))}
           </div>
-          <button className="primary" disabled={!ok} onClick={() => onSubmit({ t: 'choose', picks })}>
-            決定
-          </button>
+          <div className="row">
+            <button className="primary" disabled={!ok} onClick={() => onSubmit({ t: 'choose', picks })}>
+              決定
+            </button>
+            {/* 「〜を選んでもよい」: 選ばずに進める */}
+            {pending.min === 0 && <button onClick={() => onSubmit({ t: 'choose', picks: [] })}>選ばない</button>}
+          </div>
         </Modal>
       );
     }

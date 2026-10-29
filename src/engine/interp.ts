@@ -86,7 +86,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.costVs) {
     // 効果を使っているプレイヤー (手番のプレイヤー) のマナ・手札の枚数と比べる
     // 「自身のマナゾーンにあるカードの枚数以上」はカードの持ち主のマナと比べる
-    const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : s.active];
+    const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : sel.costVs.ofOpp ? mainOpp(s, s.cards[iid].owner) : s.active];
     const lim = sel.costVs.by === 'mana' ? ctl.mana.length : sel.costVs.by === 'shield' ? ctl.shield.length : ctl.hand.length;
     const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
     if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : sel.costVs.cmp === 'gt' ? !(cost > lim) : !(cost <= lim)) return false;
@@ -244,6 +244,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return ex.did;
     case 'shieldsLess':
       return (c.who === 'self' ? me : opp).shield.length < c.n;
+    case 'underSelfRace':
+      return (s.cards[ex.src]?.under ?? []).filter((u) => (L(s.cards[u].cid)?.faces[s.cards[u].face]?.races ?? []).some((r) => r.includes(c.race))).length >= c.n;
     case 'selfTapped':
       return !!s.cards[ex.src]?.tapped;
     case 'and':
@@ -936,7 +938,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'asPlayer': {
         ex.ops.shift();
         const me0 = ex.player;
-        const q = op.who === 'self' ? me0 : (opps(s, me0)[0] ?? me0);
+        // subjectOwner: 能力を誘発させたカードの持ち主 (「(カードを引いた) そのプレイヤーは」)
+        const q = op.who === 'self' ? me0 : op.who === 'subjectOwner' ? (ex.subject != null ? s.cards[ex.subject].owner : me0) : (opps(s, me0)[0] ?? me0);
         ex.ops.unshift({ op: 'setPlayer', p: q }, ...op.body, { op: 'setPlayer', p: me0 });
         continue;
       }
@@ -1121,7 +1124,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'oncePerGame': {
         const used = (s.onceGame ??= []);
-        if (used.includes(ex.src)) {
+        if (s.players[ex.player].dLock && /フィールド/.test(L(s.cards[ex.src]?.cid ?? '')?.faces[0]?.type ?? '')) {
+          ex.did = false;
+          log(s, ex.player, 'Dスイッチを使えない');
+        } else if (used.includes(ex.src)) {
           ex.did = false;
           log(s, ex.player, 'ゲーム中に一度だけの能力はもう使った');
         } else {
@@ -1129,6 +1135,42 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.did = true;
         }
         break;
+      }
+      case 'dLock': {
+        for (const o of opps(s, ex.player)) s.players[o].dLock = { until: ex.player };
+        log(s, ex.player, '次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない');
+        break;
+      }
+      case 'bundleShield': {
+        // 持ち主ごとに、1枚目を表向きのシールドにして、残りをその下に重ねる
+        const byOwner = new Map<number, number[]>();
+        for (const i of ex.it) if (s.cards[i]?.zone === 'battle') byOwner.set(s.cards[i].owner, [...(byOwner.get(s.cards[i].owner) ?? []), i]);
+        for (const [o, ids] of byOwner) {
+          const [first, ...rest] = ids;
+          moveCard(s, L, first, 'shield', { faceUp: true });
+          if (s.cards[first].zone !== 'shield') continue;
+          for (const i of rest) {
+            if (moveCard(s, L, i, 'shield', { faceUp: true }) !== 'shield') continue;
+            const sh = s.players[o].shield;
+            sh.splice(sh.indexOf(i), 1);
+            s.cards[i].zone = 'under';
+            s.cards[i].parent = first;
+            s.cards[first].under.push(i);
+          }
+          log(s, ex.player, `${ids.length}体を新しい1つのシールドにまとめた`);
+        }
+        break;
+      }
+      case 'sameCostFromHand': {
+        // 今いる自分のクリーチャーそれぞれと同じコストのクリーチャーを1体ずつ、手札から出す
+        ex.ops.shift();
+        const costs = s.players[ex.player].battle.filter((b) => faceOf(s, L, b)?.isCreature).map((b) => faceOf(s, L, b)?.cost ?? 0);
+        const seq: Op[] = costs.flatMap((c): Op[] => [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'creature', costMin: c, costMax: c }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `コスト${c}のクリーチャーを1体選ぶ` },
+          { op: 'move', target: { ref: 'it' }, to: 'battle' },
+        ]);
+        ex.ops.unshift(...seq);
+        continue;
       }
       case 'topUnderSelf': {
         const self = s.cards[ex.src];

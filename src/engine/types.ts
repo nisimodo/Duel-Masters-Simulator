@@ -194,6 +194,8 @@ export interface PlayerState {
   freeEnterLock?: { until: number };
   /** 「次の相手のターン、相手はクリーチャーをN体しか出せない」(自分のターン中だけ数える) */
   enterLimit?: { until: number; n: number };
+  /** ワールド・ストップ 「Dスイッチを使えず、D2フィールドを展開できない」 (until のプレイヤーのターンのはじめまで) */
+  dLock?: { until: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */
@@ -377,6 +379,8 @@ export interface GameState {
    * 勝ち負け (破壊など) と、それでトリガーした能力の処理がすべて終わるまで続く
    */
   battleNow?: { att: number; def: number };
+  /** 「自身のターンに最初のカードを引いた時」: いま誘発させている引いたカードに、そのターン最初の1枚が入っている */
+  firstDrawNow?: boolean;
   /** 能力を無視する効果 (by 以外のプレイヤーのバトルゾーンのカード。until のプレイヤーのターンのはじめまで / turn のターンだけ / costEq のコストだけ) */
   ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number; iid?: number }[];
   /** 今実行している効果のプレイヤー (カードの効果でない移動では undefined) */

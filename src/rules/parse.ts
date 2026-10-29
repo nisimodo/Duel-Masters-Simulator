@@ -456,6 +456,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // 黙示録の水晶 「相手は、自身のコスト5以下の無色ではないエレメントをすべて、好きな順序で山札の下に置く」
+    .replace(/^相手は、?自身の(.+?)をすべて、?(?:好きな順序で)?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/, '相手の$1をすべて持ち主の山札の下に置く')
     // プロキオン・ドラグーン 「そうした場合、その後、そのカードを自分の墓地からマナゾーンに戻す」
     .replace(/^そうした場合、その後、/, 'そうしたら、')
     .replace(/^(そうしたら、)?そのカードを(?:自分の)?墓地から(?:自分の)?マナゾーンに(?:戻す|置く)$/, '$1そのカードをマナゾーンに置く')
@@ -1444,6 +1446,73 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     return [
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card', shieldFaceDown: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '表向きにする相手のシールドを選ぶ' },
       { op: 'faceUp', target: { ref: 'it' } },
+    ];
+  // ミルメルの地版 「(いずれかのプレイヤーが自身のターンに最初のカードを引いた時、)そのプレイヤーは自身の手札を1枚、マナゾーンに置いてもよい」
+  // (「そのプレイヤーは自身の」は上で「相手は自身の」に直しているので、元の文で見分ける)
+  if (/^そのプレイヤーは/.test(s0.replace(/\s+/g, '')) && (mm = s.match(/^相手は自身の手札を(\d+)枚、?(?:自身の)?マナゾーンに置(く|いてもよい)$/))) {
+    const body: Op[] = [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `マナゾーンに置く手札を${mm[1]}枚選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'mana' },
+    ];
+    return [{ op: 'asPlayer', who: 'subjectOwner', body: mm[2] === 'く' ? body : [{ op: 'optional', body, prompt: s0 }] }];
+  }
+  // ---- Dスイッチの効果 ----
+  // ワールド・ストップ
+  if (/^次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない$/.test(s)) return [{ op: 'dLock' }];
+  // Dの隠家 ザトー・オブ・ウラギリガクレ 「このD2フィールドの下にシノビが8枚以上あれば、このD2フィールドをゲーム中で一度上下逆さまにしてもよい」
+  {
+    const zt = s.match(/^この(?:D2|DG|DN)?フィールドの下に(.+?)が(\d+)枚以上あれば、(.+?)(てもよい)?$/);
+    // (「〜してもよい」は「〜する」として読み、「してもよい」の選択で包む)
+    const body = zt && sentence(zt[4] ? zt[3].replace(/し$/, 'する') : zt[3], ctx);
+    if (zt && body) return [{ op: 'if', cond: { c: 'underSelfRace', race: zt[1], n: +zt[2] }, body: zt[4] ? [{ op: 'optional', body, prompt: s0 }] : body }];
+  }
+  // ザトー・オブ・ウラギリガクレ 「各プレイヤーは、バトルゾーンとシールドゾーンにある自身のカードをすべて、山札に加えてシャッフルする」
+  if (/^各プレイヤーは、?バトルゾーンとシールドゾーンにある自身のカードをすべて、?山札に加えてシャッフルする$/.test(s))
+    return [
+      {
+        op: 'forEachPlayer',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle', 'shield'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+          { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+          { op: 'shuffle' },
+        ],
+      },
+    ];
+  // Dの地獄 ハリデルベルグ / Dの魔城 ブリティッシュ・パビリオン 「そのターン中に破壊された自分のクリーチャーをすべて、墓地からバトルゾーンに戻す / 手札に戻す」
+  if ((mm = s.match(/^(?:その|この)ターン(?:中)?(?:に)?破壊された自分のクリーチャーをすべて、?(?:自分の)?墓地から(?:自分の)?(バトルゾーンに戻す|バトルゾーンに出す|手札に戻す)$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'creature', leftThisTurn: true }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: /手札/.test(mm[1]) ? 'hand' : 'battle' },
+    ];
+  // Dの天牢 ジェイルハウスロック
+  if (/^相手のタップしているクリーチャー(?:すべてを|をすべて)、?表向きのまま、?新しい1つのシールドにまとめて持ち主のシールドゾーンに置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', tapped: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'bundleShield' },
+    ];
+  // Dの悪意 ワルスラー研究所
+  if (/^(?:バトルゾーンにある自分のクリーチャー1体につき同じコストのクリーチャーを1体、?自分の手札から|自分の手札から自分のクリーチャー1体につき同じコストのクリーチャーを1体)バトルゾーンに出す$/.test(s)) return [{ op: 'sameCostFromHand' }];
+  // Dの文殿 アルケミスト・ヒルズ 「自分の墓地と手札を山札に加えてシャッフルし、カードを5枚引く」
+  if ((mm = s.match(/^自分の墓地と手札を山札に加えてシャッフルし、カードを(\d+)枚引く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave', 'hand'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'deckTop' },
+      { op: 'shuffle' },
+      { op: 'draw', n: +mm[1], who: 'self' },
+    ];
+  // Dの森域 フィオナ・ザ・ハート 「このターン、相手のクリーチャーが攻撃する時、そのクリーチャーは可能ならクリーチャーを攻撃する」
+  if (/^(?:この|その)ターン、相手のクリーチャーが攻撃する時、そのクリーチャーは可能(?:なら|であれば)クリーチャーを攻撃する$/.test(s)) return [{ op: 'oppMustAttackCreature' }];
+  // Dの炎闘 アリーナ・カモーネ 「そのターン、相手のクリーチャーすべてはアンタップしていても攻撃される」
+  if (/^(?:その|この)ターン、相手のクリーチャーすべてはアンタップしていても攻撃される$/.test(s))
+    return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['アンタップ攻撃'], until: 'turn' }];
+  // Dの爆撃 ランチャー・ゲバラベース 「そのコストが、相手のマナゾーンにあるカードの枚数より小さいクリーチャーなら、バトルゾーンに出す」
+  if (/^そのコストが、?相手のマナゾーンにあるカードの枚数より小さいクリーチャーなら、バトルゾーンに出す$/.test(s))
+    return [{ op: 'if', cond: { c: 'itMatches', sel: { owner: 'self', zones: ['mana'], kind: 'creature', costVs: { by: 'mana', cmp: 'lt', ofOpp: true } } }, body: [{ op: 'move', target: { ref: 'looked' }, to: 'battle' }] }];
+  // Dの機動 ヴァイス・ヴァーチュー 「コスト5以下でその文明がすべて自分のマナゾーンにある、クリーチャーではないカードを1枚、自分の手札からコストを支払わずに実行する」
+  if ((mm = s.match(/^コスト(\d+)以下でその文明がすべて自分のマナゾーンにある、?クリーチャーではないカードを(\d+)枚、?自分の手札からコストを支払わずに実行する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', notCreature: true, costMax: +mm[1], civInMana: true }, count: { n: +mm[2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'コストを支払わずに実行するカードを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'use' },
     ];
   // 神羅の銀月 ザ・ラムーン 「自分の山札の上から2枚を裏向きでこのシールドの下に置く」
   if ((mm = s.match(/^自分の山札の上から(\d+)枚を裏向き(?:で|のまま)、?この(?:シールド|クリーチャー)の下に置く$/))) return [{ op: 'topUnderSelf', n: +mm[1] }];

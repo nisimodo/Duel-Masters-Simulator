@@ -32,16 +32,22 @@ interface CardImgProps {
   onHover?: (c: Card | null) => void;
   children?: ReactNode;
   title?: string;
+  /** 横向きの枠で表示する (バトルゾーンのフィールドなど) */
+  wide?: boolean;
 }
+
+/** 横向きのカード (フィールド・オレガ・オーラ)。画像は横長のものと、横向きのカードを縦長に回して載せたものがある */
+export const isWideCard = (type: string) => /フィールド|オレガ・オーラ/.test(type);
 
 /** 小さくした画像がこの時間で読み込めなければ、公式の画像に切り替える (wsrv.nl がまだ縮めていないカードは時間がかかる) */
 const SMALL_TIMEOUT_MS = 4000;
 
 /** 公式画像を (小さくして) 表示。読み込めない場合は公式の元の画像、それも駄目なら文明色のテキストカードにする */
-export function CardImg({ card, face = 0, width, tapped, selected, target, glow, onClick, onContextMenu, onHover, children, title }: CardImgProps) {
+export function CardImg({ card, face = 0, width, tapped, selected, target, glow, onClick, onContextMenu, onHover, children, title, wide }: CardImgProps) {
   // stage 0: 小さくした画像 / 1: 公式の元の画像 / 2: 文字だけ (別のカードになったら最初から)
   const key = `${card.id}:${face}`;
-  const [img, setImg] = useState({ key, stage: 0, loaded: false });
+  // land: 画像が横長か (読み込んでから分かる)
+  const [img, setImg] = useState<{ key: string; stage: number; loaded: boolean; land?: boolean }>({ key, stage: 0, loaded: false });
   if (img.key !== key) setImg({ key, stage: 0, loaded: false });
   const stage = img.key === key ? img.stage : 0;
   const loaded = img.key === key && img.loaded;
@@ -65,7 +71,7 @@ export function CardImg({ card, face = 0, width, tapped, selected, target, glow,
   const style: CSSProperties = width != null ? ({ '--w': typeof width === 'number' ? `${width}px` : width } as CSSProperties) : {};
   return (
     <div
-      className={`card${tapped ? ' tapped' : ''}${selected ? ' selected' : ''}${target ? ' target' : ''}${glow ? ' glow' : ''}`}
+      className={`card${wide ? ' wide' : ''}${tapped ? ' tapped' : ''}${selected ? ' selected' : ''}${target ? ' target' : ''}${glow ? ' glow' : ''}`}
       style={style}
       onClick={onClick}
       onContextMenu={onContextMenu}
@@ -87,10 +93,15 @@ export function CardImg({ card, face = 0, width, tapped, selected, target, glow,
           ref={imgRef}
           src={stage === 0 ? cardImageSmall(card, face) : cardImage(card, face)}
           alt={card.name}
+          // 画像の向きが枠と違う時は回して全体を見せる (横長の画像を縦の枠に / 縦長に載せた横向きのカードを横の枠に)
+          className={img.land != null && img.land !== !!wide ? (wide ? 'rot-ccw' : 'rot-cw') : undefined}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          onLoad={() => setImg((x) => (x.key === key ? { ...x, loaded: true } : x))}
+          onLoad={(e) => {
+            const im = e.currentTarget;
+            setImg((x) => (x.key === key ? { ...x, loaded: true, land: im.naturalWidth > im.naturalHeight } : x));
+          }}
           onError={() => setImg((x) => (x.key === key ? { ...x, stage: x.stage + 1, loaded: false } : x))}
           draggable={false}
         />

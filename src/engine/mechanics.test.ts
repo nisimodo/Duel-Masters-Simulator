@@ -241,6 +241,12 @@ const db = buildDB(
     { id: 'tabulasa', n: 'tabulasa', img: '', f: [{ n: 'tabulasa', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['各ターンに一度、自分のマナゾーンにカードを置いた時、それを裏向きにしてもよい。'] }] },
     { id: 'parthenon', n: 'parthenon', img: '', f: [{ n: 'parthenon', t: 'DGフィールド', c: 'F', co: 1, p: null, r: [], x: ['すべてのプレイヤーは、各ターン、クリーチャーを３体までしかバトルゾーンに出せない。', 'すべてのプレイヤーは、各ターン、呪文を３枚までしか唱えられない。'] }] },
     { id: 'drawSp', n: 'drawSp', img: '', f: [{ n: 'drawSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['カードを１枚引く。'] }] },
+    cr('megaReal', 1, 9000, ['{GS} G・ストライク', '各ターンに１度、自分のドラゴンが出た時、相手のクリーチャーを１体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。']),
+    { id: 'dragonX', n: 'dragonX', img: '', f: [{ n: 'dragonX', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['アーマード・ドラゴン'], x: [] }] },
+    { id: 'apoc', n: 'apoc', img: '', f: [{ n: 'apoc', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['相手は、自身のコスト５以下の無色ではないエレメントをすべて、好きな順序で山札の下に置く。', 'カードを３枚引く。'] }] },
+    { id: 'inochi', n: 'inochi', img: '', f: [{ n: 'inochi', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['{GS} G・ストライク（この呪文を自分のシールドゾーンから手札に加える時、表向きにし、相手のクリーチャーを１体選んでもよい。このターン、そのクリーチャーは攻撃できない）', '自分の山札の上から２枚を裏向きのままマナゾーンに置く。'] }] },
+    { id: 'dHell', n: 'dHell', img: '', f: [{ n: 'dHell', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['Dスイッチ：自分のターンの終わりに、このD２フィールドをゲーム中で一度上下逆さまにしてもよい。そうしたら、そのターン中に破壊された自分のクリーチャーをすべて、墓地からバトルゾーンに戻してもよい。'] }] },
+    { id: 'dCradle', n: 'dCradle', img: '', f: [{ n: 'dCradle', t: 'D2フィールド', c: 'F', co: 1, p: null, r: [], x: ['Dスイッチ：自分のターンに、１枚目のカードを引いた時、このD２フィールドをゲーム中で一度上下逆さまにしてもよい。そうしたら、自分のクリーチャーをすべてアンタップする。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2103,6 +2109,23 @@ describe('named mechanics', () => {
       expect(s.cards[h2].manaDown).toBeFalsy();
     });
 
+    it('クリーチャーと呪文の回数は別々に数える (呪文を3枚唱えた後でもクリーチャーを3体出せる)', () => {
+      let s = setup([
+        { p: 0, cid: 'parthenon', zone: 'battle' },
+        ...Array.from({ length: 3 }, () => ({ p: 0, cid: 'vanilla', zone: 'hand' as const })),
+        ...Array.from({ length: 3 }, () => ({ p: 0, cid: 'drawSp', zone: 'hand' as const })),
+      ], 10);
+      for (const x of s.players[0].hand.filter((i) => s.cards[i].cid === 'drawSp')) {
+        s = act(s, 0, { t: 'play', iid: x, face: 0, pay: [] });
+        while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      }
+      // (呪文で引いたカードもあるので、手札の vanilla は3枚より多い)
+      const vs = s.players[0].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      for (const v of vs.slice(0, 3)) s = act(s, 0, { t: 'play', iid: v, face: 0, pay: freeMana(s, 0, 1) });
+      expect(s.players[0].battle.filter((i) => s.cards[i].cid === 'vanilla')).toHaveLength(3);
+      expect(applyAction(s, 0, { t: 'play', iid: vs[3], face: 0, pay: freeMana(s, 0, 1) }, L).error).toMatch(/もうクリーチャーを出せません/);
+    });
+
     it('各ターン、クリーチャーは3体・呪文は3枚までしか出せない・唱えられない', () => {
       let s = setup([
         { p: 0, cid: 'parthenon', zone: 'battle' },
@@ -2118,6 +2141,77 @@ describe('named mechanics', () => {
         while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
       }
       expect(applyAction(s, 0, { t: 'play', iid: sp[3], face: 0, pay: [] }, L).error).toMatch(/3枚までしか唱えられません/);
+    });
+  });
+
+  describe('真久間メガ＜ボクにおまかせ！＞', () => {
+    it('ドラゴンが出た時、相手のクリーチャーは選ばなくてもよい', () => {
+      let s = setup([
+        { p: 0, cid: 'megaReal', zone: 'battle' },
+        { p: 0, cid: 'dragonX', zone: 'hand' },
+        { p: 1, cid: 'vanilla', zone: 'battle' },
+      ]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'dragonX')!, face: 0, pay: freeMana(s, 0, 1) });
+      const top = s.pending[0];
+      expect(top?.kind === 'choice' && top.min).toBe(0);
+      s = act(s, 0, { t: 'choose', picks: [] });
+      expect(s.pending).toHaveLength(0);
+      expect(find(s, 1, 'battle', 'vanilla')).toBeDefined();
+      expect(find(s, 0, 'battle', 'megaReal')).toBeDefined();
+    });
+  });
+
+  describe('黙示録の水晶 / 「これは命懸けのデュエルなのです」', () => {
+    it('相手のコスト5以下の無色ではないエレメントを山札の下に置き、3枚引く', () => {
+      let s = setup([{ p: 0, cid: 'apoc', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const hand = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'apoc')!, face: 0, pay: freeMana(s, 0, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, s.pending[0].kind === 'choice' ? { t: 'choose', picks: s.pending[0].options } : { t: 'resolve', use: true });
+      expect(s.players[1].battle.map((i) => s.cards[i].cid)).toEqual(['big']);
+      expect(s.players[0].hand.length).toBe(hand - 1 + 3);
+    });
+
+    it('山札の上から2枚を裏向きのままマナゾーンに置く', () => {
+      let s = setup([{ p: 0, cid: 'inochi', zone: 'hand' }]);
+      const mana = s.players[0].mana.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'inochi')!, face: 0, pay: freeMana(s, 0, 1) });
+      while (s.pending.length) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.players[0].mana.length).toBe(mana + 2);
+      expect(s.players[0].mana.filter((m) => s.cards[m].manaDown)).toHaveLength(2);
+    });
+  });
+
+  describe('Dスイッチ', () => {
+    const yes = (s: GameState) => {
+      for (let k = 0; k < 8 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, top.max) }) : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+    it('ターンの終わりに、そのターン破壊された自分のクリーチャーを戻す (ゲーム中一度だけ)', () => {
+      let s = setup([{ p: 0, cid: 'dHell', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }]);
+      const v = find(s, 0, 'battle', 'vanilla')!;
+      moveCard(s, L, v, 'grave');
+      s = yes(act(s, 0, { t: 'endTurn' }));
+      expect(s.cards[v].zone).toBe('battle');
+      expect(s.onceGame).toContain(find(s, 0, 'battle', 'dHell'));
+      // 2回目は使わない (誘発もしない)
+      s = yes(act(s, 1, { t: 'endTurn' }));
+      moveCard(s, L, v, 'grave');
+      s = act(s, 0, { t: 'endTurn' });
+      expect(s.pending.filter((x) => x.kind === 'ability' || x.kind === 'choice')).toHaveLength(0);
+      expect(s.cards[v].zone).toBe('grave');
+    });
+
+    it('自分のターンに1枚目のカードを引いた時だけ誘発する', () => {
+      let s = setup([{ p: 0, cid: 'dCradle', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle', tapped: true }]);
+      s = act(s, 0, { t: 'endTurn' });
+      s = yes(s);
+      s = act(s, 1, { t: 'endTurn' });
+      // ターンのはじめのアンタップ → 1枚引いた時に Dスイッチ (アンタップ済みなので、使ったかどうかで確かめる)
+      s = yes(s);
+      expect(s.onceGame ?? []).toContain(find(s, 0, 'battle', 'dCradle'));
     });
   });
 

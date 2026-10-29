@@ -869,6 +869,8 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
   }
   // 「召喚以外の方法で出た時」「相手のターン中に」などの条件
   const entering = subject ?? src;
+  if (spec.firstDraw && !s.firstDrawNow) return;
+  if (/ゲーム中で(?:一|1)度上下逆さまに/.test(spec.effect) && ((s.onceGame ?? []).includes(src) || s.players[s.cards[src].owner]?.dLock)) return;
   if (spec.howEnter === 'notSummon' && s.cards[entering]?.summoned) return;
   if (spec.howEnter === 'summon' && !s.cards[entering]?.summoned) return;
   if (spec.howEnter === 'revChange' && !s.cards[entering]?.revChanged) return;
@@ -1376,6 +1378,7 @@ function startTurn(s: GameState, L: Lookup) {
     if (pl2.execLock?.until === p) pl2.execLock = undefined;
     if (pl2.freeEnterLock?.until === p) pl2.freeEnterLock = undefined;
     if (pl2.enterLimit?.until === p) pl2.enterLimit = undefined;
+    if (pl2.dLock?.until === p) pl2.dLock = undefined;
     if (pl2.leaveGuard?.until === p) pl2.leaveGuard = undefined;
   }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
@@ -1525,7 +1528,10 @@ function advance(s: GameState, L: Lookup): boolean {
     const dp = s.players[p].drawnPending;
     if (!dp?.length) continue;
     s.players[p].drawnPending = [];
+    const dw = s.players[p].draws;
+    s.firstDrawNow = s.active === p && dw?.turn === s.turn && dw.n - dp.length <= 0;
     fireWatchers(s, L, p, null, 'ownDraw', 'oppDraw', dp[dp.length - 1]);
+    s.firstDrawNow = undefined;
     return true;
   }
   // 同時に誘発した能力: 処理するプレイヤーの能力が1つならそれを先頭へ。2つ以上ならそのプレイヤーが順番を選ぶのを待つ
@@ -2637,6 +2643,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
+  if (s.players[p].dLock && /D2フィールド/.test(face.type)) return 'D2フィールドを展開できません';
   // DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文を3枚までしか唱えられない」
   const spellCap = face.isSpell ? capOf(s, L, 'spellCap') : undefined;
   if (spellCap != null && (s.players[p].spellsCast?.turn === s.turn ? s.players[p].spellsCast!.n : 0) >= spellCap) return `このターンは呪文を${spellCap}枚までしか唱えられません`;
