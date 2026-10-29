@@ -611,6 +611,7 @@ export function moveCard(
   if (from === 'battle' && dest !== 'battle' && card?.faces[prevFace]?.isCreature) turnStat(s, c.owner).left++;
   if (from === 'battle' && dest !== 'battle') {
     c.leftBattleTurn = s.turn;
+    c.formerUnder = [...under];
     for (const u of under) s.cards[u].leftBattleTurn = s.turn;
   }
   if (dest === 'grave' && from !== 'grave') turnStat(s, c.owner).toGrave++;
@@ -2679,7 +2680,9 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (!card) return 'カード情報がありません';
   const zone0 = c.zone;
   const fromZones = ['hand', 'mana', 'grave', 'hyper', 'shield', 'deck', 'partner'];
-  if (c.owner !== p || !fromZones.includes(c.zone)) return 'このカードは使えません';
+  // (効果で「自分が唱える」相手の呪文は、自分が唱える)
+  const foreignCast = c.owner !== p && !!a.force && !!a.free && card.faces[a.face]?.isSpell;
+  if ((c.owner !== p && !foreignCast) || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
@@ -2963,7 +2966,13 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const underName = face.text.map((l) => normText(l).match(/唱えた後、墓地(?:に置く)?の?かわりに自分の《([^》]+)》(?:1つ|１つ)?の下に置く/)).find(Boolean)?.[1];
     const underHost = underName != null ? [...me.partner, ...me.battle].find((x) => nameOf(s, L, x).includes(underName)) : undefined;
     const toShuffle = face.text.some((l) => /唱えた後、(?:自分の)?墓地に置くかわりに(?:自分の)?山札に加えてシャッフルする/.test(normText(l)));
-    if (toShuffle && !cyclone) {
+    if (c.castDest === 'deckBottom') {
+      moveCard(s, L, a.iid, 'deck', { pos: 'bottom' });
+      log(s, p, '唱えた後、墓地のかわりに山札の下へ');
+    } else if (c.castDest === 'shieldUp') {
+      moveCard(s, L, a.iid, 'shield', { faceUp: true });
+      log(s, p, '唱えた後、墓地のかわりに表向きのままシールド化');
+    } else if (toShuffle && !cyclone) {
       moveCard(s, L, a.iid, 'deck', { pos: 'top' });
       shuffleArr(s, me.deck);
       log(s, p, '唱えた後、山札に加えてシャッフル');

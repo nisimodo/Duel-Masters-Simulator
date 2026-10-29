@@ -267,6 +267,11 @@ const db = buildDB(
     cr('crisK', 1, 1000, ['クリスターナル・Κ（このクリーチャーが離れる時、または自分がゲームに負ける時、かわりに自分のマナゾーンにある裏向きのカードを３枚、表向きにしてもよい）']),
     cr('crisT', 1, 1000, ['このクリーチャーが召喚によって出た時、バトルゾーンと墓地にある相手のクリーチャーを好きな数選ぶ。その選んだクリーチャーの「このクリーチャーが出た時」で始まる能力をすべて、自分が使う。']),
     { id: 'twice', n: 'twice', img: '', f: [{ n: 'twice', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['次の中から２回選ぶ。（同じものを選んでもよい）', '▶カードを１枚引く。', '▶相手のクリーチャーを１体破壊する。'] }] },
+    { id: 'reksei', n: 'reksei', img: '', f: [{ n: 'reksei', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['各相手の手札を１枚見ないで選び、捨てさせる。'] }] },
+    { id: 'avaDraw', n: 'avaDraw', img: '', f: [{ n: 'avaDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分より手札が多い相手１人につき、カードを１枚引く。'] }] },
+    cr('zett', 1, 9000, ['各ターンはじめて、相手が呪文を唱えた時、その呪文を相手の墓地からコストを支払わずに唱えてもよい。そうしたら、呪文を唱えた後、墓地のかわりに相手の山札の下に置く。']),
+    { id: 'xanadu', n: 'xanadu', img: '', f: [{ n: 'xanadu', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['「S・トリガー」を持つ呪文を１枚、自分の墓地からコストを支払わずに唱えてもよい。そうしたら、唱えた後、墓地に置くかわりに表向きのままシールド化する。'] }] },
+    { id: 'stDraw', n: 'stDraw', img: '', f: [{ n: 'stDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてもよい）', 'カードを１枚引く。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2433,6 +2438,47 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'twice')!, face: 0, pay: [] });
       for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, 0, { t: 'choose', options: [0] });
       expect(s.players[0].hand.length).toBe(hand - 1 + 2);
+    });
+  });
+
+  describe('デュエパ (多人数) の効果', () => {
+    const run = (s: GameState) => {
+      for (let k = 0; k < 10 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, Math.max(1, top.min)) }) : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+    it('「各相手の手札を1枚見ないで選び、捨てさせる」は相手ごとに1枚', () => {
+      let s = setup([{ p: 0, cid: 'reksei', zone: 'hand' }]);
+      const h = s.players[1].hand.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'reksei')!, face: 0, pay: [] }));
+      expect(s.players[1].hand.length).toBe(h - 1);
+    });
+    it('「自分より手札が多い相手1人につき、カードを1枚引く」', () => {
+      let s = setup([{ p: 0, cid: 'avaDraw', zone: 'hand' }]);
+      // 相手の手札を多くする
+      for (let k = 0; k < 5; k++) moveCard(s, L, s.players[1].deck.at(-1)!, 'hand');
+      const h = s.players[0].hand.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'avaDraw')!, face: 0, pay: [] }));
+      expect(s.players[0].hand.length).toBe(h - 1 + 1);
+    });
+    it('アカシック・ゼット: 相手が唱えた呪文を自分が唱え、相手の山札の下に置く', () => {
+      let s = setup([{ p: 1, cid: 'zett', zone: 'battle' }, { p: 0, cid: 'stDraw', zone: 'hand' }]);
+      const sp = find(s, 0, 'hand', 'stDraw')!;
+      const h1 = s.players[1].hand.length;
+      s = run(act(s, 0, { t: 'play', iid: sp, face: 0, pay: [] }));
+      // 相手 (player 1) がその呪文を唱えて1枚引き、呪文は持ち主 (player 0) の山札の一番下
+      expect(s.players[1].hand.length).toBe(h1 + 1);
+      expect(s.players[0].deck[0]).toBe(sp);
+    });
+    it('イエス・ザナドゥ: 墓地のS・トリガー呪文を唱え、表向きのままシールド化', () => {
+      let s = setup([{ p: 0, cid: 'xanadu', zone: 'hand' }, { p: 0, cid: 'stDraw', zone: 'hand' }]);
+      const st = find(s, 0, 'hand', 'stDraw')!;
+      moveCard(s, L, st, 'grave');
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'xanadu')!, face: 0, pay: [] }));
+      expect(s.cards[st].zone).toBe('shield');
+      expect(s.cards[st].faceUp).toBe(true);
     });
   });
 

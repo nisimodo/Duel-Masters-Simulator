@@ -127,7 +127,8 @@ export type Target =
   | { ref: 'host' } // これを装備/クロスしたクリーチャー
   | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
   | { ref: 'underIt' } // 選んだクリーチャーの下にあるカードすべて
-  | { ref: 'leftBehind' } // スター進化で離れた時、下にあったクリーチャー
+  | { ref: 'leftBehind' }
+  | { ref: 'formerUnder' } // バトルゾーンを離れた時に下に重なっていたカード // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
 /** 選択の目的 (CPU が選ぶ基準になる) */
@@ -258,7 +259,7 @@ export type Op =
   | { op: 'powerPer'; target: Target; per: Sel; each: number; delta: number }
   /** パワーをN倍にする (このターン) */
   | { op: 'multPower'; target: Target; times: number }
-  | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put' }
+  | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put'; /** 自分が唱える (相手のカードでも) */ byMe?: boolean; /** 唱えた後、墓地のかわりに */ after?: 'deckBottom' | 'shieldUp' }
   | { op: 'optional'; body: Op[]; prompt: string; byOpp?: boolean }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
   | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean }
@@ -274,6 +275,9 @@ export type Op =
   | { op: 'breakIt' }
   /** (各プレイヤーごとの処理の中で) いまのプレイヤーが、このカードの持ち主の相手なら数を1増やす */
   | { op: 'tallyOpp' }
+  /** 選んだカード (it) を saved に加える */
+  | { op: 'saveAdd' }
+  | { op: 'saveClear' }
   /** 「相手の手札が自分のより多ければ、同じ枚数になるまでカードを引く」 */
   | { op: 'drawToOppHand' }
   /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */

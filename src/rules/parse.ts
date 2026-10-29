@@ -1601,6 +1601,66 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'move', target: { ref: 'it' }, to: 'battle' },
       ];
   }
+  // ライオネル・ゲート 「自分の手札から光または無色の「ブロッカー」を持つクリーチャーを1体出す」
+  if ((mm = s.match(/^自分の手札から(光|水|闇|火|自然)または無色の「(.+?)」を持つクリーチャーを(\d+)体出す$/))) {
+    const cv = ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[mm[1] as '光'];
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'creature', hasKw: mm[2], or: [{ owner: 'self', zones: ['hand'], kind: 'creature', civs: [cv] }, { owner: 'self', zones: ['hand'], kind: 'creature', colorless: true }] }, count: { n: +mm[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  }
+  // 衒影の精霊 リアリテル 「(文明を1つ選ぶ。)その文明を持つクリーチャーをすべてタップする」
+  if (/^その文明を持つクリーチャーをすべてタップする$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', civRef: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'tap', target: { ref: 'it' } }];
+  // 聖夜妖精メリリス 「それが相手がこのターンバトルゾーンに出した1体目のクリーチャーでなければ、〜」
+  {
+    const ns = s.match(/^それが相手がこのターン(?:バトルゾーンに)?出した1体目のクリーチャーでなければ、(.+)$/);
+    const nb = ns && parseEffect(ns[1]);
+    if (ns && nb?.complete) return [{ op: 'if', cond: { c: 'turnStat', who: 'opp', what: 'enters', n: 2 }, body: nb.ops }];
+  }
+  // 氷結龍 ダイヤモンド・クレバス 「(離れた時、)下に重ねてあったカードをすべて手札に加える」
+  if (/^下に重ねてあったカードをすべて(?:自分の)?手札に加える$/.test(s)) return [{ op: 'move', target: { ref: 'formerUnder' }, to: 'hand' }];
+  // 「師よ、これが私の感謝の結晶だ！」 「各プレイヤーは自身のマナゾーンにあるカードを1枚ずつ選ぶ」「自分はそれらすべてを裏向きにする」
+  if ((mm = s.match(/^各プレイヤーは、?自身のマナゾーンにあるカードを(\d+)枚選ぶ$/)))
+    return [{ op: 'saveClear' }, { op: 'forEachPlayer', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'マナゾーンのカードを選ぶ' }, { op: 'saveAdd' }] }];
+  if (/^(?:自分は)?それらすべてを裏向きにする$/.test(s)) return [{ op: 'faceDown', target: { ref: 'saved' } }];
+  // 地龍神の魔陣 「(山札の上から3枚を見る。)そのうちの1枚を手札に加えるかマナゾーンに置き、残りを好きな順序で山札の下に置く」
+  if ((mm = s.match(/^そのうちの(\d+)枚を手札に加えるかマナゾーンに置き、残りを(?:好きな順序で)?(?:自分の)?山札の(?:一番)?下に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', count: { n: +mm[1], upTo: false } }, purpose: 'benefit', prompt: 'カードを選ぶ' },
+      { op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'マナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'mana' }] }] },
+      { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+    ];
+  // 秘密妖精ウツギ 「そのクリーチャーの持ち主は、自身の山札の上から1枚目を見て、手札に加えるかマナゾーンに置く」
+  if (/^そのクリーチャーの持ち主は、?自身の山札の上から1枚目を見て、手札に加えるかマナゾーンに置く$/.test(s))
+    return [
+      {
+        op: 'asPlayer',
+        who: 'itOwner',
+        body: [
+          { op: 'top', n: 1, to: 'look', who: 'self' },
+          { op: 'choose', target: { ref: 'looked', count: { n: 1, upTo: false } }, purpose: 'benefit', prompt: 'カードを選ぶ' },
+          { op: 'modal', pick: 1, options: [{ label: '手札に加える', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }] }, { label: 'マナゾーンに置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'mana' }] }] },
+        ],
+      },
+    ];
+  // 天運ゼニスクラッチ 「自分の山札をシャッフルし、その後、一番上のカードをすべてのプレイヤーに見せる」
+  if (/^自分の山札をシャッフルし、その後、(?:山札の)?一番上のカードをすべてのプレイヤーに見せる$/.test(s)) return [{ op: 'shuffle' }, { op: 'top', n: 1, to: 'reveal', who: 'self' }];
+  // 「祝」の頂 ウェディング 「相手はバトルゾーンの自分のクリーチャーまたは自身の手札から合計4枚選び、新しいシールドとして裏向きにし、自身のシールドゾーンに加える」
+  if ((mm = s.match(/^相手はバトルゾーンの(?:自分|自身)のクリーチャーまたは自身の手札から合計(\d+)枚選び、新しいシールドとして裏向きにし、自身のシールドゾーンに加える$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'hand'], kind: 'card', or: [{ owner: 'opp', zones: ['battle'], kind: 'creature' }, { owner: 'opp', zones: ['hand'], kind: 'card' }] }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `シールドにするカードを${mm[1]}枚選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'shield' },
+    ];
+  // ディスタス・ゲート 「コストの合計が7以下になるよう、ディスタスを好きな数、自分の墓地、手札、またはマナゾーンから選び、出す」
+  if ((mm = s.match(/^コストの合計が(\d+)以下になるよう(?:に)?、(.+?)を(?:99枚まで|好きな数)、?自分の墓地、手札、またはマナゾーンから選び、出す$/))) {
+    const dsel = parseSel(mm[2]);
+    if (dsel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { ...dsel, owner: 'self', zones: ['grave', 'hand', 'mana'] }, count: { n: 99, upTo: true, sumCostMax: +mm[1] }, chooser: 'self' }, purpose: 'benefit', prompt: `コストの合計が${mm[1]}以下になるように選ぶ` },
+        { op: 'move', target: { ref: 'it' }, to: 'battle' },
+      ];
+  }
   // 飛翔龍 5000VT
   if ((mm = s.match(/^次の相手のターン(?:中)?、相手はパワー(\d+)以下のクリーチャーを(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterPowerLock', max: +mm[1] }];
   // 驚異的終斗 アレキサンドライト / 常氷接続 オプティマス・ブリザード 「このターン、(カードが)自分のシールドゾーンに(カードが)置かれていれば、〜」
@@ -3518,6 +3578,57 @@ export function parseEffect(text: string): Program {
           { op: 'discard', who: 'opp', count: { n: +cv[1], upTo: false }, how: 'random' },
           { op: 'countSet', sel: { owner: 'any', zones: ['grave'], kind: 'card', name: cv[2], other: true } },
           { op: 'repeatCount', body: [{ op: 'discard', who: 'opp', count: { n: +cv[4], upTo: false }, how: 'random' }] },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // 「我が名はツラトゥストラ！」 「X。水晶武装4:〜4枚以上あれば、かわりにY」
+  {
+    const nt = normText(text).replace(/\s+/g, '');
+    const kw = nt.match(/^(.+?)。水晶武装\d+[:：]自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば、かわりに(.+?)。?$/);
+    const a = kw && parseEffect(kw[1]);
+    const b = kw && parseEffect(kw[3]);
+    if (kw && a?.complete && b?.complete) return { ops: [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +kw[2] }, body: b.ops, else: a.ops }], complete: true, unparsed: [] };
+  }
+  // 衒龍 ブレイタン・ガイスト 「各相手は自身の手札を1枚選んで捨てる。こうして捨てられたカード1枚につき、自分はカードを1枚引く」
+  if (/^各相手は自身の手札を1枚選んで捨てる。こうして捨てられたカード1枚につき、自分はカードを1枚引く。?$/.test(normText(text).replace(/\s+/g, '').replace(/１/g, '1')))
+    return {
+      ops: [{ op: 'forEachOpp', body: [{ op: 'discard', who: 'opp', count: { n: 1, upTo: false }, how: 'ownerChooses' }, { op: 'if', cond: { c: 'itCount', cmp: '>=', n: 1 }, body: [{ op: 'draw', n: 1, who: 'self' }] }] }],
+      complete: true,
+      unparsed: [],
+    };
+  // アカシック・ゼット 「その呪文を相手の墓地からコストを支払わずに唱えてもよい。そうしたら、呪文を唱えた後、墓地のかわりに相手の山札の下に置く」
+  if (/^その呪文を相手の墓地からコストを支払わずに唱えてもよい。そうしたら、呪文を唱えた後、墓地のかわりに相手の山札の(?:一番)?下に置く。?$/.test(normText(text).replace(/\s+/g, '')))
+    return { ops: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true, after: 'deckBottom' }], prompt: 'その呪文を相手の墓地から唱える' }], complete: true, unparsed: [] };
+  // 「呪怨」の頂天 サスペンス 「相手の墓地にある呪文を3枚まで、自分がコストを支払わずに唱える。それらの呪文をすべて唱えた後、相手は好きな順序で山札の下に置く」
+  {
+    const sc = normText(text).replace(/\s+/g, '').match(/^相手の墓地にある呪文を(\d+)枚まで、自分がコストを支払わずに唱える。それらの呪文をすべて唱えた後、相手は好きな順序で山札の下に置く。?$/);
+    if (sc)
+      return {
+        ops: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['grave'], kind: 'spell' }, count: { n: +sc[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
+          { op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true, after: 'deckBottom' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // 電磁魔天イエス・ザナドゥ 「「S・トリガー」を持つ呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい。そうしたら、唱えた後、墓地に置くかわりに表向きのままシールド化する」
+  {
+    const yz = normText(text).replace(/\s+/g, '').replace(/１/g, '1').match(/^(.+?)を(\d+)枚、自分の墓地からコストを支払わずに唱えてもよい。そうしたら、唱えた後、墓地に置くかわりに表向きのままシールド化する。?$/);
+    const ysel = yz && parseSel(yz[1]);
+    if (yz && ysel)
+      return {
+        ops: [
+          {
+            op: 'optional',
+            body: [
+              { op: 'choose', target: { ref: 'sel', sel: { ...ysel, owner: 'self', zones: ['grave'], kind: 'spell' }, count: { n: +yz[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
+              { op: 'play', target: { ref: 'it' }, mode: 'cast', after: 'shieldUp' },
+            ],
+            prompt: '墓地から呪文を唱える',
+          },
         ],
         complete: true,
         unparsed: [],

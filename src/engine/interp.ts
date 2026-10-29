@@ -396,6 +396,8 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
       return ex.looked.filter((i) => !ex.it.includes(i));
     case 'saved':
       return (ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone');
+    case 'formerUnder':
+      return (s.cards[ex.src]?.formerUnder ?? []).filter((i) => s.cards[i].zone !== 'gone' && s.cards[i].zone !== 'under' && s.cards[i].zone !== 'battle');
     case 'leftBehind': {
       const lb = s.cards[ex.src]?.leftBehind;
       return lb != null && s.cards[lb].zone === 'battle' ? [lb] : [];
@@ -890,8 +892,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
             (ex.putIds ??= []).push(i);
             if (/ドラグハート・ウエポン/.test(card.faces[fi].type)) equipWeapon(s, L, ex, i);
           } else {
-            const owner = c.owner;
+            // 「自分がコストを支払わずに唱える」: 相手のカードでも自分が唱える
+            const owner = op.byMe ? ex.player : c.owner;
+            if (op.after) c.castDest = op.after;
             playCard(s, owner, { t: 'play', iid: i, face: fi, pay: [], free: true, force: true }, L);
+            c.castDest = undefined;
           }
           ex.it = [i];
         }
@@ -957,6 +962,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'setFocus':
         ex.focusOpp = op.p ?? undefined;
+        break;
+      case 'saveAdd':
+        ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
+        break;
+      case 'saveClear':
+        ex.saved = [];
         break;
       case 'tallyOpp':
         if (ex.player !== s.cards[ex.src]?.owner) ex.count = (ex.count ?? 0) + 1;

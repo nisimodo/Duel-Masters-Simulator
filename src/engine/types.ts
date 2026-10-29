@@ -69,6 +69,10 @@ export interface CardInst {
   replTurn?: number;
   /** マナを支払わずに (効果・コスト0で) バトルゾーンに出た */
   enteredFree?: boolean;
+  /** 効果で唱えた呪文の、唱えた後の行き先 (墓地のかわりに) */
+  castDest?: 'deckBottom' | 'shieldUp';
+  /** バトルゾーンを離れた時に下に重なっていたカード (「下に重ねてあったカード」) */
+  formerUnder?: number[];
   /** 攻撃したターン */
   attackedTurn?: number;
   /** バトルゾーンに出たターン */

@@ -400,6 +400,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     .replace(/マナゾーンでタップされているカード/g, 'マナゾーンにあるタップされているカード')
     .replace(/^革命\d+[:：―\-－ー]/, '')
     .replace(/^水晶武装\d*[:：]/, '')
+    .replace(/、墓地のかわりに/, '、墓地に置くかわりに')
     .replace(/^(?:このクリーチャーが)?バトルゾーンにある間(?:に)?、/, '')
     .replace(/アウトレイジ犬(\d+)匹につき/, 'アウトレイジ$1体につき')
     .replace(/のパワーはー(\d)/, 'のパワーは-$1')
