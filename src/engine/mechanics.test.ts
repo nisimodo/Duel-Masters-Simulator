@@ -259,6 +259,14 @@ const db = buildDB(
     cr('zolge', 1, 1000, ['このクリーチャーまたは自分の他のクリーチャーをバトルゾーンに出した時、バトルゾーンにある別のクリーチャーを１体選んでもよい。そうした場合、その２体はバトルする。']),
     cr('volZero', 1, 9000, ['このクリーチャーが相手のシールドをブレイクする時、相手はそのシールドを手札に加えるかわりに自身の山札の一番下に置く。']),
     cr('vival', 1, 5000, ['このクリーチャーが攻撃する時、そのターン、バトルゾーンにある相手のクリーチャーすべてのパワーは、バトルゾーンにある自分のコマンドとドラゴン１体につき-2000される。']),
+    { id: 'shangOmega', n: 'shangOmega', img: '', f: [{ n: 'shangOmega', t: '進化クリーチャー(超無限進化・Ω)', c: 'F', co: 1, p: '30000', r: ['ガーディアン'], x: ['超無限進化・Ω－ガーディアンを１体以上自分の墓地、マナゾーンまたはバトルゾーンから選び、このクリーチャーをその上に重ねつつバトルゾーンに出す。', 'このクリーチャーがタップされている時、相手のクリーチャーは攻撃できない。'] }] },
+    { id: 'gdn', n: 'gdn', img: '', f: [{ n: 'gdn', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['ガーディアン'], x: [] }] },
+    { id: 'eden', n: 'eden', img: '', f: [{ n: 'eden', t: '進化クリーチャー', c: 'F', co: 1, p: '30000', r: ['ゼニス'], x: ['進化GV・Ω：自分の墓地、マナゾーン、バトルゾーンからクリーチャーを１体ずつ選び、その３体を重ねた上に置く。'] }] },
+    cr('lionel', 1, 9000, ['自分の手札に加えるシールドカードはすべて「S・トリガー」を得る。']),
+    cr('flyer', 1, 1000, ['飛行（このクリーチャーは、飛行を持たないクリーチャーから攻撃もブロックもされない）']),
+    cr('crisK', 1, 1000, ['クリスターナル・Κ（このクリーチャーが離れる時、または自分がゲームに負ける時、かわりに自分のマナゾーンにある裏向きのカードを３枚、表向きにしてもよい）']),
+    cr('crisT', 1, 1000, ['このクリーチャーが召喚によって出た時、バトルゾーンと墓地にある相手のクリーチャーを好きな数選ぶ。その選んだクリーチャーの「このクリーチャーが出た時」で始まる能力をすべて、自分が使う。']),
+    { id: 'twice', n: 'twice', img: '', f: [{ n: 'twice', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['次の中から２回選ぶ。（同じものを選んでもよい）', '▶カードを１枚引く。', '▶相手のクリーチャーを１体破壊する。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2348,6 +2356,83 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'vival')!, player: 1 });
       for (let k = 0; k < 4 && s.pending.length && s.pending[0].kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
       expect(power(s, L, find(s, 1, 'battle', 'big')!)).toBe(6000 - 4000);
+    });
+  });
+
+  describe('新しい仕組み (ゼニス・アンノウン)', () => {
+    it('超無限進化・Ω: 墓地・マナゾーン・バトルゾーンから進化元を選べ、タップしている間は相手は攻撃できない', () => {
+      let s = setup([{ p: 0, cid: 'shangOmega', zone: 'hand' }, { p: 0, cid: 'gdn', zone: 'battle' }, { p: 0, cid: 'gdn', zone: 'mana' }, { p: 1, cid: 'vanilla', zone: 'battle' }], 3);
+      const [gb] = s.players[0].battle.filter((i) => s.cards[i].cid === 'gdn');
+      const gm = s.players[0].mana.find((i) => s.cards[i].cid === 'gdn')!;
+      const sh = find(s, 0, 'hand', 'shangOmega')!;
+      s = act(s, 0, { t: 'play', iid: sh, face: 0, pay: freeMana(s, 0, 1, gm), evo: [gb, gm] });
+      expect(s.cards[sh].zone).toBe('battle');
+      expect(s.cards[sh].under).toEqual(expect.arrayContaining([gb, gm]));
+      s.cards[sh].tapped = true;
+      const foe = find(s, 1, 'battle', 'vanilla')!;
+      s.active = 1;
+      s.cards[foe].sick = false;
+      expect(canAttackWith(s, L, foe)).toBe(false);
+      s.cards[sh].tapped = false;
+      expect(canAttackWith(s, L, foe)).toBe(true);
+    });
+    it('進化GV・Ω: 墓地・マナ・バトルゾーンから1体ずつでないと出せない', () => {
+      const s = setup([{ p: 0, cid: 'eden', zone: 'hand' }, { p: 0, cid: 'gdn', zone: 'battle' }, { p: 0, cid: 'gdn', zone: 'mana' }, { p: 0, cid: 'vanilla', zone: 'battle' }], 3);
+      const [b1, b2] = s.players[0].battle;
+      const gm = s.players[0].mana.find((i) => s.cards[i].cid === 'gdn')!;
+      const e = find(s, 0, 'hand', 'eden')!;
+      expect(applyAction(s, 0, { t: 'play', iid: e, face: 0, pay: freeMana(s, 0, 1, gm), evo: [b1, b2, gm] }, L).error).toMatch(/1体ずつ/);
+      const g = s.players[0].deck.at(-1)!;
+      moveCard(s, L, g, 'grave');
+      expect(applyAction(s, 0, { t: 'play', iid: e, face: 0, pay: freeMana(s, 0, 1, gm), evo: [b1, gm, g] }, L).error).toBeFalsy();
+    });
+    it('CPUは進化GV・Ωの進化元を墓地・マナ・バトルゾーンから1体ずつ選んで出す', () => {
+      const s = setup([{ p: 0, cid: 'eden', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }], 3);
+      const g = s.players[0].deck.at(-1)!;
+      moveCard(s, L, g, 'grave');
+      s.players[0].charged = true;
+      const plan = cpuPlan(s, 0, L);
+      const play = plan.find((a) => a.t === 'play' && s.cards[a.iid].cid === 'eden');
+      expect(play && play.t === 'play' && play.evo?.map((b) => s.cards[b].zone).sort()).toEqual(['battle', 'grave', 'mana']);
+    });
+    it('「俺」の頂 ライオネル: 手札に加えるシールドはすべてS・トリガーになる', () => {
+      const s = setup([{ p: 1, cid: 'lionel', zone: 'battle' }]);
+      const sh = s.players[1].shield[0];
+      breakShields(s, L, 1, [sh], 0, null);
+      expect(s.pending.some((x) => x.kind === 'trigger' && x.iid === sh && x.trigger)).toBe(true);
+    });
+    it('飛行: 飛行を持たないクリーチャーから攻撃されない', () => {
+      const s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'flyer', zone: 'battle' }, { p: 1, cid: 'flyer', zone: 'battle', tapped: true }]);
+      const foe = find(s, 1, 'battle', 'flyer')!;
+      expect(attackTargets(s, L, find(s, 0, 'battle', 'vanilla')!).cards).not.toContain(foe);
+      expect(attackTargets(s, L, find(s, 0, 'battle', 'flyer')!).cards).toContain(foe);
+    });
+    it('クリスターナル・Κ: 負ける時、裏向きのマナを3枚表向きにして負けない', () => {
+      const s = setup([{ p: 0, cid: 'crisK', zone: 'battle' }], 3);
+      for (const m of s.players[0].mana) s.cards[m].manaDown = true;
+      lose(s, 0, 'テスト');
+      expect(s.players[0].lost).toBeFalsy();
+      expect(s.players[0].mana.filter((m) => s.cards[m].manaDown)).toHaveLength(0);
+      lose(s, 0, 'テスト');
+      expect(s.players[0].lost).toBe(true);
+    });
+    it('クリス=タブラ=ラーサ: 相手のクリーチャーの「出た時」の能力を使う', () => {
+      let s = setup([{ p: 0, cid: 'crisT', zone: 'hand' }, { p: 1, cid: 'cipDraw', zone: 'battle' }]);
+      const hand = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'crisT')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: top.options } : { t: 'resolve', use: true });
+      }
+      // 召喚で1枚減り、相手の cipDraw の能力で1枚引く
+      expect(s.players[0].hand.length).toBe(hand);
+    });
+    it('「次の中から2回選ぶ」は同じものを2回選べる', () => {
+      let s = setup([{ p: 0, cid: 'twice', zone: 'hand' }]);
+      const hand = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'twice')!, face: 0, pay: [] });
+      for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, 0, { t: 'choose', options: [0] });
+      expect(s.players[0].hand.length).toBe(hand - 1 + 2);
     });
   });
 

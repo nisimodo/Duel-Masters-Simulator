@@ -110,7 +110,13 @@ export function PayDialog({
   const [showAll, setShowAll] = useState(false);
   const ef = statics.find((x) => x.s === 'evoFrom');
   const baseZone = ef && ef.s === 'evoFrom' ? ef.zone : 'battle';
-  const baseCands = (baseZone === 'mana' ? s.players[me].mana : baseZone === 'hand' ? s.players[me].hand.filter((h) => h !== iid) : s.players[me].battle).filter((b) => {
+  const emZones = (() => {
+    const em = statics.find((x) => x.s === 'evoMulti');
+    return em && em.s === 'evoMulti' ? em.zones : undefined;
+  })();
+  // 超無限進化・Ω / 進化GV・Ω は墓地・マナゾーンからも選べる
+  const basePool = emZones ? emZones.flatMap((z) => s.players[me][z]) : baseZone === 'mana' ? s.players[me].mana : baseZone === 'hand' ? s.players[me].hand.filter((h) => h !== iid) : s.players[me].battle;
+  const baseCands = basePool.filter((b) => {
     const bf = faceOf(s, L, b);
     if (!bf) return false;
     if (showAll) return true;

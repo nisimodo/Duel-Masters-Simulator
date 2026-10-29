@@ -534,9 +534,16 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         const em = (f.statics ?? []).find((x) => x.s === 'evoMulti');
         if (f.isEvolution && em && em.s === 'evoMulti') {
           // 進化GV / 超無限進化: 条件に合う弱いクリーチャーから必要な数だけ
-          const bases = me.battle.filter((b) => faceOf(s, L, b)?.isCreature && matchesSel(s, L, b, em.sel)).sort((a, b) => threatOf(s, L, a) - threatOf(s, L, b));
+          // (超無限進化・Ω / 進化GV・Ω は墓地・マナゾーンからも。墓地 → マナ → バトルゾーンの順に使う)
+          const zones = em.zones ?? ['battle'];
+          const pool = zones.flatMap((z) =>
+            (me[z] as number[])
+              .filter((b) => b !== h && L(s.cards[b].cid)?.faces.some((x) => x.isCreature) && matchesSel(s, L, b, { ...em.sel, zones: [z] }))
+              .sort((a, b) => (z === 'battle' ? threatOf(s, L, a) - threatOf(s, L, b) : 0)),
+          );
+          const bases = em.oneEach ? zones.map((z) => pool.find((b) => s.cards[b].zone === z)).filter((b): b is number => b != null) : pool;
           if (bases.length < em.min) return;
-          evo = bases.slice(0, em.exact ? em.min : Math.max(em.min, bases.length));
+          evo = em.oneEach ? bases : bases.slice(0, em.exact ? em.min : Math.max(em.min, Math.min(bases.length, 3)));
         } else if (f.isEvolution) {
           const base = [...me.battle]
             .filter((b) => {

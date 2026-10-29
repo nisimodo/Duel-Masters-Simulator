@@ -1563,6 +1563,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // 熱血の名 カチスギル・スキル 「(自分が勝ったら、)このクリーチャーを自分の墓地からタップして出す」
   if (/^このクリーチャーを(?:自分の)?墓地からタップして(?:バトルゾーンに)?出す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'battleTapped' }];
+  // クリス=タブラ=ラーサ 「バトルゾーンと墓地にある相手のクリーチャーを好きな数選ぶ」「その選んだクリーチャーの「このクリーチャーが出た時」で始まる能力をすべて、自分が使う」
+  if (/^(?:バトルゾーンと墓地にある|バトルゾーンまたは墓地にある)相手のクリーチャーを99(?:体|枚)まで選ぶ$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'grave'], kind: 'creature' }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '「出た時」の能力を使うクリーチャーを選ぶ' }];
+  if (/^その選んだクリーチャーの「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力をすべて、?自分が使う$/.test(s)) return [{ op: 'useCipOf' }];
   // ---- Dスイッチの効果 ----
   // ワールド・ストップ
   if (/^次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない$/.test(s)) return [{ op: 'dLock' }];
@@ -3380,6 +3384,21 @@ export function parseEffect(text: string): Program {
         complete: true,
         unparsed: [],
       };
+  }
+  // 天頂と停滞と水晶の決断 「次の中から2回選ぶ。(同じものを選んでもよい)」: 1つずつN回選ぶ
+  {
+    const nt = normText(text);
+    // (「(同じものを選んでもよい)」の注釈は外されていることがあるので、「N回選ぶ」で見分ける)
+    const rep = nt.match(/次の中から(\d+)回選ぶ。?(?:[(（]同じものを選んでもよい[)）])?/);
+    if (rep && rep[1] !== '1') {
+      const inner = parseEffect(nt.replace(rep[0], '次の中から1回選ぶ。'));
+      const md = inner.ops.findIndex((o) => o.op === 'modal');
+      if (inner.complete && md >= 0) {
+        const ops = [...inner.ops];
+        ops.splice(md, 1, ...Array.from({ length: +rep[1] }, () => ({ ...(inner.ops[md] as Extract<Op, { op: 'modal' }>), pick: 1 })));
+        return { ...inner, ops };
+      }
+    }
   }
   // 偽りのコード シャーロック 「各プレイヤーは自身のクリーチャーを1体ずつ選ぶ。こうして選ばれなかったクリーチャーをすべて破壊する」
   if (/^各プレイヤーは、?自身のクリーチャーを1体ずつ選ぶ。こうして選ばれなかったクリーチャーをすべて破壊する。?$/.test(normText(text).replace(/\s+/g, '').replace(/１/g, '1')))

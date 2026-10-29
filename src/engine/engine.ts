@@ -758,6 +758,11 @@ export function manaSummonLeft(s: GameState, L: Lookup, p: number, iid?: number)
   return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
 }
 
+/** 飛行を持っている (飛行を持たないクリーチャーから攻撃もブロックもされない) */
+export function hasFlying(s: GameState, L: Lookup, iid: number): boolean {
+  return (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'flying');
+}
+
 /** 表向きで自分のシールドゾーンにあるG城 (能力が有効) */
 export function isFaceUpGCastle(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
@@ -1663,6 +1668,15 @@ export function lose(s: GameState, p: number, reason: string) {
   // 鬼S-MAX進化: ゲームに負けるかわりに、自分の表向きのカードを破壊する
   if (vividLookup) {
     const L = vividLookup;
+    // クリスターナル・Κ: ゲームに負ける時、かわりに自分のマナゾーンにある裏向きのカードを3枚表向きにしてもよい
+    for (const b of pl.battle) {
+      const ek = (faceOf(s, L, b)?.statics ?? []).find((x) => x.s === 'eternalK' && x.onLose);
+      const down = pl.mana.filter((m) => s.cards[m].manaDown);
+      if (!ek || ek.s !== 'eternalK' || down.length < ek.n) continue;
+      for (const m of down.slice(0, ek.n)) s.cards[m].manaDown = false;
+      log(s, p, `${q(nameOf(s, L, b))}: クリスターナル・Κ で裏向きのマナを${ek.n}枚表向きにして、ゲームに負けない (${reason})`);
+      return;
+    }
     // 「自分がゲームに負ける時、かわりに〜」
     for (const b of [...pl.battle, ...pl.hand]) {
       const lr = (L(s.cards[b].cid)?.faces ?? []).flatMap((f) => f.statics ?? []).find((x) => x.s === 'loseReplace');
@@ -1924,6 +1938,7 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
       const tf = faceOf(s, L, t);
       if (!tf?.isCreature) continue;
       const tc = s.cards[t];
+      if (hasFlying(s, L, t) && !hasFlying(s, L, iid)) continue;
       if (tc.justDive != null || isSealed(s, t) || notCreatureNow(s, L, t) || ownStatics(s, L, t).some((x) => x.s === 'noAttacked' || (x.s === 'noAttackedBy' && matchesSel(s, L, iid, x.sel))) || (tc.grants ?? []).some((g) => g.kws.includes('攻撃されない')) || kwOf(s, L, t).noAttacked) continue;
       if (tc.tapped || untappedOk || untappedSel.some((sel) => matchesSel(s, L, t, { ...sel, owner: 'any' }))) cards.push(t);
     }
@@ -2005,6 +2020,8 @@ function blockStep(s: GameState, L: Lookup) {
         const limB = !isSealed(s, b) && (f?.statics ?? []).some((x) => x.s === 'limitedBlocker' && matchesSel(s, L, a.attacker, x.sel));
         if (notCreatureNow(s, L, b)) return false;
         if (!(f?.isCreature && (kwOf(s, L, b).blocker || untapB || limB) && (!s.cards[b].tapped || untapB) && !s.cards[b].restrict?.block && b !== a.targetCard)) return false;
+        // 飛行を持つクリーチャーは、飛行を持たないクリーチャーにブロックされない
+        if (hasFlying(s, L, a.attacker) && !hasFlying(s, L, b)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
         if (power(s, L, b) < ap && activeStatics(s, L).some((x) => x.owner === a.owner && x.spec.s === 'ownUnblockableSmaller')) return false;
@@ -2176,8 +2193,10 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     }
     // 「〜なら、このクリーチャーに「S・トリガー」を与える」: シールドにある時に条件を見る
     const condTrig = (card?.faces[0]?.statics ?? []).some((x) => x.s === 'grant' && x.target.t === 'self' && x.kws.includes('S・トリガー') && staticCondOk(s, L, { src: sh, owner: target, spec: x }));
-    const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (!x.spec.civ || cardCivs(L, s.cards[sh].cid).includes(x.spec.civ)) && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
-    const strike = !!card?.faces.some((f) => f.kw.gStrike) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
+    // 「俺」の頂 ライオネル 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」
+    const granted = activeStatics(s, L).filter((x) => x.owner === target && x.spec.s === 'shieldsGetKw').map((x) => (x.spec.s === 'shieldsGetKw' ? x.spec.kw : ''));
+    const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig || granted.includes('S・トリガー')) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (!x.spec.civ || cardCivs(L, s.cards[sh].cid).includes(x.spec.civ)) && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
+    const strike = !!(card?.faces.some((f) => f.kw.gStrike) || granted.includes('G・ストライク')) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
   }
   log(s, by, `${pl.name} のシールドを${shields.length}枚ブレイク`);
@@ -2777,8 +2796,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     let bases: number[] = [];
     if (face.isEvolution) {
       const ef = (face.statics ?? []).find((x) => x.s === 'evoFrom');
-      const baseZone = ef && ef.s === 'evoFrom' ? ef.zone : 'battle';
-      bases = (a.evo ?? []).filter((b) => s.cards[b]?.zone === baseZone && s.cards[b].owner === p && b !== a.iid);
+      const em0 = (face.statics ?? []).find((x) => x.s === 'evoMulti');
+      // 超無限進化・Ω / 進化GV・Ω は墓地・マナゾーンからも進化元を選べる
+      const baseZones: string[] = em0 && em0.s === 'evoMulti' && em0.zones ? em0.zones : [ef && ef.s === 'evoFrom' ? ef.zone : 'battle'];
+      bases = (a.evo ?? []).filter((b) => baseZones.includes(s.cards[b]?.zone) && s.cards[b].owner === p && b !== a.iid);
       // デッキ進化: 山札の上がクリーチャーならその上に、そうでなければ手札に戻る
       if (!bases.length && (face.statics ?? []).some((x) => x.s === 'deckEvo')) {
         const deck = s.players[p].deck;
@@ -2801,6 +2822,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       if (em && em.s === 'evoMulti' && !a.force) {
         if (bases.length < em.min || (em.exact && bases.length !== em.min)) return `進化元を${em.min}体${em.exact ? '' : '以上'}選んでください`;
         if (bases.some((b) => !matchesSel(s, L, b, em.sel))) return '進化元の条件に合わないクリーチャーがあります';
+        if (em.oneEach && new Set(bases.map((b) => s.cards[b].zone)).size !== (em.zones?.length ?? 1)) return '進化元を墓地・マナゾーン・バトルゾーンから1体ずつ選んでください';
       }
     }
     const wasTapped = bases.some((b) => s.cards[b].tapped);

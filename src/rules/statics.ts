@@ -145,7 +145,7 @@ export type StaticSpec =
   /** リンク解除: 離れる時、サイキック・セル1枚を超次元ゾーンへ戻し、残りを裏返す */
   | { s: 'linkRelease' }
   /** エターナル・Κ: 離れる時、かわりに裏向きのマナをN枚表向きにする */
-  | { s: 'eternalK'; n: number }
+  | { s: 'eternalK'; n: number; /** クリスターナル・Κ: 自分がゲームに負ける時も */ onLose?: boolean }
   /** DG-パルテノン 「すべてのプレイヤーは、各ターン、クリーチャーをN体までしかバトルゾーンに出せない」 */
   | { s: 'enterCap'; n: number }
   /** DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文をN枚までしか唱えられない」 */
@@ -270,7 +270,11 @@ export type StaticSpec =
   /** ビビッドロー: 自分のターン中、攻撃の前にドローした時に表向きにすれば、このターンコストNで召喚できる */
   | { s: 'vivid'; cost: number }
   /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
-  | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel }
+  | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel; /** 進化元を選べるゾーン (なければバトルゾーン) */ zones?: ('battle' | 'grave' | 'mana')[]; /** 各ゾーンから1体ずつ (進化GV・Ω) */ oneEach?: boolean }
+  /** 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」 */
+  | { s: 'shieldsGetKw'; kw: 'S・トリガー' | 'G・ストライク' }
+  /** 飛行: 飛行を持たないクリーチャーから攻撃もブロックもされない */
+  | { s: 'flying' }
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
   | { s: 'soulShift' }
   /** NEO進化クリーチャーとして召喚するならコストをN少なく */
@@ -342,7 +346,7 @@ function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null 
   if ((m = t.match(/^相手にシールドが(\d+)(?:つ|枚)もなければ、(.+)$/))) return { cond: { c: 'oppShieldsLess', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^このクリーチャーは、?(?:バトルゾーンに)?出(?:た|した)ターン(?:の間)?、(.+)$/))) return { cond: { c: 'selfNew' }, rest: 'このクリーチャーは' + m[1] };
   if ((m = t.match(/^自分の手札が(\d+)枚もない(?:時|なら)、(.+)$/))) return { cond: { c: 'handLE', n: +m[1] - 1 }, rest: m[2] };
-  if ((m = t.match(/^このクリーチャーがタップ(?:されて|して)(?:いる|いれば|いる時|いる間)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
+  if ((m = t.match(/^このクリーチャーがタップ(?:されて|して)(?:いる時|いる間|いれば|いる)、?(.+)$/))) return { cond: { c: 'selfTapped' }, rest: m[1] };
   if ((m = t.match(/^(?:バトルゾーンに)?相手の([^、]+?)が(\d+)(?:体|枚|つ)以上あれば、(.+)$/)) && !/(マナゾーン|墓地|手札|シールド)/.test(m[1]) && parseSel('相手の' + m[1])) return { cond: { c: 'countAtLeast', sel: parseSel('相手の' + m[1])!, n: +m[2] }, rest: m[3] };
   if ((m = t.match(/^相手の(マナゾーン|墓地)に(.+?)があれば、(.+)$/))) {
     const z = m[1] === '墓地' ? 'grave' : 'mana';
@@ -506,7 +510,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーを、自分の墓地から召喚してもよい$/.test(t0)) return [{ s: 'summonFrom', zone: 'grave' }];
   if ((m = t0.match(/^この呪文を(?:自分の)?(マナゾーン|墓地)から唱えてもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : 'mana' }];
   if (/^(バトルゾーンに置く時、このカードはタップして置く|このクリーチャーはタップして出る)$/.test(t0)) return [{ s: 'entersTapped' }];
-  if (/^飛行$/.test(t0)) return [{ s: 'note' }];
+  if (/^飛行$/.test(t0)) return [{ s: 'flying' }];
   if (/^∞パワーアタッカー$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['パワーアタッカー+999999'], when: 'attack' }];
   if ((m = t0.match(/^(これを(?:付けた|装備した|クロスした)クリーチャー)は、?ブロックされない$/))) return [{ s: 'grant', target: { t: 'cross' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^相手のカードはマナゾーンにタップして置かれる$/.test(t0) || /^相手は、?自身のマナゾーンにカードを置く時、?タップして置く$/.test(t0) || /^相手はカードをマナゾーンに置く時、?タップして置く$/.test(t0)) return [{ s: 'oppManaTapped' }];
@@ -682,6 +686,22 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^これをクロスしたクリーチャーが破壊される時、そのクリーチャーは墓地に置かれるかわりにバトルゾーンにとどまる$/.test(t0)) return [{ s: 'replaceLeave', on: 'destroy', effect: '', cross: true }];
   if ((m = t0.match(/^これをクロスしたクリーチャーが破壊される時、(?:墓地に置く)?かわりに、?(.+)$/))) return [{ s: 'replaceLeave', on: 'destroy', effect: m[1], cross: true }];
   if (/^エターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3) }];
+  // クリスターナル・Κ (離れる時、または自分がゲームに負ける時、かわりに裏向きのカードを3枚表向きにしてもよい)
+  if (/^クリスターナル・Κ/.test(t0)) return [{ s: 'eternalK', n: +(full.match(/裏向きのカードを(\d+)枚/)?.[1] ?? 3), onLose: true }];
+  // 「俺」の頂 ライオネル 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」/ 暗獅連結 グレイテスト・ネルザ 「〜すべてに「G・ストライク」を与える」
+  {
+    const sk = t0.match(/^自分の手札に加えるシールドカード(?:はすべて|すべてに)「(S・トリガー|G・ストライク)」を(?:得る|与える)$/);
+    if (sk) return [{ s: 'shieldsGetKw', kw: sk[1] as 'S・トリガー' | 'G・ストライク' }];
+  }
+  // 超無限進化・Ω: 「ガーディアンを1体以上自分の墓地、マナゾーンまたはバトルゾーンから選び、このクリーチャーをその上に重ねつつバトルゾーンに出す」
+  {
+    const om = t0.match(/^超無限進化・Ω[-ー―:：](.+?)を(\d+)体以上自分の墓地、マナゾーンまたはバトルゾーンから選び、/);
+    const sel = om && parseSel(om[1]);
+    if (om && sel) return [{ s: 'evoMulti', min: +om[2], exact: false, sel: { ...sel, owner: 'self', zones: ['battle', 'grave', 'mana'], kind: sel.kind === 'card' ? 'creature' : sel.kind }, zones: ['grave', 'mana', 'battle'] }];
+    // 進化GV・Ω: 「自分の墓地、マナゾーン、バトルゾーンからクリーチャーを1体ずつ選び、その3体を重ねた上に置く」
+    if (/^進化GV・Ω[:：]自分の墓地、マナゾーン、バトルゾーンからクリーチャーを1体ずつ選び、その3体を重ねた上に置く$/.test(t0))
+      return [{ s: 'evoMulti', min: 3, exact: true, sel: { owner: 'self', zones: ['battle', 'grave', 'mana'], kind: 'creature' }, zones: ['grave', 'mana', 'battle'], oneEach: true }];
+  }
   if ((m = t0.match(/^水晶ソウル(\d+)/))) return [{ s: 'crystalSoul', n: +m[1] }];
   if ((m = t0.match(/^すべてのプレイヤーは、?各ターン、?クリーチャーを(\d+)体までしか(?:バトルゾーンに)?出せない$/))) return [{ s: 'enterCap', n: +m[1] }];
   if ((m = t0.match(/^すべてのプレイヤーは、?各ターン、?呪文を(\d+)枚までしか唱えられない$/))) return [{ s: 'spellCap', n: +m[1] }];

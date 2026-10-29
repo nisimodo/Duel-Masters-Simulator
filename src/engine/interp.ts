@@ -1157,6 +1157,18 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, '次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない');
         break;
       }
+      case 'useCipOf': {
+        // 選んだカードの「出た時」の能力を、このカードの能力として自分が使う (順に解決する)
+        for (const i of ex.it) {
+          const f = L(s.cards[i].cid)?.faces[s.cards[i].face] ?? L(s.cards[i].cid)?.faces[0];
+          for (const t of f?.triggers ?? []) {
+            if (!t.events.includes('enter')) continue;
+            s.pending.push({ kind: 'ability', player: ex.player, src: ex.src, cid: s.cards[ex.src].cid, face: s.cards[ex.src].face, event: 'enter', text: `${f!.name} の能力: ${t.effect}`, effect: t.effect, optional: t.optional, auto: false });
+          }
+        }
+        log(s, ex.player, `${ex.it.length}体の「出た時」の能力を使う`);
+        break;
+      }
       case 'bundleShield': {
         // 持ち主ごとに、1枚目を表向きのシールドにして、残りをその下に重ねる
         const byOwner = new Map<number, number[]>();
