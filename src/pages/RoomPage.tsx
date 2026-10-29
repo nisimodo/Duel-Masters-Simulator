@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { backend } from '../backend';
 import { useApp } from '../context';
@@ -70,66 +70,166 @@ function formatCaution(db: CardDB, rules: RoomRules, d: Deck | null) {
   return rules.mode === 'duema' && rules.format === 'advance' && d && deckFormat(db, d) === 'original' ? 'オリジナルのデッキです' : undefined;
 }
 
-function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
-  const [sel, setSel] = useState('');
-  const options = useMemo(() => {
-    const list: { id: string; group: 'mine' | 'preset' | 'random'; label: string; deck: () => Deck; issues: string[]; preview: Deck | null }[] = [];
-    for (const d of myDecks.filter((x) => x.type === room.rules.mode)) {
-      list.push({ id: d.id, group: 'mine', label: d.name, deck: () => d, issues: validateDeck(db, d, room.rules), preview: d });
-    }
-    if (room.rules.mode === 'duema')
-      for (const p of db.presets) {
-        const { deck } = presetToDeck(db, p.id);
-        list.push({ id: p.id, group: 'preset', label: p.name, deck: () => deck, issues: validateDeck(db, deck, room.rules), preview: deck });
-      }
-    list.push({ id: 'random', group: 'random', label: 'ランダム生成', deck: () => randomDeck(db, room.rules.mode, room.rules), issues: [], preview: null });
-    return list;
-  }, [db, myDecks, room.rules]);
-  const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
-  const chosen = options.find((o) => o.id === sel);
-  const tile = (o: (typeof options)[number]) => (
+/** 開閉できる見出し (最初は閉じている) */
+function Fold({ title, extra, className, children }: { title: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <details className={`fold${className ? ` ${className}` : ''}`}>
+      <summary>
+        <span className="fold-title">{title}</span>
+        {extra}
+      </summary>
+      <div className="fold-body col">{children}</div>
+    </details>
+  );
+}
+
+/** ルームで選べるプリセットのデッキ (オリジナルのルームではアドバンスのデッキは出さない) */
+function usePresetDecks(db: CardDB, rules: RoomRules) {
+  return useMemo(() => {
+    if (rules.mode !== 'duema') return [];
+    return db.presets
+      .map((p) => ({ ...presetToDeck(db, p.id).deck, id: p.id, name: p.name }))
+      .filter((d) => rules.format !== 'original' || deckFormat(db, d) !== 'advance');
+  }, [db, rules]);
+}
+
+/** 「マイデッキ」「プリセット」の開閉と「ランダム生成」ボタン (プレイヤーとCPUで共通) */
+function DeckFolds({
+  db,
+  rules,
+  mine,
+  presets,
+  tile,
+  random,
+}: {
+  db: CardDB;
+  rules: RoomRules;
+  mine: Deck[];
+  presets: Deck[];
+  tile: (d: Deck, kind: 'mine' | 'preset') => ReactNode;
+  random: ReactNode;
+}) {
+  const split = splitByFormat(db, mine, (d) => d);
+  return (
+    <>
+      <Fold title={`マイデッキ (${mine.length})`}>
+        <div className="deck-pick-grid col" style={{ gap: 8 }}>
+          {rules.mode === 'duema' ? (
+            roomFormats(rules).map((f) => (
+              <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(rules, f)} empty="デッキがありません">
+                {split[f].map((d) => tile(d, 'mine'))}
+              </DeckSection>
+            ))
+          ) : (
+            <DeckSection title="デッキ" empty="デッキがありません">
+              {mine.map((d) => tile(d, 'mine'))}
+            </DeckSection>
+          )}
+        </div>
+      </Fold>
+      {presets.length > 0 && (
+        <Fold title={`プリセット (${presets.length})`}>
+          <div className="deck-pick-grid col" style={{ gap: 8 }}>
+            <DeckSection title="プリセット">{presets.map((d) => tile(d, 'preset'))}</DeckSection>
+          </div>
+        </Fold>
+      )}
+      <div className="row">{random}</div>
+    </>
+  );
+}
+
+/** 自分のデッキを選ぶ (マイデッキ・プリセット・ランダム生成) */
+function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
+  const me = room.members[uid];
+  const presets = usePresetDecks(db, room.rules);
+  const pick = (d: Deck | null) => updateMember(room.key, uid, { deckId: d?.id ?? null, deck: d ? (encodeDeck(d) as unknown as Deck) : null, ready: false });
+  const tile = (d: Deck, kind: 'mine' | 'preset') => (
     <DeckTile
-      key={o.id}
+      key={d.id}
       db={db}
-      deck={o.preview}
-      title={o.label}
-      issues={o.issues}
-      caution={formatCaution(db, room.rules, o.preview)}
-      selected={sel === o.id}
-      showUpdated={o.group === 'mine'}
-      onClick={() => setSel(sel === o.id ? '' : o.id)}
+      deck={d}
+      title={kind === 'preset' ? d.name : undefined}
+      issues={validateDeck(db, d, room.rules)}
+      okNote="このルームで使用可能"
+      caution={formatCaution(db, room.rules, d)}
+      selected={me?.deckId === d.id}
+      showUpdated={kind === 'mine'}
+      onClick={() => pick(me?.deckId === d.id ? null : d)}
     />
   );
-  const mine = options.filter((o) => o.group === 'mine');
-  // オリジナルのルームではアドバンスのデッキは出さない
-  const presets = options.filter((o) => o.group === 'preset' && (room.rules.format !== 'original' || !o.preview || deckFormat(db, o.preview) !== 'advance'));
-  const random = options.filter((o) => o.group === 'random');
-  const split = splitByFormat(db, mine, (o) => o.preview);
   return (
-    <div className="col" style={{ gap: 6 }}>
-      {!full && <span className="small muted">CPUのデッキを選択</span>}
-      {!full && <div className="deck-pick-grid col" style={{ gap: 8 }}>
-        {room.rules.mode === 'duema' ? (
-          roomFormats(room.rules).map((f) => (
-            <DeckSection key={f} title={<>マイデッキ <FormatBadge format={f} /></>} note={formatNote(room.rules, f)}>
-              {split[f].map(tile)}
-            </DeckSection>
-          ))
-        ) : (
-          <DeckSection title="マイデッキ">{mine.map(tile)}</DeckSection>
-        )}
-        <DeckSection title="プリセット">{presets.map(tile)}</DeckSection>
-        <DeckSection title="ランダム" note="ルームのルールに合うデッキをその場で作ります">
-          {random.map(tile)}
-        </DeckSection>
-      </div>}
-      <div className="row">
-        <button disabled={!chosen || full || chosen.issues.length > 0} onClick={() => chosen && addCpu(room, uid, chosen.deck()).then(() => setSel(''))}>
-          CPUを追加
-        </button>
-        {full && <span className="small muted">満員です</span>}
-      </div>
-    </div>
+    <Fold title="プレイヤーのデッキ" className="fold-top">
+      <DeckFolds
+        db={db}
+        rules={room.rules}
+        mine={myDecks}
+        presets={presets}
+        tile={tile}
+        random={
+          <button className={me?.deckId === 'random' ? 'primary' : ''} onClick={() => pick({ ...randomDeck(db, room.rules.mode, room.rules), id: 'random', name: 'ランダム生成' })}>
+            ランダム生成{me?.deckId === 'random' ? ' (選択中・押すと作り直す)' : ''}
+          </button>
+        }
+      />
+    </Fold>
+  );
+}
+
+/** CPUのデッキを選んで追加する */
+function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
+  const [sel, setSel] = useState('');
+  const presets = usePresetDecks(db, room.rules);
+  const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
+  const chosen = sel === 'random' ? null : (myDecks.find((d) => d.id === sel) ?? presets.find((d) => d.id === sel));
+  const ok = sel === 'random' || (!!chosen && validateDeck(db, chosen, room.rules).length === 0);
+  const add = (e: MouseEvent) => {
+    // (見出しの開閉はしない)
+    e.preventDefault();
+    if (!ok || full) return;
+    const deck = sel === 'random' ? randomDeck(db, room.rules.mode, room.rules) : chosen!;
+    addCpu(room, uid, deck).then(() => setSel(''));
+  };
+  const tile = (d: Deck, kind: 'mine' | 'preset') => (
+    <DeckTile
+      key={d.id}
+      db={db}
+      deck={d}
+      title={kind === 'preset' ? d.name : undefined}
+      issues={validateDeck(db, d, room.rules)}
+      caution={formatCaution(db, room.rules, d)}
+      selected={sel === d.id}
+      showUpdated={kind === 'mine'}
+      onClick={() => setSel(sel === d.id ? '' : d.id)}
+    />
+  );
+  return (
+    <Fold
+      title="CPUのデッキ"
+      className="fold-top"
+      extra={
+        <>
+          <button className="small primary" disabled={!ok || full} onClick={add}>
+            CPUを追加
+          </button>
+          {full && <span className="small muted">満員です</span>}
+        </>
+      }
+    >
+      <DeckFolds
+        db={db}
+        rules={room.rules}
+        mine={myDecks}
+        presets={presets}
+        tile={tile}
+        random={
+          <button className={sel === 'random' ? 'primary' : ''} onClick={() => setSel(sel === 'random' ? '' : 'random')}>
+            ランダム生成{sel === 'random' ? ' (選択中)' : ''}
+          </button>
+        }
+      />
+      {!chosen && sel !== 'random' && <span className="small muted">デッキを選んでから「CPUを追加」を押してください</span>}
+    </Fold>
   );
 }
 
@@ -202,31 +302,15 @@ export default function RoomPage() {
     return <GameView key={room.gameId} room={room} db={db} onBackToLobby={() => backToLobby(room)} onLeave={leave} />;
 
   const myDecks = decks.filter((d) => d.type === room.rules.mode);
-  const selectDeck = (id: string) => {
-    const d = myDecks.find((x) => x.id === id) ?? null;
-    updateMember(room.key, user.uid, { deckId: d?.id ?? null, deck: d ? (encodeDeck(d) as unknown as Deck) : null, ready: false });
-  };
+  // 選んだデッキ: マイデッキは最新の内容、プリセット・ランダム生成はルームに送ったもの
+  const myDeck = myDecks.find((d) => d.id === me?.deckId) ?? (me?.deckId ? (me.deck ?? undefined) : undefined);
   const toggleReady = () => {
-    const d = myDecks.find((x) => x.id === me?.deckId);
-    if (!d) return;
+    if (!myDeck) return;
     // 準備完了時に最新のデッキ内容を反映
-    updateMember(room.key, user.uid, { ready: !me?.ready, deck: encodeDeck(d) as unknown as Deck });
+    updateMember(room.key, user.uid, { ready: !me?.ready, deck: encodeDeck(myDeck) as unknown as Deck });
   };
   const max = MAX_PLAYERS[room.rules.mode];
   const canBecomePlayer = count < max;
-  const myDeck = myDecks.find((d) => d.id === me?.deckId);
-  const deckTile = (d: Deck) => (
-    <DeckTile
-      key={d.id}
-      db={db}
-      deck={d}
-      issues={validateDeck(db, d, room.rules)}
-      okNote="このルームで使用可能"
-      caution={formatCaution(db, room.rules, d)}
-      selected={me?.deckId === d.id}
-      onClick={() => selectDeck(me?.deckId === d.id ? '' : d.id)}
-    />
-  );
   const myIssues = myDeck ? validateDeck(db, myDeck, room.rules) : [];
 
   return (
@@ -243,10 +327,10 @@ export default function RoomPage() {
           前回の結果: <b>{room.lastResult.winners.map((w) => room.lastResult!.names[w.replace(/[.#$[\]/]/g, '_')] ?? w).join('、') || '引き分け'}</b> の勝利 ({room.lastResult.reason})
         </div>
       )}
-      {/* 左: 対戦するプレイヤー・観戦・CPUの追加 / 右: あなたのデッキ選択 */}
-      <div className="row" style={{ alignItems: 'flex-start' }}>
-        <div className="col" style={{ flex: '1 1 320px', minWidth: 0 }}>
-          <div className="panel col">
+      {/* 左: 対戦するプレイヤー・観戦・CPUの追加 / 右: あなたのデッキ選択 (スマホではCPUの追加より上に自分のデッキ選択) */}
+      <div className="row room-cols" style={{ alignItems: 'flex-start' }}>
+        <div className="col room-left" style={{ flex: '1 1 320px', minWidth: 0 }}>
+          <div className="panel col room-players">
             <b>
               対戦するプレイヤー ({count}/{max})
             </b>
@@ -301,7 +385,7 @@ export default function RoomPage() {
             )}
           </div>
 
-          <div className="panel col">
+          <div className="panel col room-specs">
             <b>観戦</b>
             {Object.entries(room.members)
               .filter(([, m]) => m.role === 'spectator')
@@ -314,14 +398,13 @@ export default function RoomPage() {
               ))}
           </div>
 
-          <div className="panel col">
-            <b>CPUの追加</b>
-            <CpuAdder db={db} room={room} myDecks={decks} uid={user.uid} />
+          <div className="panel col room-cpu">
+            <CpuAdder db={db} room={room} myDecks={myDecks} uid={user.uid} />
           </div>
         </div>
 
         {me && (
-          <div className="panel col" style={{ flex: '2 1 360px', minWidth: 0 }}>
+          <div className="panel col room-me" style={{ flex: '2 1 360px', minWidth: 0 }}>
             <b>あなた ({me.role === 'player' ? '対戦する' : '観戦する'})</b>
             <div className="row">
               {me.role === 'spectator' ? (
@@ -334,16 +417,10 @@ export default function RoomPage() {
             </div>
             {me.role === 'player' && (
               <>
-                <div className="deck-pick-grid col" style={{ gap: 8 }}>
-                  {room.rules.mode === 'duema' ? (
-                    roomFormats(room.rules).map((f) => (
-                      <DeckSection key={f} title={<FormatBadge format={f} />} note={formatNote(room.rules, f)} empty="デッキがありません">
-                        {splitByFormat(db, myDecks, (d) => d)[f].map(deckTile)}
-                      </DeckSection>
-                    ))
-                  ) : (
-                    <DeckSection title="デッキ">{myDecks.map(deckTile)}</DeckSection>
-                  )}
+                <PlayerDeckPicker db={db} room={room} myDecks={myDecks} uid={user.uid} />
+                <div className="small">
+                  選択中のデッキ: {myDeck ? <b>{myDeck.name}</b> : <span className="muted">なし</span>}
+                  {myIssues.length > 0 && <span className="warn"> (このルームでは使えません: {myIssues[0]})</span>}
                 </div>
                 <div className="row">
                   <button className={me.ready ? '' : 'primary'} disabled={!myDeck || myIssues.length > 0} onClick={toggleReady}>
@@ -351,12 +428,9 @@ export default function RoomPage() {
                   </button>
                 </div>
                 {!myDecks.length && (
-                  <div className="warn small">
-                    このルールで使えるデッキがありません。<Link to="/decks">デッキを作成</Link>してください。
+                  <div className="small muted">
+                    マイデッキがありません。<Link to="/decks">デッキを作成</Link>するか、プリセット・ランダム生成から選んでください。
                   </div>
-                )}
-                {myDecks.length > 0 && myDecks.every((d) => validateDeck(db, d, room.rules).length > 0) && (
-                  <div className="warn small">このルームのレギュレーションで使えるデッキがありません。</div>
                 )}
               </>
             )}

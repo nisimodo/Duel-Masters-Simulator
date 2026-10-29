@@ -1305,3 +1305,67 @@ button.glow-btn {
   border: 2px dashed var(--line);
   border-radius: 6px;
 }
+
+/* ルームのデッキ選択: 開閉できる見出し (最初は閉じている) */
+.fold {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold > summary::before {
+  content: '▶';
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.fold[open] > summary::before {
+  transform: rotate(90deg);
+}
+.fold-title {
+  flex: 1;
+  font-weight: bold;
+}
+.fold-body {
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.fold.fold-top > summary {
+  font-size: 15px;
+}
+/* スマホ: 対戦するプレイヤー → 観戦 → 自分のデッキ選択 → CPUの追加 の順に並べる */
+@media (max-width: 900px) and (orientation: portrait), (max-width: 600px) {
+  .room-cols {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .room-left {
+    display: contents;
+  }
+  .room-cols > .room-me {
+    flex: none !important;
+  }
+  .room-players {
+    order: 1;
+  }
+  .room-specs {
+    order: 2;
+  }
+  .room-me {
+    order: 3;
+  }
+  .room-cpu {
+    order: 4;
+  }
+}
