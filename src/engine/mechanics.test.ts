@@ -285,6 +285,8 @@ const db = buildDB(
     cr('wadaebi', 1, 5000, ['各ターン、相手はクリーチャーを２体までしか出せない。']),
     { id: 'alch', n: 'alch', img: '', f: [{ n: 'alch', t: 'クリーチャー', c: 'W', co: 1, p: '5000', r: ['テスト'], x: ['自分の手札が13枚以上あれば、自分のターンに１度、水のカードを自分の手札からコストを支払わずに実行してもよい。'] }] },
     { id: 'waterBig', n: 'waterBig', img: '', f: [{ n: 'waterBig', t: 'クリーチャー', c: 'W', co: 9, p: '9000', r: ['テスト'], x: [] }] },
+    { id: 'fate', n: 'fate', img: '', f: [{ n: 'fate', t: '呪文', c: 'LWD', co: 6, p: null, r: [], x: ['カードを２枚引く。', 'このカードを自分の手札からマナゾーンに置いた時、自分の手札にあるロスト・クルセイダー・カードを１枚、表向きにしてもよい。そうしたら、このカードをアンタップする。'] }] },
+    { id: 'lost', n: 'lost', img: '', f: [{ n: 'lost', t: 'クリーチャー', c: 'W', co: 1, p: '1000', r: ['ロスト・クルセイダー'], x: [] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2593,6 +2595,20 @@ describe('named mechanics', () => {
       expect(s.phase).toBe('over');
       expect(s.players[1].lost).toBe(true);
       expect(s.players[0].lost).toBeFalsy();
+    });
+    it('宿命の決闘: 手札のロスト・クルセイダーを表向きにした時だけアンタップする', () => {
+      const charge = (withLost: boolean) => {
+        let s = setup(withLost ? [{ p: 0, cid: 'fate', zone: 'hand' }, { p: 0, cid: 'lost', zone: 'hand' }] : [{ p: 0, cid: 'fate', zone: 'hand' }]);
+        const f = find(s, 0, 'hand', 'fate')!;
+        s = act(s, 0, { t: 'charge', iid: f });
+        for (let k = 0; k < 10 && s.pending.length; k++) {
+          const top = s.pending[0];
+          s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, 1) }) : { t: 'resolve', use: true });
+        }
+        return s.cards[f].tapped;
+      };
+      expect(charge(true)).toBe(false);
+      expect(charge(false)).toBe(true);
     });
     it('ワダエビノミコト: 相手は各ターン2体までしか出せない', () => {
       const s = setup([{ p: 1, cid: 'wadaebi', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);

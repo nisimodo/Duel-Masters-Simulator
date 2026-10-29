@@ -948,7 +948,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const rv = s.match(/^自分の手札(?:にある|から)(.+?)・カードを(\d+)枚、?表向きにする$/);
     // (「ロスト・クルセイダー・カード」は種族で見る)
     const rsel = rv && (parseSel(rv[1]) ?? { owner: 'self', zones: ['hand'], kind: 'card', races: [rv[1]] });
-    if (rv && rsel) return [{ op: 'choose', target: { ref: 'sel', sel: { ...rsel, owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +rv[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '表向きにするカードを選ぶ' }, { op: 'note', text: '手札のカードを表向きにした' }];
+    // (表向きにできるカードがなければ「そうしたら」の続きは行わない)
+    if (rv && rsel)
+      return [
+        { op: 'setDid', v: false },
+        { op: 'choose', target: { ref: 'sel', sel: { ...rsel, owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +rv[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '表向きにするカードを選ぶ' },
+        { op: 'if', cond: { c: 'itMatches', sel: { ...rsel, owner: 'self', zones: ['hand'], kind: 'card' } }, body: [{ op: 'note', text: '手札のカードを表向きにした' }, { op: 'setDid', v: true }] },
+      ];
   }
   {
     const sh = s.match(/^自分の山札をシャッフルした後、(.+)$/);
