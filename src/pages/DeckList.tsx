@@ -1,15 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context';
-import { deleteDeck, subscribeDecks } from '../data/api';
-import { DEFAULT_RULES, splitByFormat, validateDeck, type Deck } from '../lib/deck';
+import { useApp, useFavs } from '../context';
+import { deleteDeck, favFirst, importSharedDeck, saveDeck, subscribeDecks, subscribeShared, type SharedDeck } from '../data/api';
+import { DEFAULT_RULES, presetToDeck, splitByFormat, validateDeck, type Deck, type DeckType } from '../lib/deck';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 
 export default function DeckList() {
   const { user, db } = useApp();
+  const { favs, toggle } = useFavs();
   const [decks, setDecks] = useState<Deck[] | null>(null);
+  const [shared, setShared] = useState<SharedDeck[] | null>(null);
+  const [sharedQ, setSharedQ] = useState('');
+  const [msg, setMsg] = useState('');
   const nav = useNavigate();
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
+  useEffect(() => (user ? subscribeShared(setShared) : undefined), [user]);
+  const presets = useMemo(() => (db ? db.presets.map((p) => ({ ...presetToDeck(db, p.id).deck, id: p.id, name: p.name, type: (p.mode ?? 'duema') as DeckType })) : []), [db]);
   if (!db || !user) return null;
 
   const tile = (d: Deck, okNote: string, issues: string[]) => (
@@ -19,13 +25,16 @@ export default function DeckList() {
       deck={d}
       issues={issues}
       okNote={okNote}
+      fav={favs.has(d.id)}
+      onFav={() => toggle(d.id)}
+      tag={d.shared && <span className="badge shared">投稿中</span>}
       onClick={() => nav(`/decks/${d.id}`)}
       actions={
         <>
           <button className="small" onClick={() => nav(`/decks/${d.id}`)}>
             編集
           </button>
-          <button className="small danger" onClick={() => confirm(`「${d.name}」を削除しますか？`) && deleteDeck(user.uid, d.id)}>
+          <button className="small danger" onClick={() => confirm(`「${d.name}」を削除しますか？${d.shared ? '\n(みんなのデッキへの投稿も取り下げられます)' : ''}`) && deleteDeck(user.uid, d.id)}>
             削除
           </button>
         </>
@@ -33,12 +42,64 @@ export default function DeckList() {
     />
   );
 
-  const duema = (decks ?? []).filter((d) => d.type === 'duema');
-  const duepa = (decks ?? []).filter((d) => d.type === 'duepa');
+  /** プリセット・投稿されたデッキを自分のデッキにコピーして開く */
+  const copyToMine = async (d: Deck, from: string) => {
+    const id = await saveDeck(user.uid, { ...d, id: '', shared: false });
+    setMsg(`「${d.name}」を${from}から自分のデッキにコピーしました`);
+    nav(`/decks/${id}`);
+  };
+  const presetTile = (d: Deck) => (
+    <DeckTile
+      key={d.id}
+      db={db}
+      deck={d}
+      title={d.name}
+      showUpdated={false}
+      fav={favs.has(d.id)}
+      onFav={() => toggle(d.id)}
+      actions={
+        <button className="small" onClick={() => copyToMine(d, 'プリセット')}>
+          コピーして編集
+        </button>
+      }
+    />
+  );
+  const importOne = async (s: SharedDeck) => {
+    await importSharedDeck(user.uid, s);
+    setMsg(`「${s.deck.name}」(${s.owner} さんのデッキ) を自分のデッキにインポートしました`);
+  };
+  const sharedTile = (s: SharedDeck) => (
+    <DeckTile
+      key={s.key}
+      db={db}
+      deck={{ ...s.deck, updatedAt: s.updatedAt }}
+      tag={<span className="badge">{s.uid === user.uid ? '自分の投稿' : `投稿: ${s.owner}`}</span>}
+      actions={
+        <button className="small primary" onClick={() => importOne(s)}>
+          インポート
+        </button>
+      }
+    />
+  );
+
+  const byType = (t: DeckType) => favFirst((decks ?? []).filter((d) => d.type === t), favs, (d) => d.id);
+  const duema = byType('duema');
+  const duepa = byType('duepa');
   const { original, advance } = splitByFormat(db, duema, (d) => d);
+  const presetsOf = (t: DeckType) => favFirst(presets.filter((d) => d.type === t), favs, (d) => d.id);
+  const q = sharedQ.trim().toLowerCase();
+  const sharedOf = (t: DeckType) => (shared ?? []).filter((s) => s.deck.type === t && (!q || s.deck.name.toLowerCase().includes(q) || s.owner.toLowerCase().includes(q)));
 
   return (
     <div className="page col">
+      {msg && (
+        <div className="panel row small ok">
+          <span className="grow">✓ {msg}</span>
+          <button className="small" onClick={() => setMsg('')}>
+            閉じる
+          </button>
+        </div>
+      )}
       <div className="panel col">
         <div className="row">
           <h3 className="grow" style={{ margin: 0 }}>
@@ -48,6 +109,7 @@ export default function DeckList() {
             ＋ 新規作成
           </button>
         </div>
+        <span className="small muted">☆を押すとお気に入りに登録され、デッキ一覧やデッキ選択で上に出ます。</span>
         {decks == null && <div className="muted">読み込み中…</div>}
         {decks != null && (
           <>
@@ -67,6 +129,9 @@ export default function DeckList() {
             </DeckSection>
           </>
         )}
+        <DeckSection title="プリセット" note="「コピーして編集」で自分のデッキにできます">
+          {presetsOf('duema').map(presetTile)}
+        </DeckSection>
       </div>
       <div className="panel col">
         <div className="row">
@@ -82,6 +147,29 @@ export default function DeckList() {
           <DeckSection title="デッキ" empty="デッキがありません">
             {duepa.map((d) => tile(d, '使用可能', validateDeck(db, d)))}
           </DeckSection>
+        )}
+        <DeckSection title="プリセット" note="「コピーして編集」で自分のデッキにできます">
+          {presetsOf('duepa').map(presetTile)}
+        </DeckSection>
+      </div>
+      <div className="panel col">
+        <div className="row">
+          <h3 className="grow" style={{ margin: 0 }}>
+            みんなのデッキ
+          </h3>
+          <input placeholder="デッキ名・投稿者で検索" value={sharedQ} onChange={(e) => setSharedQ(e.target.value)} style={{ maxWidth: 240 }} />
+        </div>
+        <span className="small muted">デッキ編集の「みんなに投稿する」をオンにして保存したデッキが載ります。「インポート」で自分のデッキにコピーできます。</span>
+        {shared == null && <div className="muted">読み込み中…</div>}
+        {shared != null && (
+          <>
+            <DeckSection title="デュエマ" empty={q ? '見つかりません' : 'まだ投稿がありません'}>
+              {sharedOf('duema').map(sharedTile)}
+            </DeckSection>
+            <DeckSection title="デュエパ" empty={q ? '見つかりません' : 'まだ投稿がありません'}>
+              {sharedOf('duepa').map(sharedTile)}
+            </DeckSection>
+          </>
         )}
       </div>
     </div>

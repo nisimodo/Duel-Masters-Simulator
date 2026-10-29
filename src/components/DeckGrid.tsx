@@ -51,9 +51,14 @@ interface TileProps {
   actions?: ReactNode;
   /** 更新日時を出す (プリセットなどでは出さない) */
   showUpdated?: boolean;
+  /** お気に入り (onFav があれば★を押して付け外しできる) */
+  fav?: boolean;
+  onFav?: () => void;
+  /** バッジの横に出す一言 (投稿中・投稿者など) */
+  tag?: ReactNode;
 }
 
-export function DeckTile({ db, deck, title, issues = [], okNote, caution, selected, onClick, actions, showUpdated = true }: TileProps) {
+export function DeckTile({ db, deck, title, issues = [], okNote, caution, selected, onClick, actions, showUpdated = true, fav, onFav, tag }: TileProps) {
   const disabled = issues.length > 0 && !!onClick;
   const fmt = deck ? deckFormat(db, deck) : null;
   const hyper = deck ? countOf(deck.hyper) : 0;
@@ -78,6 +83,7 @@ export function DeckTile({ db, deck, title, issues = [], okNote, caution, select
         <div className="deck-tile-badges">
           {fmt && <FormatBadge format={fmt} />}
           {selected && <span className="badge sel">選択中</span>}
+          {tag}
         </div>
         {caution && issues.length === 0 && <div className="small caution deck-tile-note">⚠ {caution}</div>}
         {issues.length > 0 ? (
@@ -93,7 +99,22 @@ export function DeckTile({ db, deck, title, issues = [], okNote, caution, select
     </>
   );
   return (
-    <div className={`deck-tile${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}${onClick ? ' clickable' : ''}`}>
+    <div className={`deck-tile${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}${onClick ? ' clickable' : ''}${fav ? ' fav' : ''}`}>
+      {(onFav || fav) && (
+        <button
+          className={`deck-fav${fav ? ' on' : ''}`}
+          disabled={!onFav}
+          title={fav ? 'お気に入りから外す' : 'お気に入りに登録'}
+          aria-label={fav ? 'お気に入りから外す' : 'お気に入りに登録'}
+          aria-pressed={!!fav}
+          onClick={(e) => {
+            e.stopPropagation();
+            onFav?.();
+          }}
+        >
+          {fav ? '★' : '☆'}
+        </button>
+      )}
       {onClick ? (
         <button className="deck-tile-main" disabled={disabled} onClick={onClick}>
           {body}

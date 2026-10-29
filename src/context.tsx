@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { backend, type AuthUser } from './backend';
-import { profilePath, type Profile } from './data/api';
+import { favIds, profilePath, setFavorite, type Profile } from './data/api';
 import { loadCardDB, type CardDB } from './lib/cards';
 
 interface AppState {
@@ -53,3 +53,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 }
 
 export const useApp = () => useContext(Ctx);
+
+/** お気に入りのデッキ (自分のデッキ・プリセットの id) と、★の付け外し */
+export function useFavs() {
+  const { user, profile } = useContext(Ctx);
+  const favs = useMemo(() => favIds(profile), [profile]);
+  const toggle = (id: string) => {
+    if (user) void setFavorite(user.uid, id, !favs.has(id));
+  };
+  return { favs, toggle };
+}

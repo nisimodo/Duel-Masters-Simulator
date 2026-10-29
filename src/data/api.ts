@@ -9,7 +9,7 @@ const encMap = (m: Record<string, number> = {}) => Object.fromEntries(Object.ent
 const decMap = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [decKey(k), v]));
 
 export function encodeDeck(d: Deck) {
-  return { ...d, main: encMap(d.main), hyper: encMap(d.hyper), gr: encMap(d.gr), partner: d.partner ?? null, thumb: d.thumb ?? null };
+  return { ...d, main: encMap(d.main), hyper: encMap(d.hyper), gr: encMap(d.gr), partner: d.partner ?? null, thumb: d.thumb ?? null, shared: d.shared ? true : null };
 }
 export function decodeDeck(id: string, d: Partial<Deck> | null): Deck {
   return {
@@ -22,6 +22,7 @@ export function decodeDeck(id: string, d: Partial<Deck> | null): Deck {
     partner: d?.partner ?? null,
     thumb: d?.thumb ?? null,
     updatedAt: d?.updatedAt ?? 0,
+    shared: !!d?.shared,
   };
 }
 
@@ -30,6 +31,8 @@ export interface Profile {
   name: string;
   sleeve?: string | null;
   playmat?: string | null;
+  /** お気に入りのデッキ (自分のデッキ・プリセットの id、キーはエスケープ済み) */
+  favDecks?: Record<string, boolean> | null;
 }
 
 export const profilePath = (uid: string) => `users/${uid}`;
@@ -52,16 +55,63 @@ export async function getDecks(uid: string): Promise<Deck[]> {
   return Object.entries(v || {}).map(([id, d]) => decodeDeck(id, d));
 }
 
-export async function saveDeck(uid: string, deck: Deck): Promise<string> {
+/** ownerName: 「投稿する」デッキの投稿者として出す名前 */
+export async function saveDeck(uid: string, deck: Deck, ownerName?: string): Promise<string> {
   const id = deck.id || backend.newKey(`decks/${uid}`);
   const { id: _omit, ...rest } = { ...deck, updatedAt: Date.now() };
   void _omit;
   await backend.set(`decks/${uid}/${id}`, encodeDeck(rest as Deck));
+  // みんなのデッキ: 投稿するなら最新の内容を載せ、しないなら取り下げる
+  if (rest.shared) await backend.set(sharedPath(uid, id), { uid, owner: ownerName ?? '', deck: encodeDeck({ ...(rest as Deck), shared: false }), updatedAt: rest.updatedAt });
+  else await backend.remove(sharedPath(uid, id));
   return id;
 }
 
 export async function deleteDeck(uid: string, id: string) {
   await backend.remove(`decks/${uid}/${id}`);
+  await backend.remove(sharedPath(uid, id));
+}
+
+// ---------- みんなのデッキ (投稿されたデッキ) ----------
+export interface SharedDeck {
+  key: string;
+  uid: string;
+  owner: string;
+  deck: Deck;
+  updatedAt: number;
+}
+
+/** (キーの先頭が投稿者の uid なので、本人だけが書き換えられる) */
+const sharedPath = (uid: string, id: string) => `shared/${uid}_${encKey(id)}`;
+
+export function subscribeShared(cb: (list: SharedDeck[]) => void) {
+  return backend.subscribe<Record<string, { uid: string; owner?: string; deck: Partial<Deck>; updatedAt?: number }>>('shared', (v) => {
+    const list = Object.entries(v || {})
+      .filter(([, x]) => x && x.deck)
+      .map(([key, x]) => ({ key, uid: x.uid, owner: x.owner || '名無し', deck: decodeDeck(key, x.deck), updatedAt: x.updatedAt ?? 0 }));
+    list.sort((a, b) => b.updatedAt - a.updatedAt);
+    cb(list);
+  });
+}
+
+/** 投稿されたデッキを自分のデッキにコピーする */
+export async function importSharedDeck(uid: string, s: SharedDeck): Promise<string> {
+  return saveDeck(uid, { ...s.deck, id: '', shared: false });
+}
+
+// ---------- お気に入り ----------
+export function favIds(p: Profile | null): Set<string> {
+  return new Set(Object.entries(p?.favDecks || {}).flatMap(([k, v]) => (v ? [decKey(k)] : [])));
+}
+
+export async function setFavorite(uid: string, id: string, on: boolean) {
+  if (on) await backend.set(`${profilePath(uid)}/favDecks/${encKey(id)}`, true);
+  else await backend.remove(`${profilePath(uid)}/favDecks/${encKey(id)}`);
+}
+
+/** お気に入りを先に (それ以外の順番はそのまま) */
+export function favFirst<T>(list: T[], favs: Set<string>, idOf: (x: T) => string): T[] {
+  return [...list.filter((x) => favs.has(idOf(x))), ...list.filter((x) => !favs.has(idOf(x)))];
 }
 
 // ---------- ルーム ----------

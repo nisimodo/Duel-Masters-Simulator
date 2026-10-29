@@ -14,6 +14,8 @@ export interface Deck {
   /** デッキのサムネイルにするカード (デュエパはパートナー) */
   thumb?: string | null;
   updatedAt: number;
+  /** みんなのデッキに投稿している */
+  shared?: boolean;
 }
 
 export interface RoomRules {

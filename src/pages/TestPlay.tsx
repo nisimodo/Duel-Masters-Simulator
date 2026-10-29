@@ -1,7 +1,7 @@
 // テストプレイ: 2つのデッキをCPU同士で何度も高速に対戦させ、勝率と勝因・敗因を見る
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../context';
-import { subscribeDecks } from '../data/api';
+import { useApp, useFavs } from '../context';
+import { favFirst, subscribeDecks } from '../data/api';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 import { expandDeck, presetToDeck, splitByFormat, type Deck } from '../lib/deck';
 import { addGame, emptyStats, simulateGame, type SimStats } from '../engine/sim';
@@ -155,6 +155,7 @@ function IssueReport({ db, st }: { db: CardDB; st: SimStats }) {
 
 export default function TestPlay() {
   const { user, db } = useApp();
+  const { favs, toggle } = useFavs();
   const [decks, setDecks] = useState<Deck[]>([]);
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
   const options = useMemo<Option[]>(() => {
@@ -162,8 +163,9 @@ export default function TestPlay() {
     const mine = decks.filter((d) => d.type === 'duema').map((d) => ({ id: d.id, deck: d, preset: false }));
     // (テストプレイはデュエマなので、デュエマのプリセットだけ)
     const presets = db.presets.filter((p) => (p.mode ?? 'duema') === 'duema').map((p) => ({ id: p.id, deck: presetToDeck(db, p.id).deck, preset: true }));
-    return [...mine, ...presets];
-  }, [db, decks]);
+    // お気に入りを先に
+    return favFirst([...mine, ...presets], favs, (o) => o.id);
+  }, [db, decks, favs]);
   const [slot, setSlot] = useState<0 | 1>(0);
   const [pick, setPick] = useState<[string | null, string | null]>([null, null]);
   const [count, setCount] = useState(50);
@@ -223,6 +225,8 @@ export default function TestPlay() {
       db={db}
       deck={o.deck}
       showUpdated={!o.preset}
+      fav={favs.has(o.id)}
+      onFav={() => toggle(o.id)}
       selected={pick[0] === o.id || pick[1] === o.id}
       okNote={pick[0] === o.id && pick[1] === o.id ? 'A・B (ミラー)' : pick[0] === o.id ? 'デッキA' : pick[1] === o.id ? 'デッキB' : undefined}
       onClick={() => choose(o.id)}

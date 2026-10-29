@@ -14,6 +14,13 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "shared": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && $id.beginsWith(auth.uid + '_') && (!newData.exists() || newData.child('uid').val() === auth.uid)",
+        "deck": { ".validate": "newData.hasChildren(['name', 'type'])" }
+      }
+    },
     "rooms": {
       ".read": "auth != null",
       "$room": {

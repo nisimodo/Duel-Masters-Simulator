@@ -110,9 +110,9 @@ export default function DeckEditor() {
   };
 
   const save = async () => {
-    const newId = await saveDeck(user.uid, deck);
+    const newId = await saveDeck(user.uid, deck, user.name);
     setDirty(false);
-    setMsg({ text: '保存しました', warn: issues.length ? issues : undefined });
+    setMsg({ text: deck.shared ? '保存しました (みんなのデッキにも最新の内容を投稿しました)' : '保存しました', warn: issues.length ? issues : undefined });
     if (id === 'new') nav(`/decks/${newId}`, { replace: true });
     else setDeck({ ...deck, id: newId });
   };
@@ -304,6 +304,13 @@ export default function DeckEditor() {
                 超次元 {countOf(deck.hyper)}/8 ・ GR {countOf(deck.gr)}/12
               </span>
             )}
+          </div>
+          <div className="row small">
+            <label className="switch" title="オンにして保存すると、デッキ一覧の「みんなのデッキ」に載り、ほかの人がインポートできます">
+              <input type="checkbox" role="switch" checked={!!deck.shared} onChange={(e) => update((d) => (d.shared = e.target.checked))} />
+              みんなに投稿する
+            </label>
+            <span className="muted">{deck.shared ? '保存すると最新の内容が投稿されます' : 'オフにして保存すると投稿を取り下げます'}</span>
           </div>
           <div className="row">
             <button className="primary" onClick={save}>
