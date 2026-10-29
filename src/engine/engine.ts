@@ -2619,6 +2619,11 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
       return `タップしていない自分のクリーチャーを${d.n}体選んでください`;
     return d.cost;
   }
+  if (a.alt === 'altSummon') {
+    const d = statics.find((x) => x.s === 'altSummon');
+    if (!d || d.s !== 'altSummon' || c.zone !== 'hand') return 'この召喚方法は使えません';
+    return d.cost;
+  }
   if (a.alt === 'vivid') {
     const d = statics.find((x) => x.s === 'vivid');
     if (!d || d.s !== 'vivid' || c.vividTurn !== s.turn || c.zone !== 'hand') return 'ビビッドローは使えません';
@@ -2899,6 +2904,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
     if (nsGrants?.length && c.zone === 'battle') (c.grants ??= []).push({ kws: nsGrants, until: -1 });
     if (a.alt === 'joe' || a.alt === 'bad') c.endOfTurn = a.alt;
+    // 「[ww03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、〜」
+    const alt = a.alt === 'altSummon' ? (face.statics ?? []).find((x) => x.s === 'altSummon') : undefined;
+    if (alt && alt.s === 'altSummon' && alt.then && c.zone === 'battle') {
+      const fi2 = card.faces.indexOf(face);
+      s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi2, event: 'enter', text: `このクリーチャーが出た時、${alt.then}`, effect: alt.then, optional: /てもよい。?$/.test(alt.then), auto: false });
+    }
     s.players[p].lastPlay = { turn: s.turn, kind: 'creature' };
     if (a.alt === 'abyss') {
       c.endOfTurn = 'abyss';

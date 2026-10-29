@@ -287,6 +287,7 @@ const db = buildDB(
     { id: 'waterBig', n: 'waterBig', img: '', f: [{ n: 'waterBig', t: 'クリーチャー', c: 'W', co: 9, p: '9000', r: ['テスト'], x: [] }] },
     { id: 'fate', n: 'fate', img: '', f: [{ n: 'fate', t: '呪文', c: 'LWD', co: 6, p: null, r: [], x: ['カードを２枚引く。', 'このカードを自分の手札からマナゾーンに置いた時、自分の手札にあるロスト・クルセイダー・カードを１枚、表向きにしてもよい。そうしたら、このカードをアンタップする。'] }] },
     { id: 'lost', n: 'lost', img: '', f: [{ n: 'lost', t: 'クリーチャー', c: 'W', co: 1, p: '1000', r: ['ロスト・クルセイダー'], x: [] }] },
+    { id: 'fuka', n: 'fuka', img: '', f: [{ n: 'fuka', t: 'クリーチャー', c: 'F', co: 6, p: '8000', r: ['ロスト・クルセイダー'], x: ['このクリーチャーを[ff03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、自分のクリーチャーを１体手札に戻す。', 'W・ブレイカー'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2609,6 +2610,17 @@ describe('named mechanics', () => {
       };
       expect(charge(true)).toBe(false);
       expect(charge(false)).toBe(true);
+    });
+    it('水蜃 フカフチノカミ: [3]支払って召喚した時だけ、自分のクリーチャーを手札に戻す', () => {
+      const summon = (alt: boolean) => {
+        let s = setup([{ p: 0, cid: 'fuka', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }], 6);
+        const f = find(s, 0, 'hand', 'fuka')!;
+        s = act(s, 0, alt ? { t: 'play', iid: f, face: 0, pay: freeMana(s, 0, 3), alt: 'altSummon' } : { t: 'play', iid: f, face: 0, pay: freeMana(s, 0, 6) });
+        const asked = s.pending.some((x) => (x.kind === 'ability' && /手札に戻す/.test(x.effect)) || (x.kind === 'choice' && /手札に戻す|選ぶ/.test(x.prompt)));
+        return { asked, mana: s.players[0].mana.filter((m) => !s.cards[m].tapped).length };
+      };
+      expect(summon(true)).toEqual({ asked: true, mana: 3 });
+      expect(summon(false)).toEqual({ asked: false, mana: 0 });
     });
     it('ワダエビノミコト: 相手は各ターン2体までしか出せない', () => {
       const s = setup([{ p: 1, cid: 'wadaebi', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);

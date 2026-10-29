@@ -468,7 +468,7 @@ export type Action =
       /** G・ゼロでコストを支払わずに召喚 */
       gzero?: boolean;
       /** 別の出し方 (J・O・E / B・A・D / マナ爆誕 / キリフダッシュ) */
-      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast' | 'vivid';
+      alt?: 'joe' | 'bad' | 'mana' | 'kirifu' | 'mugen' | 'galaxy' | 'fushigi' | 'abyss' | 'tapCast' | 'vivid' | 'altSummon';
       /** 召喚する時に捨てる手札 (手札を捨ててコストを少なくする) */
       discards?: number[];
       /** バズレンダで追加で支払う回数 */

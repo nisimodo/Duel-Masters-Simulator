@@ -69,11 +69,13 @@ export function PayDialog({
   const fromGrave = s.cards[iid].zone === 'grave';
   const graveAlts = fromGrave ? ([mugen && 'mugen', fushigi && 'fushigi', statics.some((x) => x.s === 'abyss') && 'abyss'].filter(Boolean) as ('mugen' | 'fushigi' | 'abyss')[]) : [];
   const inGrave = fromGrave && !!mugen;
-  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'tapCast' | 'vivid' | undefined>(inMana ? 'mana' : graveAlts[0]);
+  const [alt, setAlt] = useState<'joe' | 'bad' | 'mana' | 'mugen' | 'fushigi' | 'abyss' | 'galaxy' | 'tapCast' | 'vivid' | 'altSummon' | undefined>(inMana ? 'mana' : graveAlts[0]);
   const isAura = /オーラ/.test(f.type);
   const tapCast = statics.find((x) => x.s === 'tapCast');
   const vivid = statics.find((x) => x.s === 'vivid');
   const vividOk = !!vivid && s.cards[iid].vividTurn === s.turn && s.cards[iid].zone === 'hand';
+  const altSum = statics.find((x) => x.s === 'altSummon');
+  const altSumOk = !!altSum && s.cards[iid].zone === 'hand';
   const buzz = statics.find((x) => x.s === 'buzz');
   const odrive = statics.find((x) => x.s === 'odrive');
   const dd = statics.find((x) => x.s === 'discardDiscount');
@@ -184,6 +186,20 @@ export function PayDialog({
             </label>
           ))}
         </div>
+      )}
+      {altSumOk && altSum && altSum.s === 'altSummon' && (
+        <label className="small">
+          <input
+            type="checkbox"
+            checked={alt === 'altSummon'}
+            onChange={(e) => {
+              const v = e.target.checked ? 'altSummon' : undefined;
+              setAlt(v);
+              refreshPay({ sasa, he, gzero, alt: v, taps });
+            }}
+          />{' '}
+          コスト{altSum.cost}で召喚{altSum.then ? ` (出た時: ${altSum.then.replace(/。$/, '')})` : ''}
+        </label>
       )}
       {vividOk && vivid && vivid.s === 'vivid' && (
         <label className="small">

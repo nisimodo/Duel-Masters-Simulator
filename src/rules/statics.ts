@@ -281,6 +281,8 @@ export type StaticSpec =
   | { s: 'buzz'; n: number }
   /** ビビッドロー: 自分のターン中、攻撃の前にドローした時に表向きにすれば、このターンコストNで召喚できる */
   | { s: 'vivid'; cost: number }
+  /** 水蜃 フカフチノカミ 「このクリーチャーを[ww03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、〜」: then はそうした時の効果 */
+  | { s: 'altSummon'; cost: number; then?: string }
   /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
   | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel; /** 進化元を選べるゾーン (なければバトルゾーン) */ zones?: ('battle' | 'grave' | 'mana')[]; /** 各ゾーンから1体ずつ (進化GV・Ω) */ oneEach?: boolean }
   /** 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」 */
@@ -691,6 +693,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if ((m = full.replace(/\s+/g, '').match(/^バズレンダ\[[a-z]*(\d+)\]/))) return [{ s: 'buzz', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ビビッドロー\[[a-z]*(\d+)\]/))) return [{ s: 'vivid', cost: +m[1] }];
+  if ((m = t0.match(/^このクリーチャーを\[[a-z]*(\d+)\]支払って召喚してもよい(?:。そうしたら、このクリーチャーが(?:バトルゾーンに)?出た時、(.+))?$/))) return [{ s: 'altSummon', cost: +m[1], then: m[2] }];
   if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'oppMustBlock' }];
   if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
