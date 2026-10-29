@@ -246,7 +246,9 @@ export function loadCardDB(): Promise<CardDB> {
 }
 
 async function fetchJSON<T>(name: string): Promise<T> {
-  const res = await fetch(`${import.meta.env.BASE_URL}data/${name}`);
+  // 更新を公開した直後でも新しいデータを使うように、毎回サーバーに更新があるか確かめる
+  // (変わっていなければブラウザに保存してあるものを使うので、ダウンロードし直しにはならない)
+  const res = await fetch(`${import.meta.env.BASE_URL}data/${name}`, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`${name} の読み込みに失敗しました`);
   return res.json();
 }
