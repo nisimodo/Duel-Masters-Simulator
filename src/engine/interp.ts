@@ -997,6 +997,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'keep':
         ex.kept = ex.it.filter((i) => s.cards[i].zone === 'battle');
         break;
+      case 'ekLeave':
+        if (s.cards[op.iid]?.zone === 'battle') moveCard(s, L, op.iid, op.to, { pos: op.pos, noEK: true });
+        break;
+      case 'ekLose':
+        s.players[ex.player].ekPending = false;
+        if (!ex.did) lose(s, ex.player, op.reason, true);
+        break;
       case 'itRest':
         ex.it = ex.looked.filter((i) => !ex.it.includes(i) && s.cards[i].zone !== 'gone');
         break;

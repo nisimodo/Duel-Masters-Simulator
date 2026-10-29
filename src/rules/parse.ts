@@ -3238,13 +3238,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana', 'shield'] });
     const ops = sel && verbOps(m[4], { ref: 'it' });
     if (sel && ops)
-      return [{ op: 'choose', target: { ref: 'looked', sel, count: count(m[2], m[3]) }, purpose: 'benefit', prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
+      return [{ op: 'choose', target: { ref: 'looked', sel, count: count(m[2], m[3]) }, purpose: 'benefit', prompt: `${m[1]}を${m[2]}${/呪文|カード|手札|シールド/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
   }
   if ((m = s.match(new RegExp(`^(?:その中から|そのうち)、?(.+?)を${N}(?:体|枚)(まで)?、?(?:選び、?|選んで)?(.+)$`)))) {
     const sel = parseSel(m[1], { zones: ['deck', 'hand', 'grave', 'mana', 'shield'] });
     const ops = sel && verbOps(m[4], { ref: 'it' });
     if (sel && ops)
-      return [{ op: 'choose', target: { ref: 'looked', sel, count: count(m[2], m[3]) }, purpose: 'benefit', prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
+      return [{ op: 'choose', target: { ref: 'looked', sel, count: count(m[2], m[3]) }, purpose: 'benefit', prompt: `${m[1]}を${m[2]}${/呪文|カード|手札|シールド/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
   }
   if ((m = s.match(new RegExp(`^(?:その中から|そのうち)、?${N}(?:体|枚)(まで)?(?:選び、?|選んで)(.+)$`)))) {
     const ops = verbOps(m[3], { ref: 'it' });
@@ -3417,7 +3417,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = selTarget(m[1], m[2], m[3], false, 'self');
     if (t && t.ref === 'sel') {
       const ops = verbOps(m[4], { ref: 'it' }) ?? sentence(m[4], ctx);
-      if (ops) return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, m[4]), prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
+      if (ops) return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, m[4]), prompt: `${m[1]}を${m[2]}${/呪文|カード|手札|シールド/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
     }
   }
   // 「SELをN体選ぶ」
@@ -3453,7 +3453,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((m = s.match(new RegExp(`^(.+?)を${N}${COUNT_UNIT}(まで)?、?(.+)$`)))) {
     const t = selTarget(m[1], m[2], m[3], false, 'self');
     const ops = t && verbOps(m[4], { ref: 'it' });
-    if (t && ops && t.ref === 'sel') return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, m[4]), prompt: `${m[1]}を${m[2]}${/呪文|カード/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
+    if (t && ops && t.ref === 'sel') return [{ op: 'choose', target: t, purpose: purposeOf(t.sel, m[4]), prompt: `${m[1]}を${m[2]}${/呪文|カード|手札|シールド/.test(m[1]) ? '枚' : '体'}${m[3] ? 'まで' : ''}選ぶ` }, ...ops];
   }
   // 「こうして捨てたカード1枚につき、〜」: 直前のカードの数だけくり返す
   if ((m = s.match(/^(?:こうして|このようにして)(?:相手が)?(?:捨てた|墓地に置いた|破壊した|手札に戻した|手札に加えた|マナゾーンに置いた|見せた|アンタップした|タップした|選んだ)(.+?)1(?:体|枚|つ)につき、?(.+)$/))) {

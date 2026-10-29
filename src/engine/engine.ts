@@ -1,5 +1,6 @@
 // デュエル・マスターズ ルールエンジン (決定的: 同じ初期状態とアクション列からは必ず同じ状態になる)
 // キーワード能力とゲームの進行は自動、カード固有の効果は手動操作アクションで処理する。
+import type { Op } from '../rules/ops';
 import { CIV_NAME, type Card, type Civ, type Face } from '../lib/cards';
 import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
@@ -314,7 +315,7 @@ export function moveCard(
   L: Lookup,
   iid: number,
   to: ZoneName,
-  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean; revChange?: boolean; free?: boolean } = {},
+  opts: { pos?: 'top' | 'bottom'; tapped?: boolean; faceUp?: boolean; face?: number; silent?: boolean; noReplace?: boolean; summoned?: boolean; revChange?: boolean; free?: boolean; /** クリスターナル・Κ を使わないと決めた */ noEK?: boolean } = {},
 ): ZoneName {
   const c = s.cards[iid];
   const card = L(c.cid);
@@ -472,7 +473,13 @@ export function moveCard(
     const ek = own.find((x) => x.s === 'eternalK');
     if (ek && ek.s === 'eternalK') {
       const down = s.players[c.owner].mana.filter((m) => s.cards[m].manaDown);
-      if (down.length >= ek.n) {
+      // 人のプレイヤーは、とどまるか・どの裏向きのマナを表向きにするかを選ぶ (選ぶまではバトルゾーンに残す)
+      if (down.length >= ek.n && !s.players[c.owner].cpu && !opts.noEK && (to === 'hand' || to === 'mana' || to === 'grave' || to === 'deck' || to === 'shield')) {
+        const nm = card!.faces[c.face].name;
+        startExec(s, L, c.owner, iid, ekOps(`${q(nm)} をとどまらせる`, ek.n, [{ op: 'ekLeave', iid, to, pos: opts.pos }]), nm);
+        return 'battle';
+      }
+      if (down.length >= ek.n && !opts.noEK) {
         for (const m of down.slice(0, ek.n)) s.cards[m].manaDown = false;
         log(s, c.owner, `エターナル・Κ: 裏向きのマナを${ek.n}枚表向きにして、${q(card!.faces[c.face].name)} はとどまる`);
         return 'battle';
@@ -1166,6 +1173,21 @@ export function freeFromHandOk(s: GameState, L: Lookup, p: number, iid: number):
   return activeStatics(s, L).some((x) => x.owner === p && x.spec.s === 'freeFromHand' && s.players[p].hand.length >= x.spec.handMin && (!x.spec.civ || civs.includes(x.spec.civ)));
 }
 
+/** クリスターナル・Κ: 「裏向きのマナをN枚表向きにしてもよい」を選ぶ効果 (使わなかった時は after) */
+function ekOps(name: string, n: number, after: Op[]): Op[] {
+  return [
+    {
+      op: 'optional',
+      prompt: `クリスターナル・Κ: 裏向きのマナを${n}枚表向きにして、${name}`,
+      body: [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, count: { n, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `表向きにする裏向きのマナを${n}枚選ぶ` },
+        { op: 'faceUp', target: { ref: 'it' } },
+      ],
+    },
+    { op: 'if', cond: { c: 'did' }, body: [], else: after },
+  ];
+}
+
 /** 各ターンに出せる・唱えられる数の上限 (いちばん小さいもの) */
 function capOf(s: GameState, L: Lookup, kind: 'enterCap' | 'spellCap'): number | undefined {
   const ns = activeStatics(s, L).flatMap((x) => (x.spec.s === kind ? [x.spec.n] : []));
@@ -1681,7 +1703,7 @@ function settle(s: GameState, L: Lookup) {
   checkState(s, L);
 }
 
-export function lose(s: GameState, p: number, reason: string) {
+export function lose(s: GameState, p: number, reason: string, noEK = false) {
   const pl = s.players[p];
   if (pl.lost || s.phase === 'over') return;
   if (pl.noLose && (pl.noLose.turn === s.turn || pl.noLose.until != null)) {
@@ -1692,10 +1714,18 @@ export function lose(s: GameState, p: number, reason: string) {
   if (vividLookup) {
     const L = vividLookup;
     // クリスターナル・Κ: ゲームに負ける時、かわりに自分のマナゾーンにある裏向きのカードを3枚表向きにしてもよい
-    for (const b of pl.battle) {
+    for (const b of noEK ? [] : pl.battle) {
       const ek = (faceOf(s, L, b)?.statics ?? []).find((x) => x.s === 'eternalK' && x.onLose);
       const down = pl.mana.filter((m) => s.cards[m].manaDown);
       if (!ek || ek.s !== 'eternalK' || down.length < ek.n) continue;
+      // 人のプレイヤーは、使うか・どのマナを表向きにするかを選ぶ (選んでいる間は負けない)
+      if (!pl.cpu) {
+        if (!pl.ekPending) {
+          pl.ekPending = true;
+          startExec(s, L, p, b, [...ekOps(`ゲームに負けない (${reason})`, ek.n, []), { op: 'ekLose', reason }], nameOf(s, L, b));
+        }
+        return;
+      }
       for (const m of down.slice(0, ek.n)) s.cards[m].manaDown = false;
       log(s, p, `${q(nameOf(s, L, b))}: クリスターナル・Κ で裏向きのマナを${ek.n}枚表向きにして、ゲームに負けない (${reason})`);
       return;

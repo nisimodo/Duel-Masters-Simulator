@@ -288,6 +288,8 @@ const db = buildDB(
     { id: 'fate', n: 'fate', img: '', f: [{ n: 'fate', t: '呪文', c: 'LWD', co: 6, p: null, r: [], x: ['カードを２枚引く。', 'このカードを自分の手札からマナゾーンに置いた時、自分の手札にあるロスト・クルセイダー・カードを１枚、表向きにしてもよい。そうしたら、このカードをアンタップする。'] }] },
     { id: 'lost', n: 'lost', img: '', f: [{ n: 'lost', t: 'クリーチャー', c: 'W', co: 1, p: '1000', r: ['ロスト・クルセイダー'], x: [] }] },
     { id: 'fuka', n: 'fuka', img: '', f: [{ n: 'fuka', t: 'クリーチャー', c: 'F', co: 6, p: '8000', r: ['ロスト・クルセイダー'], x: ['このクリーチャーを[ff03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、自分のクリーチャーを１体手札に戻す。', 'W・ブレイカー'] }] },
+    cr('shibire', 1, 1000, ['このクリーチャーが出た時、自分の手札を１枚マナゾーンに置いてもよい。']),
+    cr('kingShibire', 1, 1000, ['このクリーチャーが出た時、自分の手札を好きな数、タップしてマナゾーンに置いてもよい。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -1299,13 +1301,24 @@ describe('named mechanics', () => {
       { p: 0, cid: 'crystal', zone: 'hand' },
     ], 4);
     const mana = s.players[0].mana;
-    for (const m of mana.slice(0, 3)) s.cards[m].manaDown = true;
+    for (const m of mana.slice(0, 4)) s.cards[m].manaDown = true;
     const ek = find(s, 0, 'battle', 'ek')!;
+    // 断ると墓地へ
+    let s2 = act(s, 0, { t: 'move', iid: ek, to: 'grave' });
+    expect(s2.pending[0]?.kind === 'choice' && s2.pending[0].mode).toBe('yesno');
+    s2 = act(s2, 0, { t: 'choose', yes: false });
+    expect(s2.cards[ek].zone).toBe('grave');
+    expect(mana.slice(0, 4).every((m) => s2.cards[m].manaDown)).toBe(true);
+    // とどまる: 4枚の裏向きのマナから、表向きにする3枚を自分で選ぶ
     s = act(s, 0, { t: 'move', iid: ek, to: 'grave' });
+    s = act(s, 0, { t: 'choose', yes: true });
+    const top = s.pending[0];
+    expect(top?.kind === 'choice' && [...top.options].sort()).toEqual([...mana.slice(0, 4)].sort());
+    s = act(s, 0, { t: 'choose', picks: mana.slice(1, 4) });
     expect(s.cards[ek].zone).toBe('battle');
-    expect(mana.every((m) => !s.cards[m].manaDown)).toBe(true);
+    expect(mana.slice(1, 4).every((m) => !s.cards[m].manaDown)).toBe(true);
     // 水晶ソウル: 裏向き1枚(3) + 表向き3枚 = 6
-    s.cards[mana[0]].manaDown = true;
+    expect(s.cards[mana[0]].manaDown).toBe(true);
     s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'crystal')!, face: 0, pay: mana.slice(0, 4) });
     expect(find(s, 0, 'battle', 'crystal')).toBeDefined();
   });
@@ -2426,11 +2439,23 @@ describe('named mechanics', () => {
       expect(attackTargets(s, L, find(s, 0, 'battle', 'flyer')!).cards).toContain(foe);
     });
     it('クリスターナル・Κ: 負ける時、裏向きのマナを3枚表向きにして負けない', () => {
-      const s = setup([{ p: 0, cid: 'crisK', zone: 'battle' }], 3);
+      let s = setup([{ p: 0, cid: 'crisK', zone: 'battle' }], 4);
       for (const m of s.players[0].mana) s.cards[m].manaDown = true;
+      // 断れば負ける
+      let s2 = structuredClone(s);
+      lose(s2, 0, 'テスト');
+      expect(s2.players[0].lost).toBeFalsy();
+      s2 = act(s2, 0, { t: 'choose', yes: false });
+      expect(s2.players[0].lost).toBe(true);
+      // 使う: 4枚の裏向きのマナから3枚を選ぶ
       lose(s, 0, 'テスト');
+      s = act(s, 0, { t: 'choose', yes: true });
+      const pick = s.players[0].mana.slice(1, 4);
+      s = act(s, 0, { t: 'choose', picks: pick });
       expect(s.players[0].lost).toBeFalsy();
-      expect(s.players[0].mana.filter((m) => s.cards[m].manaDown)).toHaveLength(0);
+      expect(pick.every((m) => !s.cards[m].manaDown)).toBe(true);
+      expect(s.cards[s.players[0].mana[0]].manaDown).toBe(true);
+      // 裏向きが3枚未満なら使えない
       lose(s, 0, 'テスト');
       expect(s.players[0].lost).toBe(true);
     });
@@ -2637,6 +2662,36 @@ describe('named mechanics', () => {
       // 2回目は使えない
       const v = s.players[0].hand.find((i) => s.cards[i].cid === 'vanilla')!;
       expect(applyAction(s, 0, { t: 'play', iid: v, face: 0, pay: [], gzero: true }, L).error).toBeTruthy();
+    });
+  });
+
+  describe('シビレアシダケ', () => {
+    const summon = (cid: string, answer: (s: GameState) => Action[]) => {
+      let s = setup([{ p: 0, cid, zone: 'hand' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', cid)!, face: 0, pay: freeMana(s, 0, 1) });
+      for (const a of answer(s)) s = act(s, 0, a);
+      for (let k = 0; k < 5 && s.pending[0]?.kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
+      return s;
+    };
+    it('シビレアシダケ: 使わないこともでき、使えば選んだ手札1枚をマナへ', () => {
+      let s = summon('shibire', () => [{ t: 'choose', yes: false }]);
+      expect(s.pending).toHaveLength(0);
+      expect(s.players[0].mana).toHaveLength(3);
+      let pick = -1;
+      s = summon('shibire', (st) => {
+        pick = st.players[0].hand[2];
+        return [{ t: 'choose', yes: true }];
+      });
+      s = act(s, 0, { t: 'choose', picks: [pick] });
+      expect(s.cards[pick].zone).toBe('mana');
+      expect(s.players[0].mana).toHaveLength(4);
+    });
+    it('キング・シビレアシダケ: 選んだ好きな数の手札をタップしてマナへ', () => {
+      let s = summon('kingShibire', () => [{ t: 'choose', yes: true }]);
+      const picks = s.players[0].hand.slice(0, 3);
+      s = act(s, 0, { t: 'choose', picks });
+      expect(picks.every((i) => s.cards[i].zone === 'mana' && s.cards[i].tapped)).toBe(true);
+      expect(s.players[0].mana).toHaveLength(6);
     });
   });
 

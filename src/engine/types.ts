@@ -206,6 +206,8 @@ export interface PlayerState {
   dLock?: { until: number };
   /** 「次の相手のターン中、相手はパワーN以下のクリーチャーを出せない」 */
   enterPowerLock?: { until: number; max: number };
+  /** クリスターナル・Κ で負けないかを選んでいる */
+  ekPending?: boolean;
   /** アルケミック・プラチナムで手札からコストを支払わずに実行したターン */
   freeHandTurn?: number;
   /** このターンに攻撃されたか (自分または自分のクリーチャー) */
