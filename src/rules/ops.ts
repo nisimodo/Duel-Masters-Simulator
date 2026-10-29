@@ -146,6 +146,8 @@ export type Cond =
   | { c: 'selfTapped' }
   /** このクリーチャーがこのターンに攻撃した */
   | { c: 'selfAttacked' }
+  /** このクリーチャーがこのターンにシールドをブレイクした */
+  | { c: 'selfBroke' }
   /** 自分と相手のシールドの数の合計がN以下 */
   | { c: 'totalShieldsLE'; n: number }
   /** 相手の (手札/マナ/シールド) が自分より多い */
@@ -350,7 +352,7 @@ export type Op =
   /** Dの悪意 ワルスラー研究所: 自分のクリーチャー1体につき、同じコストのクリーチャーを1体手札から出す */
   | { op: 'sameCostFromHand' }
   /** 自分の山札の上からN枚を、このカード (シールド・クリーチャー) の下に裏向きで置く */
-  | { op: 'topUnderSelf'; n: number }
+  | { op: 'topUnderSelf'; n: number; /** このカードではなく、直前にシールド化したカード (「そのシールドの上に」) */ onLooked?: boolean }
   /** マナゾーンのカードを裏向き/表向きにする */
   | { op: 'faceDown' | 'faceUp'; target: Target }
   /** タップしていればアンタップ、していなければタップ */

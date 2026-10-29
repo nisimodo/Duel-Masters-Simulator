@@ -269,6 +269,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       return opps(s, ex.player).some((o) => s.players[o].freePlayTurn === s.turn);
     case 'itFreeEntered':
       return !!s.cards[ex.it[0] ?? -1]?.enteredFree;
+    case 'selfBroke':
+      return (s.brokeThisTurn ?? []).includes(ex.src);
     case 'selfAttacked':
       return s.cards[ex.src]?.attackedTurn === s.turn;
     case 'itAttacked':
@@ -1175,19 +1177,20 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         continue;
       }
       case 'topUnderSelf': {
-        const self = s.cards[ex.src];
-        if (!self || (self.zone !== 'battle' && self.zone !== 'shield')) break;
+        const holder = op.onLooked ? ex.looked[0] : ex.src;
+        const self = holder != null ? s.cards[holder] : undefined;
+        if (!self || holder == null || (self.zone !== 'battle' && self.zone !== 'shield')) break;
         const deck = s.players[ex.player].deck;
         let n = 0;
         for (; n < op.n && deck.length; n++) {
           const u = deck.pop()!;
           const uc = s.cards[u];
           uc.zone = 'under';
-          uc.parent = ex.src;
+          uc.parent = holder;
           uc.faceUp = false;
           self.under.push(u);
         }
-        log(s, ex.player, `山札の上から${n}枚を ${q(nameOf(s, L, ex.src))} の下に置いた`);
+        log(s, ex.player, op.onLooked ? `山札の上から${n}枚をそのシールドに重ねた` : `山札の上から${n}枚を ${q(nameOf(s, L, holder))} の下に置いた`);
         break;
       }
       case 'stackUnder': {

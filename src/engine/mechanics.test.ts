@@ -250,6 +250,11 @@ const db = buildDB(
     { id: 'wasp', n: 'wasp', img: '', f: [{ n: 'wasp', t: 'クリーチャー', c: 'N', co: 1, p: '7000', r: ['アンノウン'], x: ['水晶武装４：自分のマナゾーンに裏向きのカードが４枚以上あれば、相手のクリーチャーの「このクリーチャーが出た時」で始まる能力がトリガーする時、かわりにトリガーしない。'] }] },
     { id: 'flyKing', n: 'flyKing', img: '', f: [{ n: 'flyKing', t: 'クリーチャー', c: '', co: 1, p: '30000', r: ['ゼニス・セレス'], x: ['このクリーチャーが出た時、各プレイヤーは自身の手札をすべて裏向きでマナゾーンに置く。', '相手は、自分のマナゾーンにある裏向きのカードの枚数よりコストが小さい呪文を唱えられない。'] }] },
     { id: 'shangri', n: 'shangri', img: '', f: [{ n: 'shangri', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札の上から１枚目を裏向きのまま、タップしてマナゾーンに置く。', '水晶武装２：自分のマナゾーンに裏向きのカードが２枚以上あれば、自分の山札の上から１枚目を裏向きのままマナゾーンに置く。'] }] },
+    { id: 'dachikko', n: 'dachikko', img: '', f: [{ n: 'dachikko', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターン次に召喚する自分のビートジョッキーのコストを最大３少なくしてもよい。ただし、コストは０以下にならない。'] }] },
+    { id: 'bj4', n: 'bj4', img: '', f: [{ n: 'bj4', t: 'クリーチャー', c: 'F', co: 4, p: '4000', r: ['ビートジョッキー'], x: [] }] },
+    { id: 'wisdom', n: 'wisdom', img: '', f: [{ n: 'wisdom', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から１枚目をシールド化してもよい。そうしたら、自分の山札の上から１枚目をそのシールドの上に裏向きで置く。（そのシールドの束は１つと数える）'] }] },
+    { id: 'saint', n: 'saint', img: '', f: [{ n: 'saint', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、表向きのまま新しいシールドとして持ち主のシールドゾーンに置く。'] }] },
+    cr('poreco', 1, 9000, ['自分のターンの終わりに、このターン、このクリーチャーがシールドをブレイクしていたら、このクリーチャーを手札に戻す。']),
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2260,6 +2265,47 @@ describe('named mechanics', () => {
       expect(added).toHaveLength(2);
       expect(added.every((m) => s.cards[m].manaDown)).toBe(true);
       expect(s.cards[added[0]].tapped).toBe(true);
+    });
+  });
+
+  describe('プリセット側の未対応だった効果', () => {
+    const run = (s: GameState) => {
+      for (let k = 0; k < 8 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.slice(0, Math.max(1, top.min)) }) : { t: 'resolve', use: true });
+      }
+      return s;
+    };
+    it('ダチッコ・チュリス: 次に召喚するビートジョッキーのコストを3少なく', () => {
+      let s = setup([{ p: 0, cid: 'dachikko', zone: 'hand' }, { p: 0, cid: 'bj4', zone: 'hand' }], 3);
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'dachikko')!, face: 0, pay: [] }));
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'bj4')!, face: 0, pay: freeMana(s, 0, 1) });
+      expect(find(s, 0, 'battle', 'bj4')).toBeDefined();
+    });
+    it('ホワイト・ウィズダム: シールド化したシールドの上にもう1枚重ねる (束は1つ)', () => {
+      let s = setup([{ p: 0, cid: 'wisdom', zone: 'hand' }]);
+      const n = s.players[0].shield.length;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'wisdom')!, face: 0, pay: [] }));
+      expect(s.players[0].shield.length).toBe(n + 1);
+      expect(s.cards[s.players[0].shield.at(-1)!].under).toHaveLength(1);
+    });
+    it('セイント・カイザー: 相手のクリーチャーを表向きのまま新しいシールドに', () => {
+      let s = setup([{ p: 0, cid: 'saint', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'saint')!, face: 0, pay: [] }));
+      expect(s.cards[v].zone).toBe('shield');
+      expect(s.cards[v].faceUp).toBe(true);
+    });
+    it('ポレコ: シールドをブレイクしたターンの終わりに手札に戻る', () => {
+      let s = setup([{ p: 0, cid: 'poreco', zone: 'battle' }]);
+      const pc = find(s, 0, 'battle', 'poreco')!;
+      s = act(s, 0, { t: 'attack', attacker: pc, player: 1 });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'block' ? ({ t: 'block', blocker: null } as Action) : top.kind === 'breakSel' ? ({ t: 'breakSel', shields: s.players[1].shield.slice(0, top.count) } as Action) : top.kind === 'trigger' ? { t: 'trigger', use: false } : { t: 'resolve', use: true });
+      }
+      s = run(act(s, 0, { t: 'endTurn' }));
+      expect(s.cards[pc].zone).toBe('hand');
     });
   });
 

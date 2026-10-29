@@ -90,6 +90,7 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(自身の|持ち主の)山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
   if (m(/^(自分の)?山札に加えてシャッフルする$/)) return [{ op: 'move', target, to: 'deckTop' }, { op: 'shuffle' }];
   if (m(/^新しいシールドとして(自分の|持ち主の)?シールドゾーンに表向きのまま(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
+  if (m(/^表向きのまま、?新しいシールドとして(自分の|持ち主の)?シールドゾーンに(加える|置く)$/)) return [{ op: 'move', target, to: 'shieldUp' }];
   if (m(/^(持ち主の|自分の)?墓地に(置く|送る)$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^(持ち主の|自分の)?山札の(一番)?下に(置く|戻す)$/)) return [{ op: 'move', target, to: 'deckBottom' }];
   if (m(/^(持ち主の|自分の)?山札の(一番)?上に(置く|戻す)$/)) return [{ op: 'move', target, to: 'deckTop' }];
@@ -456,6 +457,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // ダチッコ・チュリス 「このターン次に召喚する自分のビートジョッキーのコストを最大3少なくする」
+    .replace(/^このターン次に/, 'このターン、次に')
     // 水晶武装N: 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」(名前のついた条件)
     .replace(/^水晶武装\d+[:：]/, '')
     // 黙示録の水晶 「相手は、自身のコスト5以下の無色ではないエレメントをすべて、好きな順序で山札の下に置く」
@@ -1535,6 +1538,14 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', notCreature: true, costMax: +mm[1], civInMana: true }, count: { n: +mm[2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'コストを支払わずに実行するカードを選ぶ' },
       { op: 'play', target: { ref: 'it' }, mode: 'use' },
     ];
+  // 白騎士の精霊ホワイト・ウィズダム 「(シールド化した) そのシールドの上に、自分の山札の上から1枚目を裏向きで置く」(シールドの束は1つと数える)
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚(?:目)?を、?そのシールドの上に裏向き(?:で|のまま)置く$/))) return [{ op: 'topUnderSelf', n: +mm[1], onLooked: true }];
+  // 冒険妖精ポレコ 「このターン、このクリーチャーがシールドをブレイクしていたら、〜」
+  {
+    const pb = s.match(/^(?:この|その)ターン、?このクリーチャーがシールドをブレイクしてい(?:たら|れば)、(.+)$/);
+    const body = pb && sentence(pb[1], ctx);
+    if (pb && body) return [{ op: 'if', cond: { c: 'selfBroke' }, body }];
+  }
   // 神羅の銀月 ザ・ラムーン 「自分の山札の上から2枚を裏向きでこのシールドの下に置く」
   if ((mm = s.match(/^自分の山札の上から(\d+)枚を裏向き(?:で|のまま)、?この(?:シールド|クリーチャー)の下に置く$/))) return [{ op: 'topUnderSelf', n: +mm[1] }];
   // Dの寺院 タブラサ・チャンタラム 「(自分のマナゾーンにカードを置いた時、)それを裏向きにしてもよい」
