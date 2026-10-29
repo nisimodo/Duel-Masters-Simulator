@@ -81,6 +81,8 @@ function verbOps(verb: string, target: Target): Op[] | null {
   if (m(/^(持ち主の|自分の)?マナゾーンに(置く|加える)$/)) return [{ op: 'move', target, to: 'mana' }];
   if (m(/^タップして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^裏向きのまま(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^裏向きにして(持ち主の|自分の)?マナゾーンに置く$/)) return [{ op: 'move', target, to: 'manaDown' }];
+  if (m(/^(持ち主の|自分の)?マナゾーンにタップして置く$/)) return [{ op: 'move', target, to: 'manaTapped' }];
   if (m(/^(裏向きにして|裏向きのまま)、?(自分の)?シールド(ゾーン)?に(加える|置く)$/)) return [{ op: 'move', target, to: 'shield' }];
   if (m(/^(自分の)?手札から捨てる$/)) return [{ op: 'move', target, to: 'grave' }];
   if (m(/^相手の手札に戻す$/)) return [{ op: 'move', target, to: 'hand' }];
@@ -457,6 +459,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // 「全て」「アンノウン/ゼニス」
+    .replace(/全て/g, 'すべて')
+    .replace(/(アンノウン|ゼニス|オラクル)\/(アンノウン|ゼニス|オラクル)/g, '$1または$2')
+    // 偽神殺しのツラトゥストラ 「その相手のマナゾーンにあるカードが自分のより多ければ」
+    .replace(/^その相手のマナゾーンにあるカードが自分のより多ければ、/, '相手のマナゾーンのカードが自分のより多ければ、')
+    // 「敬虔なる警官」 「次の相手のターン中、相手は〜を召喚できない」
+    .replace(/^次の相手のターン中、相手は(?=コスト\d+以下のクリーチャーを召喚できない$)/, '次の相手のターン、相手は')
+    // 緑神龍バルガザルムス 「そのカードがドラゴンの場合、〜。ドラゴンでない場合、〜」
+    .replace(/^(?:そのカード|それ)が(.+?)の場合、/, 'そのカードが$1であれば、')
+    .replace(/^([^、。]{1,12})でない場合、/, 'それ以外なら、')
+    // 偽りの名 オレワレオ等 「次の自分のターンのはじめまで、自分はゲームに負けず、相手は勝てない」
+    .replace(/、相手は勝てない$/, '、相手はゲームに勝てない')
     // 偽りの名 ゾルゲ 「そうした場合、その2体はバトルする」
     .replace(/その(\d+)体はバトルする$/, 'その$1体をバトルさせる')
     // 真実の巨兵 サンダーバードRe: 「相手のクリーチャーを1体選び、相手の山札の一番上に置く」
@@ -1296,7 +1310,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   {
     if (/^このターン(?:中)?に一度、自分がゲームに負ける時、かわりに負けない$/.test(s)) return [{ op: 'noLose', until: 'turn' }];
-    const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手はゲームに勝てない$/);
+    const nl = s.match(/^(このターン|そのターン中|このターン中|次の自分のターンのはじめまで)、自分はゲームに負けず、相手は(?:ゲームに)?勝てない$/);
     if (nl) return [{ op: 'noLose', until: /次の/.test(nl[1]) ? 'nextOwnTurn' : 'turn' }];
     // ドギラゴン逆 「自分はゲームに負けず、相手のカードの効果によって、自分のクリーチャーは離れない」 (今いる自分のクリーチャーに「離れない」を与える)
     if (/^次の自分のターンのはじめまで、自分はゲームに負けず、相手のカードの効果によって、自分のクリーチャーは(?:バトルゾーンを)?離れない$/.test(s)) return [{ op: 'noLose', until: 'nextOwnTurn' }, { op: 'leaveGuard' }];
@@ -1472,7 +1486,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」
   {
     const dc = s.match(/^自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば、(.+)$/);
-    const body = dc && sentence(dc[2], ctx);
+    const dp = dc && parseEffect(dc[2]);
+    const body = dc && (sentence(dc[2], ctx) ?? (dp?.complete ? dp.ops : null));
     if (dc && body) return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, cmp: '>=', n: +dc[1] }, body }];
   }
   // 蠅の王 クリス=タブラ=ラーサ 「各プレイヤーは自身の手札をすべて裏向きでマナゾーンに置く」
@@ -1486,6 +1501,129 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         ],
       },
     ];
+  // ---- デュエパ (多人数) ----
+  // 「相手1人につき、(その相手の)〜」「各相手の〜を1つずつ」「各相手は〜」: 相手ごとに
+  {
+    const per = s.match(/^各相手の(.+?)を1(?:つ|体|枚)ずつ(.+)$/) ?? s.match(/^(?:相手(?:プレイヤー)?1人につき|各相手(?:プレイヤー)?(?:に|は)?)、?(?!の)(.+)$/);
+    if (per) {
+      const rest = per[2] != null ? `相手の${per[1]}を1つ${per[2]}`.replace(/を1つ選び/, 'を1つ選び') : per[1].replace(/^その相手の/, '相手の').replace(/^(?:それぞれ)?自身の/, '相手は自身の').replace(/^それぞれ、?/, '');
+      const body = sentence(/^各相手は/.test(s) ? rest.replace(/^(?!相手は)/, '相手は') : rest, ctx);
+      if (body) return [{ op: 'forEachOpp', body }];
+    }
+    const ea = s.match(/^各相手は、?(.+)$/);
+    const ebody = ea && sentence('相手は' + ea[1].replace(/^それぞれ、?/, ''), ctx);
+    if (ebody) return [{ op: 'forEachOpp', body: ebody }];
+    // ガルチェンソ・ドラゴン / スクランブル・チャージャー 「他の各相手のシールド(も)を1つずつブレイクする」
+    if (/^他の各相手のシールド(?:も|を)1つずつブレイクする$/.test(s)) return [{ op: 'forEachOpp', exceptAttacked: true, body: [{ op: 'breakShield', n: 1 }] }];
+    // 邪眼 レクセイ-1 「各相手の手札を1枚見ないで選び、捨てさせる」
+    if ((mm = s.match(/^各相手の手札を(\d+)枚見ないで選び、捨てさせる$/))) return [{ op: 'forEachOpp', body: [{ op: 'discard', who: 'opp', count: { n: +mm[1], upTo: false }, how: 'random' }] }];
+  }
+  // 天雷 アヴァ-1 「自分より手札が多い相手1人につき、カードを1枚引く」/ 記憶の霧消 「マナゾーンのカードが自分のより多い相手1人につき1枚、自分の山札の上から1枚目をタップしてマナゾーンに置く」
+  if ((mm = s.match(/^自分より手札が多い相手1人につき、カードを(\d+)枚引く$/)))
+    return [{ op: 'countSet', oppsMore: 'hand' }, { op: 'repeatCount', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  if (/^マナゾーンのカードが自分のより多い相手1人につき1枚、自分の山札の上から1枚目をタップしてマナゾーンに置く$/.test(s))
+    return [{ op: 'countSet', oppsMore: 'mana' }, { op: 'repeatCount', body: [{ op: 'top', n: 1, to: 'manaTapped', who: 'self' }] }];
+  // シダン教皇 バラモン 「相手の手札が自分のより多ければ、同じ枚数になるまでカードを引く」
+  if (/^相手の手札が自分のより多ければ、同じ枚数になるまでカードを引く$/.test(s)) return [{ op: 'drawToOppHand' }];
+  // サファイア・ペンダット 「(その後、)攻撃クリーチャーの持ち主はカードを1枚引く」
+  if ((mm = s.match(/^攻撃クリーチャーの持ち主はカードを(\d+)枚引く$/))) return [{ op: 'asPlayer', who: 'attackerOwner', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // アウゼスの天黒筺 「そのクリーチャーの持ち主は、自身の山札の上から1枚目をシールド化する」
+  if (/^そのクリーチャーの持ち主は、?自身の山札の上から1枚目をシールド化する$/.test(s)) return [{ op: 'asPlayer', who: 'itOwner', body: [{ op: 'top', n: 1, to: 'shield', who: 'self' }] }];
+  // 煉獄大帝 キング・ロマノフ 「(各相手は、)それぞれ自身のシールドを1つ選ぶ。これにより選ばれたシールドをすべてブレイクする」
+  if ((mm = s.match(/^相手は、?(?:それぞれ)?自身のシールドを(\d+)つ選ぶ$/)))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: 'シールドを選ぶ' }, { op: 'save' }];
+  // (選んだシールドは「それ」のまま)
+  if (/^これにより選ばれたシールドをすべてブレイクする$/.test(s)) return [{ op: 'breakIt' }];
+  // 煌メク聖晶 弩楼 「自分のシールドゾーンにある表向きのカード1枚につき、カードを1枚引く」
+  if ((mm = s.match(/^自分のシールドゾーンにある表向きのカード1枚につき、カードを(\d+)枚引く$/)))
+    return [{ op: 'countSet', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true } }, { op: 'repeatCount', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // 爆流奥義 紅蓮NEXTREME 「コストの合計が、自分のマナゾーンにあるドラゴンの数以下になるよう、相手のクリーチャーを2体まで破壊する」
+  if ((mm = s.match(/^コストの合計が、?自分のマナゾーンにある(.+?)の数以下になるよう(?:に)?、?相手のクリーチャーを(\d+)体まで(?:選び、)?破壊する$/))) {
+    const per = parseSel(mm[1]);
+    if (per)
+      return [
+        { op: 'countSet', sel: { ...per, owner: 'self', zones: ['mana'] } },
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: +mm[2], upTo: true, sumCostCount: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'コストの合計が条件以下になるように選ぶ' },
+        { op: 'destroy', target: { ref: 'it' } },
+      ];
+  }
+  // 「光魔の鎧」 「自分の手札を1枚、表向きにし、新しいシールドとしてシールドゾーンに置く」/ 策士のシダン ニャハン 「自分の手札を1枚裏向きにしてマナゾーンに置く」
+  if ((mm = s.match(/^自分の手札を(\d+)枚、?表向きにし、?新しいシールドとして(?:自分の)?シールドゾーンに置く$/)))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: 'シールドにする手札を選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'shieldUp' }];
+  if ((mm = s.match(/^自分の手札を(\d+)枚、?裏向きにして(?:自分の)?マナゾーンに置く$/)))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: 'マナに置く手札を選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'manaDown' }];
+  // 暴命天 バラギアラ 「各プレイヤーは自身のクリーチャーをそれぞれ2体(ずつ)選び、マナゾーンに置く」
+  if ((mm = s.match(/^各プレイヤーは、?自身のクリーチャーをそれぞれ(\d+)体選び、(?:持ち主の)?マナゾーンに置く$/)))
+    return [{ op: 'forEachPlayer', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'マナゾーンに置くクリーチャーを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'mana' }] }];
+  // 蒼龍の大地 「自分のマナゾーンにあるカードの枚数より小さいコストを持つ、進化ではないクリーチャーを1体、自分のマナゾーンからバトルゾーンに出す」
+  if ((mm = s.match(/^自分のマナゾーンにあるカードの枚数より小さいコストを持つ、?進化ではないクリーチャーを(\d+)体、?自分のマナゾーンからバトルゾーンに出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'creature', nonEvolution: true, costVs: { by: 'mana', cmp: 'lt', ofOwner: true } }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  // 竜のフレア・エッグ / 龍世界 「(そうした場合、)そのドラゴンをバトルゾーンに出す」
+  if (/^その(?:ドラゴン|クリーチャー)をバトルゾーンに出す$/.test(s)) return [{ op: 'move', target: { ref: 'looked' }, to: 'battle' }];
+  // お清めトラップ 「相手の墓地からカードを1枚以上選ぶ。(そうした場合、)相手はこれを自身の山札に加えてシャッフルする」
+  if (/^相手の墓地からカードを1枚以上選ぶ$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['grave'], kind: 'card' }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'hostile', prompt: '相手の墓地のカードを選ぶ' }];
+  if (/^相手はこれを自身の山札に加えてシャッフルする$/.test(s)) return [{ op: 'move', target: { ref: 'it' }, to: 'deckTop' }, { op: 'shuffle', who: 'opp' }];
+  // DS電融 ザ＝デッドNEXT 「このターン、自分のクリーチャーはアンタップしているクリーチャーを攻撃できる」
+  if (/^(?:この|その)ターン、自分のクリーチャーは(?:すべて、?)?アンタップしているクリーチャーを攻撃できる$/.test(s))
+    return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['アンタップ攻撃'], until: 'turn' }];
+  // 海遊妖精アルメリア 「このゲームに参加しているプレイヤーの数まで、クリーチャーを選ぶ」
+  if (/^このゲームに参加しているプレイヤーの数まで、クリーチャーを選ぶ$/.test(s))
+    return [{ op: 'countSet', players: true }, { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { n: 99, upTo: true, fromCount: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'クリーチャーを選ぶ' }];
+  // 深海の伝道師 アトランティス 「相手はバトルゾーンにある自身のクリーチャーを1体選び、残りを手札に戻す」
+  if (/^相手は(?:バトルゾーンにある)?自身のクリーチャーを1体選び、残りを(?:持ち主の)?手札に戻す$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'opp' }, purpose: 'benefit', prompt: '残すクリーチャーを選ぶ' }, { op: 'moveOtherCreatures', owner: 'opp', to: 'hand' }];
+  // サイバー・N・ワールド 「各プレイヤーは自身の手札と墓地のカードをすべて山札に加えてシャッフルする」「その後、それぞれ、5枚カードを引く」
+  if (/^各プレイヤーは、?自身の手札と墓地のカードをすべて山札に加えてシャッフルする$/.test(s))
+    return [{ op: 'forEachPlayer', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand', 'grave'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' }, { op: 'move', target: { ref: 'it' }, to: 'deckTop' }, { op: 'shuffle' }] }];
+  if ((mm = s.match(/^それぞれ、?(\d+)枚カードを引く$/))) return [{ op: 'forEachPlayer', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // 衒影の悪魔龍 トゥルトゥル 「相手1人につきクリーチャーを1体、自分の墓地から手札に戻す」(語順を直した形)
+  if ((mm = s.match(/^自分の墓地から相手1人につき(.+?)を(\d+)体手札に戻す$/))) {
+    const gsel = parseSel(mm[1]);
+    if (gsel) return [{ op: 'forEachOpp', body: [{ op: 'choose', target: { ref: 'sel', sel: { ...gsel, owner: 'self', zones: ['grave'] }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に戻すクリーチャーを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'hand' }] }];
+  }
+  // 紅神龍バルガゲイザー 「そのカードがドラゴンであればバトルゾーンに出す」(読点なし)
+  {
+    const ic = s.match(/^(?:そのカード|それ)が([^、。]+?)(?:であれば|なら)([^、。]+)$/);
+    const isel = ic && parseSel(ic[1]);
+    const iops = ic && verbOps(ic[2], { ref: 'it' });
+    if (isel && iops) return [{ op: 'if', cond: { c: 'itMatches', sel: { ...isel, owner: 'any', zones: ['deck', 'hand', 'grave', 'mana', 'shield', 'battle'] } }, body: iops }];
+  }
+  // ボルシャック・決闘・ドラゴン 「自分のマナゾーンにあるカードの枚数以下のコストを持つ、名前に《ボルシャック》とあるドラゴンを1体、自分のマナゾーンから出す」
+  if ((mm = s.match(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ、?名前に《(.+?)》とある(.+?)を(\d+)体、?自分のマナゾーンから(?:バトルゾーンに)?出す$/))) {
+    const bsel = parseSel(mm[2]);
+    if (bsel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { ...bsel, owner: 'self', zones: ['mana'], nameHas: mm[1], costVs: { by: 'mana', cmp: 'le', ofOwner: true } }, count: { n: +mm[3], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: 'battle' },
+      ];
+  }
+  // 飛翔龍 5000VT
+  if ((mm = s.match(/^次の相手のターン(?:中)?、相手はパワー(\d+)以下のクリーチャーを(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterPowerLock', max: +mm[1] }];
+  // 驚異的終斗 アレキサンドライト / 常氷接続 オプティマス・ブリザード 「このターン、(カードが)自分のシールドゾーンに(カードが)置かれていれば、〜」
+  {
+    const sz = s.match(/^(?:この|その)ターン、(?:カードが)?自分のシールドゾーンに(?:カードが)?置かれてい(?:れば|たら)、(.+)$/);
+    const inner = sz && parseEffect(sz[1]);
+    if (sz && inner?.complete) return [{ op: 'if', cond: { c: 'turnStat', who: 'self', what: 'shieldAdds', n: 1 }, body: inner.ops }];
+  }
+  // インフェル星樹 「それらを持ち主のマナゾーンにタップして置く」
+  {
+    const sr = s.match(/^それらを(.+)$/);
+    const sops = sr && verbOps(sr[1].replace(/^持ち主のタップしてマナゾーンに置く$/, '持ち主のマナゾーンにタップして置く'), { ref: 'it' });
+    if (sops) return sops;
+  }
+  // ガルチェンソ・ドラゴン 「(その後、)マナゾーンからドラゴンを1枚手札に戻す」
+  if ((mm = s.match(/^(?:自分の)?マナゾーンから(.+?)を(\d+)枚(?:自分の)?手札に戻す$/))) {
+    const msel = parseSel(mm[1]);
+    if (msel)
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { ...msel, owner: 'self', zones: ['mana'] }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に戻すカードを選ぶ' },
+        { op: 'move', target: { ref: 'it' }, to: 'hand' },
+      ];
+  }
   // ---- ゼニス・アンノウン ----
   // 偽りの名 ゾルゲ 「(出た) このクリーチャーと、バトルゾーンにある別のクリーチャーを1体選ぶ」(その2体をバトルさせる)
   if ((mm = s.match(/^(?:バトルゾーンにある)?別のクリーチャーを(\d+)体選ぶ$/)))
@@ -3385,6 +3523,40 @@ export function parseEffect(text: string): Program {
         unparsed: [],
       };
   }
+  // Disミン 「各プレイヤーは自身の山札の上から1枚目を、それぞれのマナゾーンにタップして置いてもよい。その後、こうしてマナゾーンにカードを置いた相手1人につき、自分の山札の上から1枚目をタップしてマナゾーンに置く」
+  if (/^各プレイヤーは自身の山札の上から1枚目を、?それぞれのマナゾーンにタップして置いてもよい。その後、こうしてマナゾーンにカードを置いた相手1人につき、自分の山札の上から1枚目をタップしてマナゾーンに置く。?$/.test(normText(text).replace(/\s+/g, '').replace(/１/g, '1')))
+    return {
+      ops: [
+        { op: 'countSet' },
+        { op: 'forEachPlayer', body: [{ op: 'optional', body: [{ op: 'top', n: 1, to: 'manaTapped', who: 'self' }, { op: 'tallyOpp' }], prompt: '山札の上から1枚目をタップしてマナゾーンに置いてもよい' }] },
+        { op: 'repeatCount', body: [{ op: 'top', n: 1, to: 'manaTapped', who: 'self' }] },
+      ],
+      complete: true,
+      unparsed: [],
+    };
+  // ボルシャック・ドラゴ大王 「自分の山札の上から、相手の人数と同じ枚数、見る。その中から、好きな数のドラゴンを出し、残りをタップしてマナゾーンに置く。このターン、それらのドラゴンに「スピードアタッカー」を与える」
+  {
+    const dg = normText(text).replace(/\s+/g, '').match(/^自分の山札の上から、相手の人数と同じ枚数、見る。その中から、好きな数の(.+?)を出し、残りをタップしてマナゾーンに置く。このターン、それらの.+?に「スピードアタッカー」を与える。?$/);
+    const dsel = dg && parseSel(dg[1]);
+    if (dsel)
+      return {
+        ops: [
+          { op: 'top', n: 1, to: 'look', who: 'self', perOpp: true },
+          { op: 'choose', target: { ref: 'looked', sel: { ...dsel, owner: 'any', zones: ['deck'] }, count: { n: 99, upTo: true } }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' },
+          { op: 'move', target: { ref: 'it' }, to: 'battle' },
+          { op: 'move', target: { ref: 'rest' }, to: 'manaTapped' },
+          { op: 'grant', target: { ref: 'it' }, kws: ['スピードアタッカー'], until: 'turn' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // 紅神龍バルガゲイザー 「そのカードがドラゴンであればバトルゾーンに出し、ドラゴンでなければ自分の墓地に置く」: 2つの文に分ける
+  {
+    const nt = normText(text);
+    const sp = nt.match(/(そのカード|それ)が([^、。]+?)であれば([^、。]+?)し、([^、。]+?)でなければ/);
+    if (sp) return parseEffect(nt.replace(sp[0], `${sp[1]}が${sp[2]}であれば${sp[3]}す。それ以外なら、`));
+  }
   // 天頂と停滞と水晶の決断 「次の中から2回選ぶ。(同じものを選んでもよい)」: 1つずつN回選ぶ
   {
     const nt = normText(text);
@@ -3598,7 +3770,7 @@ function parseEffectRaw(text: string): Program {
 
   for (const s of t.split('。').map((x) => x.trim()).filter(Boolean)) {
     // 「それ以外なら〜」 は直前の「〜なら」の else
-    const el = s.replace(/\s+/g, '').match(/^(?:それ以外(?:のカード)?(?:なら|の場合|であれば)|そうでなければ|なければ)、?(.+)$/);
+    const el = s.replace(/\s+/g, '').match(/^(?:それ以外(?:のカード)?(?:なら|の場合|であれば)|そうでなければ|なければ|[^、。]{1,12}でない場合|[^、。]{1,12}でなければ)、?(.+)$/);
     let last = ops[ops.length - 1];
     if (last?.op === 'optional' && last.body[last.body.length - 1]?.op === 'if') last = last.body[last.body.length - 1];
     if (el && last?.op === 'if' && !last.else) {

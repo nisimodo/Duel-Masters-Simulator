@@ -47,6 +47,11 @@ export function programOf(effect: string) {
 
 // ---------- 相手の決定 ----------
 /** 「相手」 (デュエマは対戦相手、デュエパは次の手番の相手) */
+/** 効果の「相手」: 「相手1人につき」で処理している相手、なければ主な相手 */
+function oppOf(s: GameState, ex: Exec): number {
+  return ex.focusOpp != null && !s.players[ex.focusOpp]?.lost ? ex.focusOpp : mainOpp(s, ex.player);
+}
+
 export function mainOpp(s: GameState, p: number): number {
   const n = s.players.length;
   for (let k = 1; k < n; k++) {
@@ -165,7 +170,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
 }
 
 function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
-  const owners = sel.owner === 'self' ? [ex.player] : sel.owner === 'opp' ? opps(s, ex.player) : s.players.map((_, i) => i).filter((i) => !s.players[i].lost);
+  const owners = sel.owner === 'self' ? [ex.player] : sel.owner === 'opp' ? (ex.focusOpp != null ? [ex.focusOpp] : opps(s, ex.player)) : s.players.map((_, i) => i).filter((i) => !s.players[i].lost);
   const out: number[] = [];
   for (const o of owners)
     for (const z of sel.zones) {
@@ -219,7 +224,7 @@ export function condHolds(s: GameState, L: Lookup, player: number, src: number, 
 function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
   const cmp = (a: number, op: string, b: number) => (op === '>=' ? a >= b : op === '<=' ? a <= b : a === b);
   const me = s.players[ex.player];
-  const opp = s.players[mainOpp(s, ex.player)];
+  const opp = s.players[oppOf(s, ex)];
   switch (c.c) {
     case 'count':
       return cmp(candidates(s, L, ex, c.sel).length, c.cmp, c.n);
@@ -621,16 +626,16 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         // 「その持ち主は、カードを1枚引く」: 選んだカードの持ち主
         const owner = op.who === 'itOwner' ? s.cards[ex.it[0] ?? -1]?.owner : undefined;
         if (op.who === 'itOwner' && owner == null) break;
-        const who = owner ?? (op.who === 'self' ? ex.player : mainOpp(s, ex.player));
+        const who = owner ?? (op.who === 'self' ? ex.player : oppOf(s, ex));
         const d = drawCards(s, who, op.n);
         log(s, who, `${s.players[who].name}: カードを${d}枚引いた`);
         break;
       }
       case 'top': {
-        const who = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        const who = op.who === 'opp' ? oppOf(s, ex) : ex.player;
         // 'gr': 自分の超GRの上 (配列の末尾が上)
         const deck = op.who === 'gr' ? s.players[who].gr : s.players[who].deck;
-        const ids = deck.slice(-op.n).reverse();
+        const ids = deck.slice(-(op.perOpp ? op.n * opps(s, ex.player).length : op.n)).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
           // 表向きにしたカードは「それ」で参照される
@@ -662,7 +667,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'lookDeck': {
-        const lw = op.who === 'opp' ? mainOpp(s, ex.player) : ex.player;
+        const lw = op.who === 'opp' ? oppOf(s, ex) : ex.player;
         ex.looked = [...s.players[lw].deck];
         ex.it = [];
         log(s, ex.player, op.who === 'opp' ? '相手の山札を見た' : '山札を見た');
@@ -676,7 +681,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (t.ref === 'sel') {
           cands = candidates(s, L, ex, t.sel);
           cnt = t.count;
-          if (t.chooser === 'opp') chooser = mainOpp(s, ex.player);
+          if (t.chooser === 'opp') chooser = oppOf(s, ex);
           if (t.chooser === 'opp' && t.sel.owner === 'opp') cands = cands.filter((i) => s.cards[i].owner === chooser);
         } else if (t.ref === 'looked') {
           // 条件のゾーンに今あるカードだけ (先に別の場所へ動かしたカードは除く)
@@ -725,7 +730,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           // 「コストの合計がその選んだクリーチャーのコスト以下になるよう」
           sumCostMin: cnt.sumCostMin,
           distinct: cnt.distinct,
-          sumCostMax: cnt.sumCostIt ? (L(s.cards[ex.it[0] ?? -1]?.cid ?? '')?.faces[0]?.cost ?? 0) : cnt.sumCostMax,
+          sumCostMax: cnt.sumCostIt ? (L(s.cards[ex.it[0] ?? -1]?.cid ?? '')?.faces[0]?.cost ?? 0) : cnt.sumCostCount ? (ex.count ?? 0) : cnt.sumCostMax,
         });
         return;
       }
@@ -800,13 +805,13 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           else if (op.what === 'attackNext') c.restrict = { attack: true, block: false, until: ex.player };
           else if (op.what === 'block') c.restrict = { attack: false, block: true, until: ex.player };
           else if (op.what === 'attackMe') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: ex.player };
-          else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: mainOpp(s, ex.player) };
+          else if (op.what === 'attackOpp') c.restrict = { attack: false, block: false, until: ex.player, noAttackPlayer: oppOf(s, ex) };
           else c.restrict = { attack: true, block: true, until: ex.player, ...(op.untilEnd ? { untilEnd: s.turn } : {}) };
         }
         break;
       }
       case 'discard': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.who === 'self' ? ex.player : oppOf(s, ex);
         const hand = s.players[who].hand;
         if (!hand.length) break;
         if ('all' in op.count) {
@@ -846,7 +851,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'shuffle': {
         // 'looked': 見た山札の持ち主 (「自分または相手の山札を見る。…その後、そのカードの持ち主は山札をシャッフルする」)
-        const who = op.who === 'opp' ? mainOpp(s, ex.player) : op.who === 'looked' && ex.looked.length ? s.cards[ex.looked[0]].owner : ex.player;
+        const who = op.who === 'opp' ? oppOf(s, ex) : op.who === 'looked' && ex.looked.length ? s.cards[ex.looked[0]].owner : ex.player;
         shuffleArr(s, s.players[who].deck);
         s.players[who].peek = [];
         log(s, ex.player, '山札をシャッフル');
@@ -861,7 +866,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'breakShield': {
-        const o = op.own ? ex.player : mainOpp(s, ex.player);
+        const o = op.own ? ex.player : oppOf(s, ex);
         const sh = s.players[o].shield;
         if (!sh.length) break;
         const n = Math.min(op.n, sh.length);
@@ -907,7 +912,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.optUsed = true;
           continue;
         }
-        ask(s, ex, { player: op.byOpp ? mainOpp(s, ex.player) : ex.player, mode: 'yesno', prompt: `${ex.name}: ${op.prompt}`, options: [], min: 0, max: 1, purpose: 'benefit' });
+        ask(s, ex, { player: op.byOpp ? oppOf(s, ex) : ex.player, mode: 'yesno', prompt: `${ex.name}: ${op.prompt}`, options: [], min: 0, max: 1, purpose: 'benefit' });
         return;
       }
       case 'if': {
@@ -943,6 +948,30 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (let k = 0; k < n; k++) ex.ops.unshift(...op.body);
         continue;
       }
+      case 'forEachOpp': {
+        ex.ops.shift();
+        const att = s.attack?.targetPlayer;
+        const order = s.players.map((_, k) => (s.active + k) % s.players.length).filter((q) => q !== ex.player && !s.players[q].lost && !(op.exceptAttacked && q === att));
+        ex.ops.unshift(...order.flatMap((q): Op[] => [{ op: 'setFocus', p: q }, ...op.body]), { op: 'setFocus', p: null });
+        continue;
+      }
+      case 'setFocus':
+        ex.focusOpp = op.p ?? undefined;
+        break;
+      case 'tallyOpp':
+        if (ex.player !== s.cards[ex.src]?.owner) ex.count = (ex.count ?? 0) + 1;
+        break;
+      case 'breakIt': {
+        const byOwner = new Map<number, number[]>();
+        for (const i of ex.it) if (s.cards[i]?.zone === 'shield') byOwner.set(s.cards[i].owner, [...(byOwner.get(s.cards[i].owner) ?? []), i]);
+        for (const [o, ids] of byOwner) breakShields(s, L, o, ids, ex.player);
+        break;
+      }
+      case 'drawToOppHand': {
+        const n = s.players[oppOf(s, ex)].hand.length - s.players[ex.player].hand.length;
+        if (n > 0) log(s, ex.player, `カードを${drawCards(s, ex.player, Math.min(n, 20))}枚引いた`);
+        break;
+      }
       case 'forEachPlayer': {
         ex.ops.shift();
         const me0 = ex.player;
@@ -955,7 +984,22 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.ops.shift();
         const me0 = ex.player;
         // subjectOwner: 能力を誘発させたカードの持ち主 (「(カードを引いた) そのプレイヤーは」)
-        const q = op.who === 'self' ? me0 : op.who === 'subjectOwner' ? (ex.subject != null ? s.cards[ex.subject].owner : me0) : (opps(s, me0)[0] ?? me0);
+        const q =
+          op.who === 'self'
+            ? me0
+            : op.who === 'subjectOwner'
+              ? ex.subject != null
+                ? s.cards[ex.subject].owner
+                : me0
+              : op.who === 'attackerOwner'
+                ? s.attack
+                  ? s.cards[s.attack.attacker].owner
+                  : me0
+                : op.who === 'itOwner'
+                  ? ex.it.length
+                    ? s.cards[ex.it[0]].owner
+                    : me0
+                  : (opps(s, me0)[0] ?? me0);
         ex.ops.unshift({ op: 'setPlayer', p: q }, ...op.body, { op: 'setPlayer', p: me0 });
         continue;
       }
@@ -1101,7 +1145,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (!labels.length) break;
         ex.valueLabels = labels;
         ask(s, ex, {
-          player: op.byOpp ? mainOpp(s, ex.player) : ex.player,
+          player: op.byOpp ? oppOf(s, ex) : ex.player,
           mode: 'modal',
           prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}を1つ選ぶ`,
           options: [],
@@ -1150,6 +1194,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           used.push(ex.src);
           ex.did = true;
         }
+        break;
+      }
+      case 'enterPowerLock': {
+        for (const o of opps(s, ex.player)) s.players[o].enterPowerLock = { until: ex.player, max: op.max };
+        log(s, ex.player, `次の相手のターン、相手はパワー${op.max}以下のクリーチャーを出せない`);
         break;
       }
       case 'dLock': {
@@ -1269,7 +1318,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'moveOthers': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.who === 'self' ? ex.player : oppOf(s, ex);
         const ids = [...s.players[who][op.zone]].filter((i) => !ex.it.includes(i));
         for (const i of ids) moveTo(s, L, ex, i, op.to, true);
         if (ids.length) log(s, ex.player, `${ids.length}枚を${op.to === 'grave' ? '墓地' : op.to}に置いた`);
@@ -1290,6 +1339,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = i != null && s.cards[i].zone === 'battle' ? 1 + s.cards[i].under.length : 0;
         } else if (op.players) {
           ex.count = s.players.filter((pl) => !pl.lost).length;
+        } else if (op.oppsMore) {
+          const k = op.oppsMore;
+          ex.count = opps(s, ex.player).filter((o) => s.players[o][k].length > s.players[ex.player][k].length).length;
         } else if (op.underSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? s.cards[ex.src].under.length : 0;
         } else if (op.racesExcept != null) {
@@ -1535,7 +1587,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'moveOtherCreatures': {
-        const who = op.owner === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.owner === 'self' ? ex.player : oppOf(s, ex);
         const keep = new Set(ex.it);
         for (const b of [...s.players[who].battle]) if (!keep.has(b) && faceOf(s, L, b)?.isCreature) moveTo(s, L, ex, b, op.to, true);
         break;
@@ -1822,7 +1874,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (!ids.length) break;
         ex.valueLabels = ['山札の上', '山札の下'];
         ex.pendingIds = ids;
-        ask(s, ex, { player: op.chooser === 'opp' ? mainOpp(s, ex.player) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
+        ask(s, ex, { player: op.chooser === 'opp' ? oppOf(s, ex) : ex.player, mode: 'modal', prompt: `${ex.name}: 山札の上か下を選ぶ`, options: [], labels: ex.valueLabels, min: 1, max: 1, purpose: 'neutral' });
         return;
       }
       case 'drawItPlus': {
@@ -1846,7 +1898,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'peek': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.who === 'self' ? ex.player : oppOf(s, ex);
         const zone = s.players[who][op.zone];
         const ids = op.n != null ? zone.slice(-op.n) : [...zone];
         ex.looked = ids;
@@ -1893,7 +1945,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'millExcept': {
-        const who = op.who === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.who === 'self' ? ex.player : oppOf(s, ex);
         const deck = s.players[who].deck;
         // 配列の先頭が山札の一番下
         const ids = deck.slice(op.keep).reverse();
@@ -1917,7 +1969,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'atNextTurnStart': {
-        (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked], ...(op.opp ? { turnOf: mainOpp(s, ex.player) } : {}) });
+        (s.startTurnExecs ??= []).push({ ...ex, ops: [...op.body], it: [...ex.it], looked: [...ex.looked], ...(op.opp ? { turnOf: oppOf(s, ex) } : {}) });
         break;
       }
       case 'atTurnEnd': {
@@ -1934,7 +1986,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'destroyExtreme': {
-        const who = op.owner === 'self' ? ex.player : mainOpp(s, ex.player);
+        const who = op.owner === 'self' ? ex.player : oppOf(s, ex);
         const cs = s.players[who].battle.filter((b) => L(s.cards[b].cid)?.faces[s.cards[b].face]?.isCreature).sort((a, b) => power(s, L, a) - power(s, L, b));
         for (const b of (op.max ? cs.reverse() : cs).slice(0, op.n)) {
           log(s, ex.player, `${q(nameOf(s, L, b))} を破壊`);
@@ -1996,7 +2048,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'lookHand': {
-        const o = mainOpp(s, ex.player);
+        const o = oppOf(s, ex);
         ex.looked = [...s.players[o].hand];
         ex.it = [];
         for (const i of ex.looked) if (!s.players[ex.player].peek.includes(i)) s.players[ex.player].peek.push(i);

@@ -393,7 +393,8 @@ export const RECAST = /^(xB)?\s*この呪文を自分の手札から唱えた後
 
 export function spellEffectLines(lines: string[]): string[] {
   return mergeModal(lines)
-    .map((l) => stripReminder(normText(l)).trim())
+    // (「次のk能力」で指す記号は外す)
+    .map((l) => stripReminder(normText(l)).trim().replace(/^[a-np-su-z]\s+(?=[\u3040-\u30ff\u4e00-\u9fff])/, ''))
     .filter((l) => l && !SKIP.test(l) && !/^(このカードを)?マナゾーンに置く時/.test(l) && !/^この(呪文|カード)は/.test(l) && !MARKED_LINE.test(l) && !/^(ナイト・マジック|サイクロン|水晶チャージャー)$/.test(l) && !isKeywordOnly(l) && !/^この(カード|呪文)を(自分の)?(手札から)?マナゾーンに置いた時/.test(l) && !/^革命\d+トリガー/.test(l) && !/^相手のクリーチャーが自分を攻撃する時/.test(l) && !RECAST.test(l) && !(/時、/.test(l) && parseTriggers([l]).some((x) => x.fromHand)) && !/^この呪文を、?(自分の)?(マナゾーン|墓地)から唱えてもよい。?(そうしたら、唱えた後、墓地に置くかわりに(自分の)?山札の(一番)?下に置く。?)?$/.test(normText(l).replace(/\s+/g, '')) && !isCastStatic(l));
 }
 

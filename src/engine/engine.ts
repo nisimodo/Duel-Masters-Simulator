@@ -330,6 +330,12 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} はマナゾーンのカードをタップせずには出せない`);
     return from as ZoneName;
   }
+  // 飛翔龍 5000VT 「次の相手のターン中、相手はパワー5000以下のクリーチャーを出せない」(そのプレイヤーのターン中)
+  const epl = s.players[c.owner].enterPowerLock;
+  if (to === 'battle' && from !== 'battle' && epl && s.active === c.owner && card?.faces[opts.face ?? c.face]?.isCreature && (card.faces[opts.face ?? c.face].power ?? 0) <= epl.max) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (パワー${epl.max}以下)`);
+    return from as ZoneName;
+  }
   // 偽りの名 シャーロック 「誰も、サイキック・クリーチャーをバトルゾーンに出すことはできない」
   if (to === 'battle' && from === 'hyper' && activeStatics(s, L).some((x) => x.spec.s === 'noHyperEnter')) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は超次元ゾーンから出せない`);
@@ -608,7 +614,8 @@ export function moveCard(
     for (const u of under) s.cards[u].leftBattleTurn = s.turn;
   }
   if (dest === 'grave' && from !== 'grave') turnStat(s, c.owner).toGrave++;
-  if (dest === 'shield' && from === 'deck') turnStat(s, c.owner).shieldAdds++;
+  // (山札からのシールド化に限らず、シールドゾーンに置かれたカード)
+  if (dest === 'shield' && from !== 'shield') turnStat(s, c.owner).shieldAdds++;
   if (from === 'shield' && dest === 'hand') turnStat(s, c.owner).shieldsToHand++;
   c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
@@ -1390,6 +1397,7 @@ function startTurn(s: GameState, L: Lookup) {
     if (pl2.freeEnterLock?.until === p) pl2.freeEnterLock = undefined;
     if (pl2.enterLimit?.until === p) pl2.enterLimit = undefined;
     if (pl2.dLock?.until === p) pl2.dLock = undefined;
+    if (pl2.enterPowerLock?.until === p) pl2.enterPowerLock = undefined;
     if (pl2.leaveGuard?.until === p) pl2.leaveGuard = undefined;
   }
   for (const pl2 of s.players) if (pl2.actLimit?.until === p) pl2.actLimit = undefined;
@@ -2676,6 +2684,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
   if (s.players[p].dLock && /D2フィールド/.test(face.type)) return 'D2フィールドを展開できません';
+  const epl0 = s.players[p].enterPowerLock;
+  if (epl0 && s.active === p && face.isCreature && (face.power ?? 0) <= epl0.max) return `このターンはパワー${epl0.max}以下のクリーチャーを出せません`;
   // DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文を3枚までしか唱えられない」
   const spellCap = face.isSpell ? capOf(s, L, 'spellCap') : undefined;
   if (spellCap != null && (s.players[p].spellsCast?.turn === s.turn ? s.players[p].spellsCast!.n : 0) >= spellCap) return `このターンは呪文を${spellCap}枚までしか唱えられません`;

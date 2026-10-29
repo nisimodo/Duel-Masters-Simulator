@@ -196,6 +196,8 @@ export interface PlayerState {
   enterLimit?: { until: number; n: number };
   /** ワールド・ストップ 「Dスイッチを使えず、D2フィールドを展開できない」 (until のプレイヤーのターンのはじめまで) */
   dLock?: { until: number };
+  /** 「次の相手のターン中、相手はパワーN以下のクリーチャーを出せない」 */
+  enterPowerLock?: { until: number; max: number };
   /** まだ「カードを引いた時」を誘発させていないドロー */
   drawnPending?: number[];
   /** 次の自分のターンのはじめに、マナゾーンのカードをこの枚数までしかアンタップできない */
@@ -267,6 +269,8 @@ export type Pending =
 /** 実行中の効果プログラム */
 export interface Exec {
   player: number;
+  /** 「相手1人につき」「各相手の」: いま処理している相手 (「相手の」をこのプレイヤーに絞る) */
+  focusOpp?: number;
   /** 能力を誘発させたカード (「召喚したクリーチャー」など。it が変わっても残る) */
   subject?: number;
   src: number;

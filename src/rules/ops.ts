@@ -112,7 +112,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; /** コストの合計の上限を数えた数 (countSet) にする */ sumCostCount?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'manaDownTapped' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -233,7 +233,7 @@ export type Cond =
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' | 'itOwner' }
   /** 山札の上から N 枚を移動する / 見る / 表向きにする */
-  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp' | 'gr'; nth?: boolean }
+  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp' | 'gr'; nth?: boolean; /** n × 相手の人数 */ perOpp?: boolean }
   /** 見たカードを、それがあった山札 (または超GR) の一番下に置く */
   | { op: 'lookedToBottom' }
   /** 自分の山札をすべて見る (サーチ) */
@@ -267,9 +267,18 @@ export type Op =
   | { op: 'repeatPer'; sel: Sel; body: Op[] }
   /** 各プレイヤーが (手番のプレイヤーから順に) body を行う */
   | { op: 'forEachPlayer'; body: Op[] }
+  /** 「相手1人につき」「各相手の」: 相手ごとに body を実行する (exceptAttacked: 攻撃されている相手は除く「他の各相手」) */
+  | { op: 'forEachOpp'; body: Op[]; exceptAttacked?: boolean }
+  | { op: 'setFocus'; p: number | null }
+  /** 選んだシールド (it) をブレイクする */
+  | { op: 'breakIt' }
+  /** (各プレイヤーごとの処理の中で) いまのプレイヤーが、このカードの持ち主の相手なら数を1増やす */
+  | { op: 'tallyOpp' }
+  /** 「相手の手札が自分のより多ければ、同じ枚数になるまでカードを引く」 */
+  | { op: 'drawToOppHand' }
   /** 効果を使うプレイヤーを変える (forEachPlayer の中で使う) */
   | { op: 'setPlayer'; p: number }
-  | { op: 'asPlayer'; who: 'self' | 'opp' | 'subjectOwner'; body: Op[] }
+  | { op: 'asPlayer'; who: 'self' | 'opp' | 'subjectOwner' | 'attackerOwner' | 'itOwner'; body: Op[] }
   /** 直前に it にしたカードの数 (sel に合うもの) だけ body をくり返す (「こうして捨てたカード1枚につき、〜」) */
   | { op: 'repeatIt'; sel?: Sel; body: Op[]; saved?: boolean }
   /** キーワード能力を一時的に与える */
@@ -297,7 +306,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
+  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -349,6 +358,8 @@ export type Op =
   | { op: 'oncePerGame' }
   /** 次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない */
   | { op: 'dLock' }
+  /** 次の相手のターン、相手はパワーN以下のクリーチャーを出せない */
+  | { op: 'enterPowerLock'; max: number }
   /** it をこのカードの下に置く (what: 'it') / このカードを it の下に置く (what: 'self') */
   | { op: 'stackUnder'; what: 'it' | 'self' }
   /** Dの天牢 ジェイルハウスロック: 選んだカードを、表向きのまま新しい1つのシールドにまとめて持ち主のシールドゾーンに置く */
