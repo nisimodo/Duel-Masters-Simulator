@@ -213,7 +213,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
       clause += more[1];
       effect = more[2];
     }
-    const self = /この\s*(?:D2|DG|DN)?(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
+    const self = /この\s*(?:D2|DG|DN|G)?(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
     const opp = /相手/.test(clause);
     const own = /自分/.test(clause);
     const ev = new Set<TrigEvent>();

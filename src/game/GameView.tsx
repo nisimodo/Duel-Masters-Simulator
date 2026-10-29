@@ -19,6 +19,7 @@ import { useGameSync } from './useGameSync';
 import { GachaRoulette, type GachaSpin } from './GachaRoulette';
 import { NARROW, useMedia } from '../lib/useMedia';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { OverlapRow } from './OverlapRow';
 
 
 type Mode =
@@ -582,19 +583,36 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     );
     const shields = (
       <div className="row shields-row" data-anchor={`${p}-shield`} style={{ gap: 3 }}>
-        {pl.shield.map((i, k) => (
-          <CardBack
-            key={i}
-            sleeve={sleeve}
-            width={pos === 'compact' ? 32 : 44}
-            title={`シールド${k + 1}`}
-            onClick={(e) => onCardClick(i, e)}
-          >
-            {(breakPicks.includes(i) || (mode.kind === 'effect' && mode.picks.includes(i))) && <span className="count">✓</span>}
-            {effectCands.includes(i) && !breakPicks.includes(i) && <span className="tag">対象</span>}
-            {myPending?.kind === 'breakSel' && myPending.target === p && !breakPicks.includes(i) && <span className="tag">選択</span>}
-          </CardBack>
-        ))}
+        {pl.shield.map((i, k) => {
+          const marks = (
+            <>
+              {(breakPicks.includes(i) || (mode.kind === 'effect' && mode.picks.includes(i))) && <span className="count">✓</span>}
+              {effectCands.includes(i) && !breakPicks.includes(i) && <span className="tag">対象</span>}
+              {myPending?.kind === 'breakSel' && myPending.target === p && !breakPicks.includes(i) && <span className="tag">選択</span>}
+            </>
+          );
+          // 表向きのシールド (G城など) は表向きに見せる
+          if (s.cards[i].faceUp)
+            return (
+              <CardImg key={i} card={cardAt(i)} width={pos === 'compact' ? 32 : 44} title={`シールド${k + 1} (表向き)`} onHover={hov(i)} onClick={(e) => onCardClick(i, e)}>
+                {marks}
+              </CardImg>
+            );
+          // 城で要塞化されているシールド
+          const castle = s.cards[i].under.find((u) => s.cards[u].fortOf === i);
+          return (
+            <CardBack
+              key={i}
+              sleeve={sleeve}
+              width={pos === 'compact' ? 32 : 44}
+              title={castle != null ? `シールド${k + 1} (${nameOf(s, L, castle)} で要塞化)` : `シールド${k + 1}`}
+              onClick={(e) => onCardClick(i, e)}
+            >
+              {castle != null && <span className="tag">城</span>}
+              {marks}
+            </CardBack>
+          );
+        })}
         {!pl.shield.length && <span className="muted small">シールドなし</span>}
       </div>
     );
@@ -627,11 +645,18 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       </div>
     );
     const mana = (
-      <div className="zone mana" data-anchor={`${p}-mana`} onClick={(e) => e.target === e.currentTarget && setViewer({ kind: 'mana', player: p })}>
-        {pl.mana.map((i) => renderCard(i, { width: pos === 'compact' ? 30 : 48 }))}
-        <span className="muted small">
-          マナ {untappedMana(s, p)}/{pl.mana.length}
-        </span>
+      <div className="zone mana" data-anchor={`${p}-mana`} onClick={(e) => !(e.target as HTMLElement).closest('[data-ov]') && setViewer({ kind: 'mana', player: p })}>
+        {/* 入りきらない時は半分まで重ね、それでも入らなければ改行する */}
+        <OverlapRow
+          layoutKey={`${pos}|${pl.mana.map((i) => `${i}${s.cards[i].tapped ? 't' : ''}`).join(',')}`}
+          after={
+            <span className="muted small" style={{ marginLeft: 6 }}>
+              マナ {untappedMana(s, p)}/{pl.mana.length}
+            </span>
+          }
+        >
+          {pl.mana.map((i) => renderCard(i, { width: pos === 'compact' ? 30 : 48 }))}
+        </OverlapRow>
       </div>
     );
     const header = (

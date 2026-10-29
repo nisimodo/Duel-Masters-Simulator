@@ -514,7 +514,8 @@ export function moveCard(
     return moveCard(s, L, iid, 'battle', { ...opts, noReplace: true });
   }
   // 表向きのシールド (ギャラクシールド等) が離れる時、かわりに墓地へ
-  if (from === 'shield' && c.faceUp && to !== 'grave' && to !== 'battle' && !opts.noReplace && (card?.faces[0]?.statics ?? []).some((x) => x.s === 'faceUpShieldToGrave')) {
+  // (G城は「表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く」)
+  if (from === 'shield' && c.faceUp && to !== 'grave' && to !== 'battle' && !opts.noReplace && ((card?.faces[0]?.statics ?? []).some((x) => x.s === 'faceUpShieldToGrave') || /G城$/.test(card?.faces[0]?.type ?? ''))) {
     log(s, c.owner, `${q(card!.faces[0].name)} はシールドゾーンを離れるかわりに墓地へ`);
     return moveCard(s, L, iid, 'grave', { ...opts, noReplace: true });
   }
@@ -749,6 +750,12 @@ export function manaSummonLeft(s: GameState, L: Lookup, p: number, iid?: number)
   const fits = (sel?: import('../rules/ops').Sel) => !sel || (iid != null && matchesSel(s, L, iid, sel));
   const st = s.active === p ? activeStatics(s, L).reduce((a, x) => a + (x.owner === p && x.spec.s === 'manaSummonTurn' && fits(x.spec.sel) && (!x.spec.newOnly || s.cards[x.src].sick) ? x.spec.n : 0), 0) : 0;
   return (cur?.left ?? 0) + Math.max(0, st - (cur?.staticUsed ?? 0));
+}
+
+/** 表向きで自分のシールドゾーンにあるG城 (能力が有効) */
+export function isFaceUpGCastle(s: GameState, L: Lookup, iid: number): boolean {
+  const c = s.cards[iid];
+  return c.zone === 'shield' && c.faceUp && /G城$/.test(L(c.cid)?.faces[0]?.type ?? '');
 }
 
 /** 置換効果を処理中のカード */
@@ -992,8 +999,14 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
     if (s.players[p].lost) continue;
     const ev = p === actor ? ownEv : oppEv;
     if (!ev) continue;
-    // 城 (要塞化しているシールドの上) の能力
-    for (const sh of s.players[p].shield)
+    // 城 (要塞化しているシールドの上) の能力・表向きのG城の能力
+    for (const sh of s.players[p].shield) {
+      if (isFaceUpGCastle(s, L, sh))
+        for (const spec of L(s.cards[sh].cid)?.faces[0]?.triggers ?? []) {
+          if (!spec.events.includes(ev)) continue;
+          if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
+          pushAbility(s, L, sh, 0, spec, ev, subject);
+        }
       for (const u of s.cards[sh].under) {
         if (s.cards[u].fortOf !== sh) continue;
         for (const spec of L(s.cards[u].cid)?.faces[0]?.triggers ?? []) {
@@ -1002,6 +1015,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
           pushAbility(s, L, u, 0, spec, ev);
         }
       }
+    }
     for (const iid of s.players[p].battle) {
       if (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) continue;
       const f = faceOf(s, L, iid);
@@ -2879,6 +2893,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp', a.iid);
     fireWatchers(s, L, p, null, 'spellAny', 'spellAny');
     me.lastPlay = { turn: s.turn, kind: 'spell' };
+  } else if (/G城$/.test(face.type)) {
+    // G城: 実行したら、表向きでシールド化される
+    moveCard(s, L, a.iid, 'shield', { faceUp: true });
+    log(s, p, `${q(name)} を表向きでシールド化した${how}`);
   } else if (/城$/.test(face.type)) {
     // 城: 要塞化されていない自分のシールドに付ける
     const n = ((face.statics ?? []).find((x) => x.s === 'castle') as { n: number } | undefined)?.n ?? 1;

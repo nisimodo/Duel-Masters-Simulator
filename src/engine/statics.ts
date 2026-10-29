@@ -56,12 +56,14 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
   const out: ActiveStatic[] = [];
   s.players.forEach((pl, p) => {
     if (pl.lost) return;
-    // 城: シールドを要塞化している間、能力が有効
-    for (const sh of pl.shield)
+    // 城: シールドを要塞化している間、能力が有効 / G城: 表向きでシールドゾーンにある間、能力が有効
+    for (const sh of pl.shield) {
+      if (s.cards[sh].faceUp && /G城$/.test(L(s.cards[sh].cid)?.faces[0]?.type ?? '')) for (const spec of L(s.cards[sh].cid)?.faces[0]?.statics ?? []) out.push({ src: sh, owner: p, spec });
       for (const u of s.cards[sh].under) {
         if (s.cards[u].fortOf !== sh) continue;
         for (const spec of L(s.cards[u].cid)?.faces[0]?.statics ?? []) out.push({ src: u, owner: p, spec });
       }
+    }
     for (const iid of pl.battle) {
       const c = s.cards[iid];
       const f = L(c.cid)?.faces[c.face];

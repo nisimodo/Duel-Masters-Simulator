@@ -579,6 +579,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // モモキング -旅丸- 「相手のターン中、相手がマナゾーンのカードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーをマナゾーンに置く」
   if (/^相手のターン中(?:に)?、?相手が(?:自身の)?マナゾーン(?:にある|の)カードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', when: 'oppTurn', free: true }];
   if (/^相手のターン中に、?相手のクリーチャーが召喚以外の方法で出る時、相手はかわりにそのクリーチャーを墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'oppTurn', notSummon: true }];
+  // 我竜塔第七層 ハッスル・キャッスル 「相手のクリーチャーが召喚以外の方法で出る時、かわりにマナゾーンに置く」
+  {
+    const ns = t0.match(/^相手のクリーチャーが召喚以外の方法で(?:バトルゾーンに)?出る時、(?:相手は)?かわりに(?:そのクリーチャーを)?(?:持ち主の|自身の)?(マナゾーン|墓地)に置く$/);
+    if (ns) return [{ s: 'enterReplace', to: ns[1] === '墓地' ? 'grave' : 'mana', notSummon: true }];
+  }
   if (/^ドラゴンではないクリーチャーがバトルゾーンに出る時、バトルゾーンに出るかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', nonDragon: true, all: true }];
   {
     const om = t0.match(/^(?:鬼|CRY-)S-MAX進化[:：]自分がゲームに負ける時、?またはこのクリーチャーが離れる時、かわりに自分の表向きのカードを(\d+)枚破壊(?:するか、自分のシールドを1つ墓地に置いて|して)?もよい/);

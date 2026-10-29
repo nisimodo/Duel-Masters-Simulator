@@ -234,6 +234,7 @@ const db = buildDB(
     cr('big9', 1, 9000, []),
     { id: 'cloneC', n: 'cloneC', img: '', f: [{ n: 'cloneC', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['バトルゾーンにある相手のクリーチャーを１体選ぶ。その後、すべての墓地にある《cloneC》１枚につき、バトルゾーンにある相手の他のクリーチャーを１体選んでもよい。選んだクリーチャーをすべて破壊する。'] }] },
     { id: 'te20', n: 'te20', img: '', f: [{ n: 'te20', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['自分の山札または超GRの上から１枚目を見る。それをその一番下に置いてもよい。'] }] },
+    { id: 'gCastle', n: 'gCastle', img: '', f: [{ n: 'gCastle', t: 'G城', c: 'F', co: 1, p: null, r: [], x: ['（G城は実行したら、表向きでシールド化される。このカードが表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く）', 'このG城が表向きで自分のシールドゾーンに置かれた時、自分の山札の上から１枚をタップしてマナゾーンに置く。', '相手のクリーチャーが召喚以外の方法で出る時、かわりにマナゾーンに置く。'] }] },
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2034,6 +2035,29 @@ describe('named mechanics', () => {
       // 6000-4000 = 2000 < 3000
       expect(s.cards[foe].zone).toBe('grave');
       expect(find(s, 0, 'battle', 'deathMarch')).toBeDefined();
+    });
+  });
+
+  describe('G城', () => {
+    it('実行すると表向きでシールド化され、離れる時は墓地へ', () => {
+      let s = setup([{ p: 0, cid: 'gCastle', zone: 'hand' }]);
+      const g = find(s, 0, 'hand', 'gCastle')!;
+      const shields = s.players[0].shield.length;
+      const mana = s.players[0].mana.length;
+      s = act(s, 0, { t: 'play', iid: g, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 5 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      expect(s.cards[g].zone).toBe('shield');
+      expect(s.cards[g].faceUp).toBe(true);
+      expect(s.players[0].shield.length).toBe(shields + 1);
+      // 表向きでシールドゾーンに置かれた時: 山札の上から1枚をマナへ
+      expect(s.players[0].mana.length).toBe(mana + 1);
+      // 表向きの間は能力が有効: 相手のクリーチャーが召喚以外で出る時、かわりにマナへ
+      const v = s.players[1].hand.find((i) => s.cards[i].cid === 'vanilla') ?? s.players[1].deck.at(-1)!;
+      moveCard(s, L, v, 'battle');
+      expect(s.cards[v].zone).toBe('mana');
+      // 手札に加えられる時、かわりに墓地へ
+      moveCard(s, L, g, 'hand');
+      expect(s.cards[g].zone).toBe('grave');
     });
   });
 
