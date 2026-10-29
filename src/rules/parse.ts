@@ -938,6 +938,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^(?:このようにして山札を見ていた場合、その後|こうして山札を見たら、)シャッフルする$/.test(s)) return [{ op: 'shuffle' }];
   if (/^このクリーチャーのフレーバーテキストを読む$/.test(s)) return [];
   if (/^(?:自分は)?ゲームに勝つ$/.test(s)) return [{ op: 'winGame' }];
+  // 夢の変形 デュエランド 「こうして7枚すべてを使った場合、自分はゲームに勝つ」
+  {
+    const ua = s.match(/^こうして(\d+)枚すべてを使った場合、(?:自分は)?ゲームに勝つ$/);
+    if (ua) return [{ op: 'if', cond: { c: 'usedAtLeast', n: +ua[1] }, body: [{ op: 'winGame' }] }];
+  }
+  // 宿命の決闘 「自分の手札にあるロスト・クルセイダー・カードを1枚、表向きにしてもよい。そうしたら、〜」
+  {
+    const rv = s.match(/^自分の手札(?:にある|から)(.+?)・カードを(\d+)枚、?表向きにする$/);
+    // (「ロスト・クルセイダー・カード」は種族で見る)
+    const rsel = rv && (parseSel(rv[1]) ?? { owner: 'self', zones: ['hand'], kind: 'card', races: [rv[1]] });
+    if (rv && rsel) return [{ op: 'choose', target: { ref: 'sel', sel: { ...rsel, owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +rv[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '表向きにするカードを選ぶ' }, { op: 'note', text: '手札のカードを表向きにした' }];
+  }
   {
     const sh = s.match(/^自分の山札をシャッフルした後、(.+)$/);
     const rest = sh && sentence(sh[1], ctx);

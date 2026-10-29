@@ -281,6 +281,10 @@ const db = buildDB(
     { id: 'nego', n: 'nego', img: '', f: [{ n: 'nego', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['プレイヤーを２人選ぶ。それらのプレイヤーはカードを３枚まで引く。', 'プレイヤーを２人選ぶ。それらのプレイヤーは自身の山札の上から１枚目をシールド化する。'] }] },
     { id: 'harmony', n: 'harmony', img: '', f: [{ n: 'harmony', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターン、クリーチャーが攻撃する時、それよりパワーが小さい相手のクリーチャーを１体破壊する。'] }] },
     { id: 'seven', n: 'seven', img: '', f: [{ n: 'seven', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から１枚目を自分のマナゾーンに置く。', 'メタモーフ(自分のマナゾーンに７枚以上カードがあれば、この呪文は次の能力を得る)', '自分の山札の上から１枚目のかわりに、上から３枚を自分のマナゾーンに置く。'] }] },
+    cr('shako', 1, 5000, ['自分の山札の最後の１枚を引く時、ゲームに負けるかわりに勝つ。']),
+    cr('wadaebi', 1, 5000, ['各ターン、相手はクリーチャーを２体までしか出せない。']),
+    { id: 'alch', n: 'alch', img: '', f: [{ n: 'alch', t: 'クリーチャー', c: 'W', co: 1, p: '5000', r: ['テスト'], x: ['自分の手札が13枚以上あれば、自分のターンに１度、水のカードを自分の手札からコストを支払わずに実行してもよい。'] }] },
+    { id: 'waterBig', n: 'waterBig', img: '', f: [{ n: 'waterBig', t: 'クリーチャー', c: 'W', co: 9, p: '9000', r: ['テスト'], x: [] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2576,6 +2580,35 @@ describe('named mechanics', () => {
         expect(tr.length).toBe(1);
         expect(programOf(tr[0].effect).complete).toBe(true);
       }
+    });
+  });
+
+  describe('ジョジョのクルセイダーズ', () => {
+    it('水上第九院 シャコガイル: 山札の最後の1枚を引いたら勝つ', () => {
+      let s = setup([{ p: 0, cid: 'shako', zone: 'battle' }]);
+      while (s.players[0].deck.length > 1) moveCard(s, L, s.players[0].deck.at(-1)!, 'grave');
+      s = act(s, 0, { t: 'endTurn' });
+      // 相手のターンを終えて、自分のドローで最後の1枚を引く
+      for (let k = 0; k < 10 && s.active !== 0 && s.phase !== 'over'; k++) s = act(s, s.pending[0]?.player ?? s.active, s.pending.length ? { t: 'resolve', use: true } : { t: 'endTurn' });
+      expect(s.phase).toBe('over');
+      expect(s.players[1].lost).toBe(true);
+      expect(s.players[0].lost).toBeFalsy();
+    });
+    it('ワダエビノミコト: 相手は各ターン2体までしか出せない', () => {
+      const s = setup([{ p: 1, cid: 'wadaebi', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);
+      s.players[0].turnStat = { turn: s.turn, summons: 2, enters: 2, freeEnters: 0, hyperEnters: 0, shieldAdds: 0, shieldsToHand: 0, toGrave: 0, left: 0, spellTamaCost: 0 };
+      const v = s.players[0].hand.find((i) => s.cards[i].cid === 'vanilla')!;
+      expect(applyAction(s, 0, { t: 'play', iid: v, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
+    });
+    it('アルケミック・プラチナム: 手札13枚以上なら水のカードを1度だけコストを支払わずに', () => {
+      let s = setup([{ p: 0, cid: 'alch', zone: 'battle' }, { p: 0, cid: 'waterBig', zone: 'hand' }]);
+      while (s.players[0].hand.length < 13) moveCard(s, L, s.players[0].deck.at(-1)!, 'hand');
+      const w = find(s, 0, 'hand', 'waterBig')!;
+      s = act(s, 0, { t: 'play', iid: w, face: 0, pay: [], gzero: true });
+      expect(s.cards[w].zone).toBe('battle');
+      // 2回目は使えない
+      const v = s.players[0].hand.find((i) => s.cards[i].cid === 'vanilla')!;
+      expect(applyAction(s, 0, { t: 'play', iid: v, face: 0, pay: [], gzero: true }, L).error).toBeTruthy();
     });
   });
 

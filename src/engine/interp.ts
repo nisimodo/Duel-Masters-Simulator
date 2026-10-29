@@ -243,6 +243,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     }
     case 'itCount':
       return cmp(ex.it.length, c.cmp, c.n);
+    case 'usedAtLeast':
+      return (ex.usedN ?? 0) >= c.n;
     case 'distinctCosts': {
       // ツインパクトはどちらの面のコストとしても扱える
       const opts = ex.looked.map((i) => L(s.cards[i].cid)?.faces.map((f) => f.cost) ?? [0]);
@@ -909,9 +911,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
             // 「自分がコストを支払わずに唱える」: 相手のカードでも自分が唱える
             const owner = op.byMe ? ex.player : c.owner;
             if (op.after) c.castDest = op.after;
-            playCard(s, owner, { t: 'play', iid: i, face: fi, pay: [], free: true, force: true }, L);
+            const err = playCard(s, owner, { t: 'play', iid: i, face: fi, pay: [], free: true, force: true }, L);
             c.castDest = undefined;
+            if (!err) ex.usedN = (ex.usedN ?? 0) + 1;
           }
+          if (op.mode === 'put') ex.usedN = (ex.usedN ?? 0) + 1;
           ex.it = [i];
         }
         break;

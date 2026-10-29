@@ -151,6 +151,8 @@ export type Cond =
   /** 「このD2フィールドの下にシノビがN枚以上あれば」 */
   | { c: 'underSelfRace'; race: string; n: number }
   | { c: 'itCount'; cmp: '>=' | '<=' | '=='; n: number }
+  /** 効果でN枚以上使った */
+  | { c: 'usedAtLeast'; n: number }
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'selfTapped' }

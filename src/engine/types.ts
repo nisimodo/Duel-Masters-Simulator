@@ -206,6 +206,8 @@ export interface PlayerState {
   dLock?: { until: number };
   /** 「次の相手のターン中、相手はパワーN以下のクリーチャーを出せない」 */
   enterPowerLock?: { until: number; max: number };
+  /** アルケミック・プラチナムで手札からコストを支払わずに実行したターン */
+  freeHandTurn?: number;
   /** このターンに攻撃されたか (自分または自分のクリーチャー) */
   attackedOnTurn?: number;
   /** 「自分のエレメントは、呪文によって選ばれない」: turn はかけたターン。nextOwn なら次の自分のターンのはじめまで。civ はその文明の呪文だけ */
@@ -283,6 +285,8 @@ export type Pending =
 /** 実行中の効果プログラム */
 export interface Exec {
   player: number;
+  /** 効果で使ったカードの枚数 (「こうして7枚すべてを使った場合」) */
+  usedN?: number;
   /** 「こうして出したクリーチャー」 */
   kept?: number[];
   /** 「プレイヤーを2人選ぶ」: 選んだプレイヤー */

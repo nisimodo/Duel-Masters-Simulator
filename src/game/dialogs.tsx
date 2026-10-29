@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
-import { autoPay, crystalOf, faceOf, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
+import { autoPay, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 
 export function Modal({ children, onClose, title }: { children: React.ReactNode; onClose?: () => void; title?: string }) {
@@ -56,6 +56,8 @@ export function PayDialog({
   const sasaN = statics.some((x) => x.s === 'sasageru');
   const heOn = statics.some((x) => x.s === 'hyperEnergy');
   const gz = statics.find((x) => x.s === 'gzero');
+  // アルケミック・プラチナム: 手札から水のカードをコストを支払わずに実行できる
+  const freeHand = !gz && freeFromHandOk(s, L, me, iid);
   const [sasa, setSasa] = useState<number[]>([]);
   const [he, setHe] = useState<number[]>([]);
   const [gzero, setGzero] = useState(false);
@@ -150,7 +152,7 @@ export function PayDialog({
         {cost != null && cost !== f.cost ? ` (元のコスト ${f.cost})` : ''} / 文明 {f.civs.length ? f.civs.join(',') : '無色'} ・ 選択中 {pay.length}枚{crystal && pay.some((m) => s.cards[m].manaDown) ? ` (水晶ソウル: ${payValue(s, pay, crystal)}枚分)` : ''}{' '}
         {ok ? <span className="ok">✓ 支払い可能</span> : <span className="warn">{typeof costErr === 'string' ? costErr : 'コスト・文明が合いません'}</span>}
       </div>
-      {gz && (
+      {(gz || freeHand) && (
         <label className="small">
           <input
             type="checkbox"
@@ -160,7 +162,7 @@ export function PayDialog({
               refreshPay({ sasa, he, gzero: e.target.checked });
             }}
           />{' '}
-          G・ゼロ (コストを支払わずに召喚)
+          {gz ? 'G・ゼロ (コストを支払わずに召喚)' : 'アルケミック・プラチナム (コストを支払わずに実行・自分のターンに1度)'}
         </label>
       )}
       {inMana && <div className="small">マナ爆誕: マナゾーンから召喚します</div>}

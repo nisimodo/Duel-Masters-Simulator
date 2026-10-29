@@ -1152,7 +1152,18 @@ function enterLimitHit(s: GameState, p: number, L?: Lookup): boolean {
   if (lim && s.active === p && turnStat(s, p).enters >= lim.n) return true;
   // DG-パルテノン 「すべてのプレイヤーは、各ターン、クリーチャーを3体までしか出せない」
   const cap = L && capOf(s, L, 'enterCap');
-  return cap != null && turnStat(s, p).enters >= cap;
+  if (cap != null && turnStat(s, p).enters >= cap) return true;
+  // ワダエビノミコト 「各ターン、相手はクリーチャーを2体までしか出せない」
+  const oc = L ? activeStatics(s, L).flatMap((x) => (x.spec.s === 'oppEnterCap' && x.owner !== p ? [x.spec.n] : [])) : [];
+  return oc.length > 0 && turnStat(s, p).enters >= Math.min(...oc);
+}
+
+/** アルケミック・プラチナム 「自分の手札が13枚以上あれば、自分のターンに1度、水のカードを自分の手札からコストを支払わずに実行してもよい」が使えるか */
+export function freeFromHandOk(s: GameState, L: Lookup, p: number, iid: number): boolean {
+  const c = s.cards[iid];
+  if (!c || c.owner !== p || c.zone !== 'hand' || s.active !== p || s.players[p].freeHandTurn === s.turn) return false;
+  const civs = (L(c.cid)?.civs ?? []) as string[];
+  return activeStatics(s, L).some((x) => x.owner === p && x.spec.s === 'freeFromHand' && s.players[p].hand.length >= x.spec.handMin && (!x.spec.civ || civs.includes(x.spec.civ)));
 }
 
 /** 各ターンに出せる・唱えられる数の上限 (いちばん小さいもの) */
@@ -1747,7 +1758,17 @@ function checkState(s: GameState, L: Lookup) {
   for (let p = 0; p < s.players.length; p++) {
     const pl = s.players[p];
     if (pl.lost) continue;
-    if (pl.deck.length === 0) lose(s, p, '山札切れ');
+    if (pl.deck.length === 0) {
+      // 水上第九院 シャコガイル: 最後の1枚を引いた時は、負けるかわりに勝つ
+      const lastMove = [...(s.moves ?? [])].reverse().find((m) => m.owner === p && m.from === 'deck');
+      const winner = lastMove?.to === 'hand' && pl.battle.some((b) => !abilitiesIgnored(s, L, b) && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'deckOutWin'));
+      if (winner) {
+        log(s, p, `${pl.name}: 山札の最後の1枚を引いたので、負けるかわりに勝つ`);
+        for (const o of opponentsOf(s, p)) lose(s, o, '特殊勝利');
+        return;
+      }
+      lose(s, p, '山札切れ');
+    }
   }
   if ((s.phase as string) === 'over') return;
   // パワー0以下のクリーチャーは破壊
@@ -2635,6 +2656,7 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
   }
   if (a.gzero) {
     const g = statics.find((x) => x.s === 'gzero');
+    if ((!g || g.s !== 'gzero') && freeFromHandOk(s, L, p, a.iid)) return 0;
     if (!g || g.s !== 'gzero') return 'G・ゼロを使えません';
     // 条件のゾーン (「バトルゾーンまたはマナゾーンに」) にあるカードを数える
     const zones = g.cond.c === 'countAtLeast' ? (g.cond.sel.zones.length ? g.cond.sel.zones : ['battle']) : ['battle'];
@@ -2732,6 +2754,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     const fi = card.faces.indexOf(face);
     const cost = playCost(s, L, p, a, fi);
     if (typeof cost === 'string') return cost;
+    // アルケミック・プラチナム: 手札からコストを支払わずに実行した (自分のターンに1度)
+    if (a.gzero && !(face.statics ?? []).some((x) => x.s === 'gzero') && freeFromHandOk(s, L, p, a.iid)) s.players[p].freeHandTurn = s.turn;
     const crystal = (face.statics ?? []).find((x) => x.s === 'crystalSoul');
     if (!a.force && crystal && crystal.s === 'crystalSoul') {
       // 水晶ソウル: 裏向きのマナはN枚分
