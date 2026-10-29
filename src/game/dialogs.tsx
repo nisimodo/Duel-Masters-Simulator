@@ -410,7 +410,9 @@ export function PayDialog({
       <div className="small muted">使うマナをクリックで選択 (コスト軽減などは「支払いを調整して出す」)</div>
       <div className="row">
         {mana.map((m) => (
-          <CardImg key={m} card={L(s.cards[m].cid)!} width={56} selected={pay.includes(m)} onClick={() => toggle(m)} onHover={onHover} />
+          <CardImg key={m} card={L(s.cards[m].cid)!} width={56} selected={pay.includes(m)} onClick={() => toggle(m)} onHover={onHover}>
+            <DownTag s={s} iid={m} />
+          </CardImg>
         ))}
         {!mana.length && <span className="muted">アンタップのマナがありません</span>}
       </div>
@@ -469,7 +471,9 @@ export function PendingDialog({
   breakPicks: number[];
 }) {
   const img = (iid: number, extra?: { selected?: boolean; onClick?: () => void }) => (
-    <CardImg key={iid} card={L(s.cards[iid].cid)!} face={s.cards[iid].zone === 'battle' ? s.cards[iid].face : 0} width={90} onHover={onHover} {...extra} />
+    <CardImg key={iid} card={L(s.cards[iid].cid)!} face={s.cards[iid].zone === 'battle' ? s.cards[iid].face : 0} width={90} onHover={onHover} {...extra}>
+      <DownTag s={s} iid={iid} />
+    </CardImg>
   );
   const [target, setTarget] = useState<number | null>(null);
   const oppCreatures = useMemo(
@@ -677,12 +681,18 @@ export function PendingDialog({
 }
 
 /** ゾーンの中身を一覧表示 (墓地・超次元・山札サーチなど) */
+/** マナゾーンの裏向きのカードに「裏マナ」と出す */
+function DownTag({ s, iid }: { s: GameState; iid: number }) {
+  return s.cards[iid].zone === 'mana' && s.cards[iid].manaDown ? <span className="tag">裏マナ</span> : null;
+}
+
 export function ZoneViewer({
   title,
   s,
   L,
   iids,
   hidden,
+  me,
   sleeve,
   onCard,
   onClose,
@@ -694,6 +704,8 @@ export function ZoneViewer({
   L: Lookup;
   iids: number[];
   hidden?: boolean;
+  /** 見ているプレイヤー (相手の裏向きのマナは裏のまま見せる) */
+  me?: number;
   sleeve?: string | null;
   onCard?: (iid: number, e: React.MouseEvent) => void;
   onClose: () => void;
@@ -704,10 +716,14 @@ export function ZoneViewer({
     <Modal title={`${title} (${iids.length}枚)`} onClose={onClose}>
       <div className="row" style={{ maxWidth: 820 }}>
         {iids.map((i) =>
-          hidden ? (
-            <CardBack key={i} sleeve={sleeve} width={80} />
+          hidden || (s.cards[i].zone === 'mana' && s.cards[i].manaDown && me != null && s.cards[i].owner !== me) ? (
+            <CardBack key={i} sleeve={sleeve} width={80}>
+              {s.cards[i].manaDown && <span className="tag">裏マナ</span>}
+            </CardBack>
           ) : (
-            <CardImg key={i} card={L(s.cards[i].cid)!} face={s.cards[i].face} width={80} onHover={onHover} onClick={(e) => onCard?.(i, e)} />
+            <CardImg key={i} card={L(s.cards[i].cid)!} face={s.cards[i].face} width={80} onHover={onHover} onClick={(e) => onCard?.(i, e)}>
+              <DownTag s={s} iid={i} />
+            </CardImg>
           ),
         )}
         {!iids.length && <span className="muted">カードがありません</span>}

@@ -457,6 +457,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/\s+/g, '')
     .replace(/^(その後|次に|さらに)、?/, '')
     .replace(/^この(\d+)体をバトルさせる$/, 'その$1体をバトルさせる')
+    // 偽りの名 ゾルゲ 「そうした場合、その2体はバトルする」
+    .replace(/その(\d+)体はバトルする$/, 'その$1体をバトルさせる')
+    // 真実の巨兵 サンダーバードRe: 「相手のクリーチャーを1体選び、相手の山札の一番上に置く」
+    .replace(/、相手の山札の(一番上|一番下|上|下)に置く$/, '、持ち主の山札の$1に置く')
+    // 「無情」の極 シャングリラ 「このクリーチャーがタップされている時、〜」
+    .replace(/^このクリーチャーがタップされている時、/, 'このクリーチャーがタップしていれば、')
     // ダチッコ・チュリス 「このターン次に召喚する自分のビートジョッキーのコストを最大3少なくする」
     .replace(/^このターン次に/, 'このターン、次に')
     // 水晶武装N: 「自分のマナゾーンに裏向きのカードがN枚以上あれば、〜」(名前のついた条件)
@@ -1480,6 +1486,83 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         ],
       },
     ];
+  // ---- ゼニス・アンノウン ----
+  // 偽りの名 ゾルゲ 「(出た) このクリーチャーと、バトルゾーンにある別のクリーチャーを1体選ぶ」(その2体をバトルさせる)
+  if ((mm = s.match(/^(?:バトルゾーンにある)?別のクリーチャーを(\d+)体選ぶ$/)))
+    return [
+      { op: 'save' },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', notSaved: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: 'バトルさせるクリーチャーを選ぶ' },
+    ];
+  // 偽りの名 スネーク 「自分の墓地のカードを(裏向きにして)シャッフルし、山札の一番下に置く」
+  if (/^自分の墓地のカードを(?:すべて)?(?:裏向きにして)?シャッフルし、(?:自分の)?山札の(?:一番)?下に置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+    ];
+  // 「俺」の頂 ライオネル 「その後、自分のシールドをひとつ、相手に選ばせる」
+  if ((mm = s.match(/^自分のシールドを(\d+)つ、?相手に選ばせる$/)))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: 'シールドを選ぶ' }];
+  // 真実の王 ヴィヴァルディ 「相手のクリーチャーすべてのパワーは、自分のコマンドとドラゴン1体につき-2000される」
+  if ((mm = s.match(/^(?:この|その)ターン、(?:バトルゾーンにある)?相手のクリーチャーすべてのパワーは、?(?:バトルゾーンにある)?自分のコマンドとドラゴン1体につき-(\d+)される$/)))
+    return [{ op: 'powerPerCount', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, per: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['コマンド', 'ドラゴン'] }, delta: -mm[1] }];
+  // 「無」の頂天 タブラ＝ラーサ 「このターン、無色ではないクリーチャーすべてのパワーを、自分のマナゾーンにある裏向きのカード1枚につき-2000する」
+  if ((mm = s.match(/^(?:この|その)ターン、無色ではないクリーチャーすべてのパワーを、?自分のマナゾーンにある裏向きのカード1枚につき-(\d+)する$/)))
+    return [{ op: 'powerPerCount', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', notColorless: true }, count: { all: true }, chooser: 'self' }, per: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, delta: -mm[1] }];
+  // 偽りの悪魔神王 デス・マリッジ 「デーモン・コマンドとエンジェル・コマンド以外のクリーチャーをすべて破壊する」
+  if ((mm = s.match(/^(?:バトルゾーンにある)?(.+?)と(.+?)以外のクリーチャーをすべて破壊する$/)) && !/[、のを]/.test(mm[1] + mm[2]))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', racesNot: [mm[1], mm[2]] }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
+  // 「獅星」の頂 ザ・ライオネル 「手札を3枚まで裏向きにして、それぞれを新しいシールドとして自分のシールドゾーンに置く」
+  if ((mm = s.match(/^(?:自分の)?手札を(\d+)枚まで裏向きにして、?それぞれを新しいシールドとして(?:自分の)?シールドゾーンに置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'シールドにする手札を選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'shield' },
+    ];
+  // 引き裂かれし永劫、エムラクール 「相手はバトルゾーン、シールドゾーン、マナゾーンにある自身の表向きのカードを合計6枚選び、墓地に置く」
+  if ((mm = s.match(/^相手はバトルゾーン、シールドゾーン、マナゾーンにある自身の表向きのカードを合計(\d+)枚選び、(?:持ち主の)?墓地に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'shield', 'mana'], kind: 'card', faceUpCard: true }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `墓地に置くカードを${mm[1]}枚選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  // 邪偽縫合 デスネークニア 「その後、自分の手札を1枚、相手に見ないで選ばせる」(そのカードを「それ」で使う)
+  if ((mm = s.match(/^自分の手札を(\d+)枚、?相手に見ないで選ばせる$/)))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'hostile', prompt: '相手の手札を見ないで選ぶ' }];
+  if (/^(?:自分は)?それをコストを支払わずに使う$/.test(s)) return [{ op: 'play', target: { ref: 'it' }, mode: 'use' }];
+  // ヴィオラの黒像 「その破壊したクリーチャーよりコストが小さいクリーチャーを1体、自分の墓地から出す」
+  if ((mm = s.match(/^その破壊したクリーチャーよりコストが小さいクリーチャーを(\d+)体、?自分の墓地から(?:バトルゾーンに)?出す$/) ?? s.match(/^自分の墓地からその破壊したクリーチャーよりコストが小さいクリーチャーを(\d+)体(?:バトルゾーンに)?出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'creature', costLtIt: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'コストが小さいクリーチャーを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  // 天頂と停滞と水晶の決断 「その中からゼニス、アンノウン、無色カードをすべて手札に加える」
+  if (/^その中からゼニス、アンノウン、無色カードをすべて手札に加える$/.test(s))
+    return [
+      {
+        op: 'choose',
+        target: { ref: 'looked', sel: { owner: 'any', zones: ['deck', 'hand', 'grave', 'mana', 'shield'], kind: 'card', or: [{ owner: 'any', zones: ['deck'], kind: 'creature', races: ['ゼニス', 'アンノウン'] }, { owner: 'any', zones: ['deck'], kind: 'card', colorless: true }] }, count: { all: true } },
+        purpose: 'benefit',
+        prompt: 'all',
+      },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 「胡乱」の頂天 クリス＝ビュート 「各プレイヤーのマナゾーンにあるカードをそれぞれ2枚まで選び、裏向きにする」
+  if ((mm = s.match(/^各プレイヤーのマナゾーンにあるカードをそれぞれ(\d+)枚まで選び、裏向きにする$/)))
+    return (['self', 'opp'] as const).flatMap((o): Op[] => [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: o, zones: ['mana'], kind: 'card', faceDown: false }, count: { n: +mm![1], upTo: true }, chooser: 'self' }, purpose: o === 'opp' ? 'hostile' : 'benefit', prompt: `${o === 'opp' ? '相手' : '自分'}のマナを裏向きにする` },
+      { op: 'faceDown', target: { ref: 'it' } },
+    ]);
+  // 「祝福」の頂天 ウェディング 「各相手は自身のクリーチャーを2体と自身の手札を2枚選び、シールド化する」
+  if ((mm = s.match(/^(?:各)?相手は、?自身のクリーチャーを(\d+)体と自身の手札を(\d+)枚選び、シールド化する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `シールド化するクリーチャーを${mm[1]}体選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'shield' },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'card' }, count: { n: +mm[2], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: `シールド化する手札を${mm[2]}枚選ぶ` },
+      { op: 'move', target: { ref: 'it' }, to: 'shield' },
+    ];
+  // 熱血の名 カチスギル・スキル 「(自分が勝ったら、)このクリーチャーを自分の墓地からタップして出す」
+  if (/^このクリーチャーを(?:自分の)?墓地からタップして(?:バトルゾーンに)?出す$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'battleTapped' }];
   // ---- Dスイッチの効果 ----
   // ワールド・ストップ
   if (/^次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない$/.test(s)) return [{ op: 'dLock' }];
@@ -3298,6 +3381,21 @@ export function parseEffect(text: string): Program {
         unparsed: [],
       };
   }
+  // 偽りのコード シャーロック 「各プレイヤーは自身のクリーチャーを1体ずつ選ぶ。こうして選ばれなかったクリーチャーをすべて破壊する」
+  if (/^各プレイヤーは、?自身のクリーチャーを1体ずつ選ぶ。こうして選ばれなかったクリーチャーをすべて破壊する。?$/.test(normText(text).replace(/\s+/g, '').replace(/１/g, '1')))
+    return {
+      ops: [
+        {
+          op: 'forEachPlayer',
+          body: [
+            { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '残すクリーチャーを1体選ぶ' },
+            { op: 'moveOtherCreatures', owner: 'self', to: 'grave' },
+          ],
+        },
+      ],
+      complete: true,
+      unparsed: [],
+    };
   // キング・アクエリアス 「このターンが終わるまで、バトルゾーンにある自分の水のクリーチャーはすべて、次の能力を得る。「このクリーチャーはブロックされない」」
   {
     const qa = normText(text).replace(/\s+/g, '').match(/^(.*?)(?:このターンが終わるまで|このターン)、(?:バトルゾーンにある)?(自分の.+?)はすべて、次の能力を得る。「このクリーチャーは(ブロックされない|タップされていないクリーチャーを攻撃できる)。?」。?(.*)$/);

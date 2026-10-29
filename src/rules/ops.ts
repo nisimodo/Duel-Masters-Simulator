@@ -79,6 +79,8 @@ export interface Sel {
   costEqIt?: boolean;
   /** このターンにバトルゾーンを離れたカード */
   leftThisTurn?: boolean;
+  /** 表向きのカード (シールドは表向き、マナは裏向きでないもの) */
+  faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
   /** 先に選んで保存したカード (saved) ではない (「他の〜」) */
@@ -242,6 +244,8 @@ export type Op =
   | { op: 'destroy'; target: Target }
   | { op: 'tap' | 'untap'; target: Target }
   | { op: 'power'; target: Target; delta: number; until: 'turn' | 'battle' }
+  /** 「〜1体につき-2000」: per に合うカードの数 × delta だけパワーを変える (このターン) */
+  | { op: 'powerPerCount'; target: Target; per: Sel; delta: number }
   | { op: 'restrict'; target: Target; what: 'attack' | 'attackNext' | 'block' | 'attackBlock' | 'untap' | 'attackMe' | 'attackOpp'; untilEnd?: boolean }
   | { op: 'discard'; who: 'self' | 'opp'; count: Count; how: 'choose' | 'random' | 'ownerChooses' }
   | { op: 'grSummon'; n: number }

@@ -255,6 +255,10 @@ const db = buildDB(
     { id: 'wisdom', n: 'wisdom', img: '', f: [{ n: 'wisdom', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から１枚目をシールド化してもよい。そうしたら、自分の山札の上から１枚目をそのシールドの上に裏向きで置く。（そのシールドの束は１つと数える）'] }] },
     { id: 'saint', n: 'saint', img: '', f: [{ n: 'saint', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、表向きのまま新しいシールドとして持ち主のシールドゾーンに置く。'] }] },
     cr('poreco', 1, 9000, ['自分のターンの終わりに、このターン、このクリーチャーがシールドをブレイクしていたら、このクリーチャーを手札に戻す。']),
+    cr('zebub', 9, 1000, ['クリーチャーは、パワーではなくコストの大きさを比べてバトルする。']),
+    cr('zolge', 1, 1000, ['このクリーチャーまたは自分の他のクリーチャーをバトルゾーンに出した時、バトルゾーンにある別のクリーチャーを１体選んでもよい。そうした場合、その２体はバトルする。']),
+    cr('volZero', 1, 9000, ['このクリーチャーが相手のシールドをブレイクする時、相手はそのシールドを手札に加えるかわりに自身の山札の一番下に置く。']),
+    cr('vival', 1, 5000, ['このクリーチャーが攻撃する時、そのターン、バトルゾーンにある相手のクリーチャーすべてのパワーは、バトルゾーンにある自分のコマンドとドラゴン１体につき-2000される。']),
     { id: 'oneEnter', n: 'oneEnter', img: '', f: [{ n: 'oneEnter', t: '呪文', c: 'F', co: 1, p: null, r: [], x: ['次の相手のターン、相手はクリーチャーを１体しか出せない。'] }] },
     cr('superS', 1, 1000, ['スーパー・S・トリガー（このクリーチャーを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい。その時自分のシールドが１つもなければ、このクリーチャーにxB能力を与える）', 'xBこのクリーチャーがバトルゾーンに出た時、カードを10枚引いてもよい。']),
     cr('waveW', 1, 1000, ['ウェーブストライカー（「ウェーブストライカー」を持つクリーチャーが他に２体以上あれば、このクリーチャーに次のw能力を与える）', 'wこのクリーチャーのパワーを+3000し、「W・ブレイカー」を与える。']),
@@ -2306,6 +2310,44 @@ describe('named mechanics', () => {
       }
       s = run(act(s, 0, { t: 'endTurn' }));
       expect(s.cards[pc].zone).toBe('hand');
+    });
+  });
+
+  describe('ゼニス・アンノウン', () => {
+    it('クリス=ゼ=ブブ: パワーではなくコストを比べてバトルする', () => {
+      const s = setup([{ p: 0, cid: 'zebub', zone: 'battle' }, { p: 1, cid: 'big9', zone: 'battle', tapped: true }]);
+      const foe = find(s, 1, 'battle', 'big9')!;
+      battle(s, L, find(s, 0, 'battle', 'zebub')!, foe);
+      // コスト9 > コスト1 なので、パワー9000のほうが負ける
+      expect(s.cards[foe].zone).toBe('grave');
+    });
+    it('ゾルゲ: 出たクリーチャーと選んだクリーチャーをバトルさせる', () => {
+      let s = setup([{ p: 0, cid: 'zolge', zone: 'battle' }, { p: 0, cid: 'big', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }], 6);
+      const foe = find(s, 1, 'battle', 'vanilla')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'big')!, face: 0, pay: freeMana(s, 0, 6) });
+      for (let k = 0; k < 10 && s.pending.length; k++) {
+        const top = s.pending[0];
+        const pk = abilityPick(s);
+        if (pk && pk.indices.length >= 2) {
+          s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+          continue;
+        }
+        s = act(s, top.player, top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.includes(foe) ? [foe] : top.options.slice(0, 1) }) : { t: 'resolve', use: true });
+      }
+      expect(s.cards[foe].zone).toBe('grave');
+    });
+    it('ボルメテウス・ゼロ: ブレイクしたシールドは山札の一番下へ', () => {
+      const s = setup([{ p: 0, cid: 'volZero', zone: 'battle' }]);
+      const sh = s.players[1].shield[0];
+      breakShields(s, L, 1, [sh], 0, find(s, 0, 'battle', 'volZero')!);
+      expect(s.cards[sh].zone).toBe('deck');
+      expect(s.players[1].deck[0]).toBe(sh);
+    });
+    it('ヴィヴァルディ: 自分のコマンドとドラゴンの数だけ相手のパワーを下げる', () => {
+      let s = setup([{ p: 0, cid: 'vival', zone: 'battle' }, { p: 0, cid: 'drg', zone: 'battle' }, { p: 0, cid: 'cmd', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'vival')!, player: 1 });
+      for (let k = 0; k < 4 && s.pending.length && s.pending[0].kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
+      expect(power(s, L, find(s, 1, 'battle', 'big')!)).toBe(6000 - 4000);
     });
   });
 

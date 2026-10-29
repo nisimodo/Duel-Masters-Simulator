@@ -174,6 +174,7 @@ function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: num
     if (sp.free && opts.summoned && !opts.free) continue;
     if (sp.cip && !face.triggers.some((t) => t.events.includes('enter'))) continue;
     if (sp.nonDragon && face.races.some((r) => r.includes('ドラゴン'))) continue;
+    if (sp.races && !face.races.some((r) => sp.races!.some((x) => r.includes(x)))) continue;
     return sp.to;
   }
   return null;
@@ -327,6 +328,11 @@ export function moveCard(
   // 「マナゾーンのカードをタップせずにクリーチャーを出せない」
   if (to === 'battle' && from !== 'battle' && s.players[c.owner].freeEnterLock && (!opts.summoned || opts.free) && card?.faces[opts.face ?? c.face]?.isCreature) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} はマナゾーンのカードをタップせずには出せない`);
+    return from as ZoneName;
+  }
+  // 偽りの名 シャーロック 「誰も、サイキック・クリーチャーをバトルゾーンに出すことはできない」
+  if (to === 'battle' && from === 'hyper' && activeStatics(s, L).some((x) => x.spec.s === 'noHyperEnter')) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は超次元ゾーンから出せない`);
     return from as ZoneName;
   }
   // 「次の相手のターン、相手はクリーチャーをN体しか出せない」
@@ -1874,7 +1880,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   const f = faceOf(s, L, iid);
   if (!f?.isCreature || c.zone !== 'battle' || c.tapped || c.noAttack || c.restrict?.attack || isSealed(s, iid) || notCreatureNow(s, L, iid)) return false;
-  if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== c.owner || !!x.spec.all) && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true))) return false;
+  if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== c.owner || !!x.spec.all) && x.spec.attack && matchesSel(s, L, iid, x.spec.sel, true) && (!x.spec.cond || staticCondOk(s, L, x)))) return false;
   const lim = s.players[c.owner].actLimit;
   if (lim && lim.turn === s.turn && lim.atk >= lim.n) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
@@ -1991,7 +1997,7 @@ function blockStep(s: GameState, L: Lookup) {
     ? []
     : s.players[def].battle.filter((b) => {
         const f = faceOf(s, L, b);
-        if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== s.cards[b].owner || !!x.spec.all) && x.spec.block && matchesSel(s, L, b, x.spec.sel, true))) return false;
+        if (activeStatics(s, L).some((x) => x.spec.s === 'oppRestrict' && (x.owner !== s.cards[b].owner || !!x.spec.all) && x.spec.block && matchesSel(s, L, b, x.spec.sel, true) && (!x.spec.cond || staticCondOk(s, L, x)))) return false;
         const bl = s.players[s.cards[b].owner].actLimit;
         if (bl && bl.turn === s.turn && bl.blk >= bl.n) return false;
         const untapB = s.cards[b].tapped && (f?.statics ?? []).some((x) => x.s === 'untapBlocker');
@@ -2045,8 +2051,10 @@ export function battle(s: GameState, L: Lookup, att: number, def: number) {
 
 function battleInner(s: GameState, L: Lookup, att: number, def: number) {
   const blocking = s.attack?.blocked === def;
-  const pa = power(s, L, att, s.attack?.attacker === att, { inBattle: true, foe: def });
-  const pd = power(s, L, def, false, { inBattle: true, blocking, foe: att });
+  // 「異形」の頂天 クリス=ゼ=ブブ: パワーではなくコストを比べる
+  const byCost = activeStatics(s, L).some((x) => x.spec.s === 'battleByCost');
+  const pa = byCost ? (faceOf(s, L, att)?.cost ?? 0) : power(s, L, att, s.attack?.attacker === att, { inBattle: true, foe: def });
+  const pd = byCost ? (faceOf(s, L, def)?.cost ?? 0) : power(s, L, def, false, { inBattle: true, blocking, foe: att });
   const na = nameOf(s, L, att);
   const nd = nameOf(s, L, def);
   log(s, null, `バトル: ${q(na)}(${pa}) vs ${q(nd)}(${pd})`);
@@ -2122,7 +2130,12 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
       continue;
     }
     // 「相手はそのシールドを手札に加えるかわりに墓地に置く」
-    if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToGrave')) {
+    if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToDeckBottom')) {
+      moveCard(s, L, sh, 'deck', { pos: 'bottom' });
+      log(s, target, 'ブレイクされたシールドは山札の下へ');
+      continue;
+    }
+    if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToGrave' && (!x.cond || staticCondOk(s, L, { src: breaker, owner: s.cards[breaker].owner, spec: x })))) {
       moveCard(s, L, sh, 'grave');
       continue;
     }

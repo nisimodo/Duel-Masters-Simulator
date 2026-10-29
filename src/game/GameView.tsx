@@ -11,7 +11,7 @@ import { activationOf, orderActivation } from './activationOf';
 import { MoveAnimator } from './MoveAnimator';
 import { hintsFromText, type EffectHint } from '../engine/effects';
 import { EVENT_LABEL } from '../lib/triggers';
-import { AWAY_CPU_MS, abilityPick, attackTargets, tapAbilityOf, autoPay, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
+import { AWAY_CPU_MS, abilityPick, attackTargets, tapAbilityOf, autoPay, kwOf, canAttackWith, crossCost, decider, duelistTargets, faceOf, manaSummonLeft, nameOf, power, untappedMana } from '../engine/engine';
 import type { Action, ZoneName } from '../engine/types';
 import { Modal, PayDialog, PendingDialog, ZoneViewer } from './dialogs';
 import { canPlayFromZone, costOf } from '../engine/statics';
@@ -482,9 +482,15 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
     const isTarget = (attackTg?.cards.includes(iid) ?? false) || effectCands.includes(iid);
     const selected = (mode.kind === 'effect' && mode.picks.includes(iid)) || breakPicks.includes(iid) || (mode.kind === 'attack' && mode.attacker === iid);
     const pw = f?.isCreature ? power(s, L, iid) : null;
+    // 与えられた能力も含めたキーワード (スピードアタッカー・マッハファイター)
+    const kw = c.zone === 'battle' && f?.isCreature ? kwOf(s, L, iid) : null;
     // 裏向きのマナは相手には見えない
     if (c.zone === 'mana' && c.manaDown && c.owner !== me)
-      return <CardBack key={iid} width={opts.width} title="裏向きのマナ" onClick={(e) => onCardClick(iid, e)} />;
+      return (
+        <CardBack key={iid} width={opts.width} title="裏向きのマナ" onClick={(e) => onCardClick(iid, e)}>
+          <span className="tag">裏マナ</span>
+        </CardBack>
+      );
     return (
       <CardImg
         key={iid}
@@ -502,12 +508,13 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         onContextMenu={(e) => openMenu(e, nameOf(s, L, iid), cardMenu(iid))}
       >
         {opts.showPower && pw != null && <span className={`pw${c.powerMod ? ' mod' : ''}`}>{pw}</span>}
-        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown) || (s.onceGame ?? []).includes(iid)) && (
+        {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !kw?.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown) || (s.onceGame ?? []).includes(iid)) && (
           <span className="tag">
             {c.under.length > 0 && `+${c.under.length} `}
-            {c.zone === 'battle' && c.sick && f?.isCreature && !f.kw.speedAttacker && '酔 '}
+            {/* 出たターン: 召喚酔いは「酔」、マッハファイターは (クリーチャーを攻撃できるので)「マ」 */}
+            {c.zone === 'battle' && c.sick && f?.isCreature && !kw?.speedAttacker && (kw?.machFighter ? 'マ ' : '酔 ')}
             {c.noAttack && '✕攻'}
-            {c.zone === 'mana' && c.manaDown && '裏'}
+            {c.zone === 'mana' && c.manaDown && '裏マナ'}
             {c.zone === 'battle' && (s.onceGame ?? []).includes(iid) && /フィールド/.test(f?.type ?? '') && 'D済'}
           </span>
         )}
@@ -742,6 +749,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         L={L}
         iids={iids}
         hidden={hidden}
+        me={me}
         sleeve={sleeveOf(viewer.player)}
         onHover={(c) => setHover(c ? { card: c } : null)}
         onClose={() => {

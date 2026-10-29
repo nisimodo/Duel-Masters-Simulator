@@ -67,7 +67,7 @@ export type StaticSpec =
   /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
   | { s: 'discardDiscount'; n: number; d: number }
   /** 相手の〇〇は攻撃/ブロックできない */
-  | { s: 'oppRestrict'; sel: Sel; attack: boolean; block: boolean; all?: boolean }
+  | { s: 'oppRestrict'; sel: Sel; attack: boolean; block: boolean; all?: boolean; cond?: StaticCond }
   /** 相手はコストを支払わずにクリーチャーを召喚したり呪文を唱えたりできない */
   | { s: 'noFreePlay' }
   | { s: 'sasageru'; n: number }
@@ -226,7 +226,13 @@ export type StaticSpec =
   /** 「ブロックされた/ブロックした場合、バトルは行われない」 */
   | { s: 'noBlockBattle'; blocking: boolean }
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
-  | { s: 'breakToGrave' }
+  | { s: 'breakToGrave'; cond?: StaticCond }
+  /** 真実の名 ボルメテウス・ゼロ・ドラゴン 「相手はそのシールドを手札に加えるかわりに自身の山札の一番下に置く」 */
+  | { s: 'breakToDeckBottom' }
+  /** 「異形」の頂天 クリス=ゼ=ブブ 「クリーチャーは、パワーではなくコストの大きさを比べてバトルする」 */
+  | { s: 'battleByCost' }
+  /** 偽りの名 シャーロック 「誰も、サイキック・クリーチャーをバトルゾーンに出すことはできない」(超次元ゾーンから出せない) */
+  | { s: 'noHyperEnter'; all?: boolean }
   /** このクリーチャーの攻撃の終わりに、自分のシールドがN以上あればゲームに勝つ */
   | { s: 'winAfterAttack'; shields: number }
   /** 誰もパワーN以下のクリーチャーを召喚できない */
@@ -240,7 +246,7 @@ export type StaticSpec =
   /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
   | { s: 'breakToDeck4' }
   /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
-  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn'; free?: boolean }
+  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn'; free?: boolean; /** この種族のクリーチャーだけ */ races?: string[] }
   /** 鬼S-MAX進化: 自分がゲームに負ける時・このクリーチャーが離れる時、かわりに自分の表向きのカードをN枚破壊する (orShield: かわりにシールドを1つ墓地に置いてもよい) */
   | { s: 'oniSmax'; n: number; orShield?: boolean }
   /** バトルゾーンを離れない */
@@ -570,6 +576,14 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     }
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:持ち主の)?墓地に置く$/.test(t0)) return [{ s: 'breakToGrave' }];
+  // 偽りの名 ルカニド 「(水晶武装4:)このクリーチャーがシールドをブレイクする時、自分のマナゾーンに裏向きのカードが4枚以上あれば、相手はそのシールドをかわりに墓地に置く」
+  {
+    const lk = t0.match(/^このクリーチャーがシールドをブレイクする時、自分のマナゾーンに裏向きのカードが(\d+)枚以上あれば、相手はそのシールドをかわりに墓地に置く$/);
+    if (lk) return [{ s: 'breakToGrave', cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, n: +lk[1] } }];
+  }
+  if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/.test(t0)) return [{ s: 'breakToDeckBottom' }];
+  if (/^クリーチャーは、?パワーではなくコストの大きさを比べてバトルする$/.test(t0)) return [{ s: 'battleByCost' }];
+  if (/^誰も、?サイキック・クリーチャーをバトルゾーンに出すことはできない$|^誰も、?超次元ゾーンからバトルゾーンにカードを出せない$/.test(t0)) return [{ s: 'noHyperEnter', all: true }];
   if ((m = t0.match(/^このクリーチャーの攻撃の終わりに、自分のシールドが(\d+)(?:つ|枚)?以上あれば、自分はゲームに勝つ$/))) return [{ s: 'winAfterAttack', shields: +m[1] }];
   if ((m = t0.match(/^誰もパワー(\d+)以下のクリーチャーを召喚できず、/))) return [{ s: 'summonPowerLock', powerMax: +m[1] }];
   if (/^相手のクリーチャーが(?:バトルゾーンに)?出て、(?:その|相手のクリーチャーの)能力がトリガーする時、かわりにその能力はトリガーしない$/.test(t0)) return [{ s: 'oppCipNull' }];
@@ -599,6 +613,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // モモキング -旅丸- 「相手のターン中、相手がマナゾーンのカードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーをマナゾーンに置く」
   if (/^相手のターン中(?:に)?、?相手が(?:自身の)?マナゾーン(?:にある|の)カードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', when: 'oppTurn', free: true }];
   if (/^相手のターン中に、?相手のクリーチャーが召喚以外の方法で出る時、相手はかわりにそのクリーチャーを墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'oppTurn', notSummon: true }];
+  // 「修羅」の頂 VAN・ベートーベン 「相手がコマンドまたはドラゴンをバトルゾーンに出す時、相手はそのクリーチャーをバトルゾーンに出すかわりに墓地に置く」
+  {
+    const er = t0.match(/^相手が(.+?)を(?:バトルゾーンに)?出す時、相手は(?:そのクリーチャーを|それを)?(?:バトルゾーンに出す)?かわりに(?:それを)?(?:持ち主の|自身の)?(墓地|マナゾーン)に置く$/);
+    if (er && /^[^、]+$/.test(er[1])) return [{ s: 'enterReplace', to: er[2] === '墓地' ? 'grave' : 'mana', races: er[1].split(/または|か|、/) }];
+  }
   // 我竜塔第七層 ハッスル・キャッスル 「相手のクリーチャーが召喚以外の方法で出る時、かわりにマナゾーンに置く」
   {
     const ns = t0.match(/^相手のクリーチャーが召喚以外の方法で(?:バトルゾーンに)?出る時、(?:相手は)?かわりに(?:そのクリーチャーを)?(?:持ち主の|自身の)?(マナゾーン|墓地)に置く$/);
@@ -822,6 +841,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   const cond = cp.cond;
   if (cond && /^相手のクリーチャーは(?:すべて)?、?可能(?:なら|であれば)攻撃する$/.test(t)) return [{ s: 'oppMustAttack', cond }];
   if (cond && (/^自分は攻撃されない$/.test(t) || /^相手のクリーチャーは、?自分を攻撃できない$/.test(t))) return [{ s: 'oppNoAttackMe', cond }];
+  if (cond && /^相手のクリーチャーは、?(?:すべて、?)?攻撃(もブロックも)?できない$/.test(t))
+    return [{ s: 'oppRestrict', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, attack: true, block: /ブロック/.test(t), cond }];
   if (cond?.c === 'selfNew' && /^このクリーチャーは、?(?:タップされていない|アンタップされている|アンタップしている)クリーチャーを攻撃できる$/.test(t)) return [{ s: 'attackUntappedIf', cond }];
 
   // ---- パワー ----

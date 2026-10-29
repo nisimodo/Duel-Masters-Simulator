@@ -185,6 +185,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
         if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.attackingNow && s.attack?.attacker !== iid) continue;
+        if (sel.faceUpCard && (s.cards[iid].zone === 'shield' ? !s.cards[iid].faceUp : s.cards[iid].zone === 'mana' ? !!s.cards[iid].manaDown : false)) continue;
         if (sel.notSaved && (ex.saved ?? []).includes(iid)) continue;
         if (sel.sameNameSubject && !(ex.subject != null && L(s.cards[iid].cid)?.name === L(s.cards[ex.subject].cid)?.name)) continue;
         if (sel.battling && !(s.battleNow && (s.battleNow.att === iid || s.battleNow.def === iid))) continue;
@@ -777,6 +778,17 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           else s.cards[i].powerMod += op.delta;
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワー${op.delta >= 0 ? '+' : ''}${op.delta}`);
         }
+        break;
+      }
+      case 'powerPerCount': {
+        const n = candidates(s, L, ex, op.per).length;
+        const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
+        if (n)
+          for (const i of ids) {
+            if (s.cards[i].zone !== 'battle') continue;
+            s.cards[i].powerMod += op.delta * n;
+          }
+        log(s, ex.player, `${n}体分、パワー${op.delta * n >= 0 ? '+' : ''}${op.delta * n}`);
         break;
       }
       case 'restrict': {

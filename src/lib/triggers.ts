@@ -198,7 +198,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^これをクロスしたクリーチャーが破壊される時、.*かわりに/.test(line.replace(/\s+/g, ''))) continue;
     if (/^このクリーチャーが(破壊される|バトルゾーンを離れる|離れる)時、(カードがこ(れ|のクリーチャー)の下にあれば、)?(墓地に置く|バトルゾーンを離れる)?かわりに、?.+(破壊|捨て|手札に(加え|戻)|墓地に置|マナゾーンに置|山札の(一番)?(下|上)に置|表向きに|タップ|裏返)/.test(line.replace(/\s+/g, ''))) continue;
     // 汎用の置換効果 (「〜が破壊される時、かわりに〜」「〜が出る時、かわりに〜」・鬼S-MAX進化・5.S.D.) は常在型能力として処理
-    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant', 'destroyTo', 'oppCipNull'].includes(x.s))) continue;
+    if (/かわりに|横向き|順番を入れ替え|^シビルカウント/.test(line) && (parseStaticLine(raw) ?? []).some((x) => ['replaceMove', 'enterReplace', 'oniSmax', 'breakToDeck4', 'note', 'power', 'grant', 'destroyTo', 'oppCipNull', 'breakToDeckBottom', 'breakToGrave'].includes(x.s))) continue;
     // S・トリガー・プラスで与えられる {x+} 能力は、効果の側に印を残す (条件は効果を解釈する時に付ける)
     const stPlus = /^\{x\+\}/.test(line);
     const m = line.replace(/^\{x\+\}\s*/, '').match(/^(.{1,90}?)(時|はじめに|終わりに)、(.+)$/s);
@@ -229,7 +229,9 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     }
     const cross = /(クロスした|付けた|装備した)クリーチャー/.test(clause);
     if (/(出た|出した|召喚した)時/.test(clause)) {
-      if (self) ev.add('enter');
+      // 偽りの名 ゾルゲ 「このクリーチャーまたは自分の他のクリーチャーをバトルゾーンに出した時」
+      if (self && /この(?:クリーチャー|カード)(?:または|か)自分の他のクリーチャー(?:を|が)/.test(clause)) (ev.add('enter'), ev.add('otherOwnEnter'));
+      else if (self) ev.add('enter');
       else if (/他のクリーチャーが/.test(clause) && !own && !opp) (ev.add('otherOwnEnter'), ev.add('oppEnter'));
       else if (/いずれかのプレイヤーが|誰かが/.test(clause)) (ev.add('otherOwnEnter'), ev.add('oppEnter'));
       else if (opp) ev.add('oppEnter');
@@ -296,7 +298,8 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^このクリーチャーを表向きにして(?:自分の)?シールドゾーンに(?:加えた|置いた)時/.test(clause)) ev.add('toShieldFaceUp');
     if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
-    if (/^カードが(?:どこからでも)?相手の墓地に置かれた時$|^相手の墓地にカードが置かれた時$/.test(clause)) ev.add('oppToGrave');
+    // (「相手の墓地に、どこからでもカードが置かれた時」「相手のカードがどこからでも墓地へ置かれた時」も)
+    if (/^カードが(?:どこからでも)?相手の墓地に置かれた時$|^相手の墓地に、?(?:どこからでも)?カードが置かれた時$|^相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時$/.test(clause)) ev.add('oppToGrave');
     // Dの揺籠 メリーボーイラウンド 「自分のターンに、1枚目のカードを引いた時」/ Dの牢閣 メメント守神宮 「いずれかのプレイヤーが自身のターンに最初のカードを引いた時」
     const firstDraw = /(?:自分の|自身の)ターンに、?(?:1|一)枚目のカードを引いた時|自身のターンに最初のカードを引いた時/.test(clause);
     if (firstDraw) {
