@@ -136,6 +136,7 @@ export default function DeckEditor() {
       d.main = p.main;
       d.hyper = p.hyper;
       d.gr = p.gr;
+      if (d.type === 'duepa') d.partner = p.partner;
       if (d.name.startsWith('新しい')) d.name = p.name;
     });
     if (notFound.length) setMsg({ text: `カードDBに見つからないカードがありました: ${notFound.join('、')}` });
@@ -309,10 +310,10 @@ export default function DeckEditor() {
               保存{dirty ? ' *' : ''}
             </button>
             <button onClick={genRandom}>ランダム生成</button>
-            {deck.type === 'duema' && (
+            {db.presets.some((p) => (p.mode ?? 'duema') === deck.type) && (
               <select value="" onChange={(e) => insertPreset(e.target.value)}>
                 <option value="">プリセット挿入…</option>
-                {db.presets.map((p) => (
+                {db.presets.filter((p) => (p.mode ?? 'duema') === deck.type).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

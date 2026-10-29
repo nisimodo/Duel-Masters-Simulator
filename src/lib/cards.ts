@@ -209,6 +209,10 @@ export interface Regulation {
 export interface PresetDeck {
   id: string;
   name: string;
+  /** デュエパのプリセット (なければデュエマ) */
+  mode?: 'duema' | 'duepa';
+  /** デュエパ: パートナーにするカードの名前 (cards の中の1枚) */
+  partner?: string;
   /** サムネイルにするカードの名前 */
   thumb?: string;
   cards: [string, number][];

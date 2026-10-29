@@ -266,14 +266,24 @@ export function randomDeck(db: CardDB, type: DeckType, rules: RoomRules = DEFAUL
 /** プリセットデッキ(カード名と枚数)を Deck に変換 */
 export function presetToDeck(db: CardDB, presetId: string): { deck: Deck; notFound: string[] } {
   const p = db.presets.find((x) => x.id === presetId);
-  const deck = emptyDeck('duema');
+  const deck = emptyDeck(p?.mode ?? 'duema');
   const notFound: string[] = [];
   if (!p) return { deck, notFound };
   deck.name = p.name;
-  for (const [name, n] of p.cards) {
+  // デュエパ: パートナーの1枚はメインデッキに入れず、パートナーにする
+  const partner = p.partner ? findByName(db, p.partner) : undefined;
+  if (p.partner && !partner) notFound.push(p.partner);
+  if (partner) deck.partner = partner.id;
+  let partnerSkipped = false;
+  for (const [name, n0] of p.cards) {
     const c = findByName(db, name);
+    let n = n0;
+    if (c && partner && c.id === partner.id && !partnerSkipped) {
+      partnerSkipped = true;
+      n--;
+    }
     if (!c) notFound.push(name);
-    else deck[c.zone === 'main' ? 'main' : c.zone][c.id] = ((deck[c.zone === 'main' ? 'main' : c.zone][c.id] ?? 0) + n);
+    else if (n > 0) deck[c.zone === 'main' ? 'main' : c.zone][c.id] = ((deck[c.zone === 'main' ? 'main' : c.zone][c.id] ?? 0) + n);
   }
   if (p.thumb) deck.thumb = findByName(db, p.thumb)?.id ?? null;
   return { deck, notFound };

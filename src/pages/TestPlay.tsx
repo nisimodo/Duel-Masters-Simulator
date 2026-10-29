@@ -160,7 +160,8 @@ export default function TestPlay() {
   const options = useMemo<Option[]>(() => {
     if (!db) return [];
     const mine = decks.filter((d) => d.type === 'duema').map((d) => ({ id: d.id, deck: d, preset: false }));
-    const presets = db.presets.map((p) => ({ id: p.id, deck: presetToDeck(db, p.id).deck, preset: true }));
+    // (テストプレイはデュエマなので、デュエマのプリセットだけ)
+    const presets = db.presets.filter((p) => (p.mode ?? 'duema') === 'duema').map((p) => ({ id: p.id, deck: presetToDeck(db, p.id).deck, preset: true }));
     return [...mine, ...presets];
   }, [db, decks]);
   const [slot, setSlot] = useState<0 | 1>(0);

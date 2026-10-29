@@ -86,10 +86,10 @@ function Fold({ title, extra, className, children }: { title: ReactNode; extra?:
 /** ルームで選べるプリセットのデッキ (オリジナルのルームではアドバンスのデッキは出さない) */
 function usePresetDecks(db: CardDB, rules: RoomRules) {
   return useMemo(() => {
-    if (rules.mode !== 'duema') return [];
     return db.presets
+      .filter((p) => (p.mode ?? 'duema') === rules.mode)
       .map((p) => ({ ...presetToDeck(db, p.id).deck, id: p.id, name: p.name }))
-      .filter((d) => rules.format !== 'original' || deckFormat(db, d) !== 'advance');
+      .filter((d) => rules.mode !== 'duema' || rules.format !== 'original' || deckFormat(db, d) !== 'advance');
   }, [db, rules]);
 }
 
