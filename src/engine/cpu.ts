@@ -951,7 +951,9 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
         if (!card) return { t: 'trigger', use: false };
         if (top.trigger) {
           const fi = card.faces.findIndex((f) => f.kw.shieldTrigger);
-          return { t: 'trigger', use: true, face: Math.max(0, fi) };
+          const use: Action = { t: 'trigger', use: true, face: Math.max(0, fi) };
+          // 「相手はコスト7のカードを実行できない」などで使えない時は使わない
+          return applyAction(s, p, use, L).error ? { t: 'trigger', use: false } : use;
         }
         // G・ストライク: 一番危険な攻撃可能クリーチャーを止める
         const ranked = oppCreaturesByThreat(s, p, L).filter((i) => !s.cards[i].tapped);

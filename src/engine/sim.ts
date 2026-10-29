@@ -27,7 +27,7 @@ export interface SimIssue {
   text: string;
 }
 
-const FALLBACK: Action[] = [{ t: 'resolve', use: false }, { t: 'choose', picks: [], yes: false, options: [0] }, { t: 'endTurn' }];
+const FALLBACK: Action[] = [{ t: 'resolve', use: false }, { t: 'choose', picks: [], yes: false, options: [0] }, { t: 'trigger', use: false }, { t: 'endTurn' }];
 
 /** 1試合を最後まで進める (時間がかかりすぎた試合は決着なし) */
 export function simulateGame(init: GameInit, L: Lookup, maxSteps = 6000): SimGame {

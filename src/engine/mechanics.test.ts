@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { abilityPick, applyAction, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
+import { cpuPlan } from './cpu';
 import { parseSel } from '../rules/selector';
 import { costOf } from './statics';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
@@ -2035,6 +2036,21 @@ describe('named mechanics', () => {
       // 6000-4000 = 2000 < 3000
       expect(s.cards[foe].zone).toBe('grave');
       expect(find(s, 0, 'battle', 'deathMarch')).toBeDefined();
+    });
+  });
+
+  describe('実行できないS・トリガー', () => {
+    it('「相手はコスト1のカードを実行できない」間は、CPUはS・トリガーを使わずに進める', () => {
+      let s = setup([{ p: 1, cid: 'superS', zone: 'hand' }]);
+      const st = find(s, 1, 'hand', 'superS')!;
+      s.players[1].execLock = { cost: 1, until: 0 };
+      s.pending = [{ kind: 'trigger', player: 1, iid: st, strike: false, trigger: true }];
+      expect(applyAction(s, 1, { t: 'trigger', use: true, face: 0 }, L).error).toMatch(/実行できません/);
+      const plan = cpuPlan(s, 1, L);
+      expect(plan[0]).toEqual({ t: 'trigger', use: false });
+      s = act(s, 1, plan[0]);
+      expect(s.pending).toHaveLength(0);
+      expect(s.cards[st].zone).toBe('hand');
     });
   });
 
