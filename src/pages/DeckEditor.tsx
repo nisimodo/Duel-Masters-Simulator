@@ -23,6 +23,7 @@ import {
 import { CARD_TYPES, emptyQuery, searchCards, type SearchQuery } from '../lib/search';
 import { Modal } from '../game/dialogs';
 import { FormatBadge } from '../components/DeckGrid';
+import { DeckImageDialog } from '../components/DeckImageDialog';
 import { NARROW, useMedia } from '../lib/useMedia';
 
 const PAGE = 60;
@@ -38,6 +39,8 @@ export default function DeckEditor() {
   const [page, setPage] = useState(0);
   const [hover, setHover] = useState<Card | null>(null);
   const [msg, setMsg] = useState<{ text: string; warn?: string[] } | null>(null);
+  // デッキリストの画像のプレビュー
+  const [showImage, setShowImage] = useState(false);
   const [dirty, setDirty] = useState(false);
   const narrow = useMedia(NARROW);
   const [tab, setTab] = useState<'search' | 'deck'>('search');
@@ -348,10 +351,14 @@ export default function DeckEditor() {
             <button className="small" onClick={() => confirm('デッキを空にしますか？') && update((d) => ((d.main = {}), (d.hyper = {}), (d.gr = {}), (d.partner = null)))}>
               クリア
             </button>
+            <button className="small" disabled={!mainSize(deck)} onClick={() => setShowImage(true)} title="デッキリストを画像にして保存します (保存する前にプレビューを表示します)">
+              画像で保存
+            </button>
             <button className="small" onClick={() => nav('/decks')}>
               一覧へ
             </button>
           </div>
+          {showImage && <DeckImageDialog db={db} deck={deck} onClose={() => setShowImage(false)} />}
           {msg && (
             <div className="small">
               <span className="ok">{msg.text}</span>

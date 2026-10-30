@@ -7,6 +7,9 @@ import { CIV_COLOR, CIV_NAME, type CardDB, type Civ } from '../lib/cards';
 import { DEFAULT_RULES, deckCivs, deckFormat, validateDeck, type Deck } from '../lib/deck';
 import { DeckSection, DeckTile } from '../components/DeckGrid';
 import { nameMatches } from '../lib/search';
+import { Modal } from '../game/dialogs';
+import { DeckContents } from '../components/DeckContents';
+import { DeckImageDialog } from '../components/DeckImageDialog';
 
 type CivKey = Civ | 'Z';
 const CIVS: CivKey[] = ['L', 'W', 'D', 'F', 'N', 'Z'];
@@ -61,6 +64,9 @@ export default function SharedDecks() {
   const [noCivs, setNoCivs] = useState<CivKey[]>([]);
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [hof, setHof] = useState<Hof>('all');
+  // 中身を見ているデッキ / 画像にするデッキ
+  const [view, setView] = useState<SharedDeck | null>(null);
+  const [imageOf, setImageOf] = useState<Deck | null>(null);
   useEffect(
     () =>
       user
@@ -237,16 +243,41 @@ export default function SharedDecks() {
                     <span className="badge">{s.uid === user.uid ? '自分の投稿' : `投稿: ${s.owner}`}</span>
                   </>
                 }
+                onClick={() => setView(s)}
                 actions={
-                  <button className="small primary" onClick={() => importOne(s)}>
-                    インポート
-                  </button>
+                  <>
+                    <button className="small" onClick={() => setView(s)}>
+                      中身を見る
+                    </button>
+                    <button className="small primary" onClick={() => importOne(s)}>
+                      インポート
+                    </button>
+                  </>
                 }
               />
             ))}
           </DeckSection>
         </div>
       )}
+      {view && (
+        <Modal title={`${view.deck.name} (${view.uid === user.uid ? '自分の投稿' : `投稿: ${view.owner}`})`} onClose={() => setView(null)}>
+          <DeckContents db={db} deck={view.deck} />
+          <div className="row">
+            <button
+              className="primary"
+              onClick={async () => {
+                await importOne(view);
+                setView(null);
+              }}
+            >
+              インポート
+            </button>
+            <button onClick={() => setImageOf(view.deck)}>画像で保存</button>
+            <button onClick={() => setView(null)}>閉じる</button>
+          </div>
+        </Modal>
+      )}
+      {imageOf && <DeckImageDialog db={db} deck={imageOf} onClose={() => setImageOf(null)} />}
     </div>
   );
 }

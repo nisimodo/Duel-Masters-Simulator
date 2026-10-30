@@ -43,7 +43,7 @@ const C = {
 const FONT = '"Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif';
 
 /** カード画像を読み込む (別サイトの画像は CORS が許されない時は使わない) */
-function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement | null> {
+export function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
