@@ -5,12 +5,12 @@ import { frontCost } from '../lib/deckImage';
 import { mainSize, type Deck } from '../lib/deck';
 import { CardDetail, CardImg } from './CardView';
 
-/** コスト順の (カード, 枚数) */
+/** コスト順 (同じコストは枚数が多い順) の (カード, 枚数) */
 function entries(db: CardDB, m: Record<string, number>): { card: Card; n: number }[] {
   return Object.entries(m)
     .map(([cid, n]) => ({ card: db.byId.get(cid), n }))
     .filter((x): x is { card: Card; n: number } => !!x.card && x.n > 0)
-    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || a.card.id.localeCompare(b.card.id));
+    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || b.n - a.n || a.card.id.localeCompare(b.card.id));
 }
 
 export function DeckContents({ db, deck }: { db: CardDB; deck: Deck }) {

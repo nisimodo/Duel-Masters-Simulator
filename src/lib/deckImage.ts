@@ -24,12 +24,12 @@ const SIDE_GAP = 36;
 /** 並べる順のコスト: 画像に出る表の面のコスト (デュエルメイト呪文・禁断・ドラグハートなどは裏のクリーチャーではなく表) */
 export const frontCost = (c: Card) => c.faces[0]?.cost ?? 0;
 
-/** 枚数ぶん並べた、コスト順のカード */
+/** 枚数ぶん並べた、コスト順 (同じコストは枚数が多い順) のカード */
 function expand(db: CardDB, m: Record<string, number>): Card[] {
   return Object.entries(m)
     .map(([cid, n]) => ({ card: db.byId.get(cid), n }))
     .filter((x): x is { card: Card; n: number } => !!x.card && x.n > 0)
-    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || a.card.id.localeCompare(b.card.id))
+    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || b.n - a.n || a.card.id.localeCompare(b.card.id))
     .flatMap((x) => Array<Card>(x.n).fill(x.card));
 }
 
