@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp, useFavs } from '../context';
-import { deleteDeck, favFirst, importSharedDeck, saveDeck, subscribeDecks, subscribeShared, type SharedDeck } from '../data/api';
+import { deleteDeck, favFirst, saveDeck, subscribeDecks } from '../data/api';
 import { DEFAULT_RULES, presetToDeck, splitByFormat, validateDeck, type Deck, type DeckType } from '../lib/deck';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 
@@ -9,12 +9,9 @@ export default function DeckList() {
   const { user, db } = useApp();
   const { favs, toggle } = useFavs();
   const [decks, setDecks] = useState<Deck[] | null>(null);
-  const [shared, setShared] = useState<SharedDeck[] | null>(null);
-  const [sharedQ, setSharedQ] = useState('');
   const [msg, setMsg] = useState('');
   const nav = useNavigate();
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
-  useEffect(() => (user ? subscribeShared(setShared) : undefined), [user]);
   const presets = useMemo(() => (db ? db.presets.map((p) => ({ ...presetToDeck(db, p.id).deck, id: p.id, name: p.name, type: (p.mode ?? 'duema') as DeckType })) : []), [db]);
   if (!db || !user) return null;
 
@@ -64,31 +61,11 @@ export default function DeckList() {
       }
     />
   );
-  const importOne = async (s: SharedDeck) => {
-    await importSharedDeck(user.uid, s);
-    setMsg(`「${s.deck.name}」(${s.owner} さんのデッキ) を自分のデッキにインポートしました`);
-  };
-  const sharedTile = (s: SharedDeck) => (
-    <DeckTile
-      key={s.key}
-      db={db}
-      deck={{ ...s.deck, updatedAt: s.updatedAt }}
-      tag={<span className="badge">{s.uid === user.uid ? '自分の投稿' : `投稿: ${s.owner}`}</span>}
-      actions={
-        <button className="small primary" onClick={() => importOne(s)}>
-          インポート
-        </button>
-      }
-    />
-  );
-
   const byType = (t: DeckType) => favFirst((decks ?? []).filter((d) => d.type === t), favs, (d) => d.id);
   const duema = byType('duema');
   const duepa = byType('duepa');
   const { original, advance } = splitByFormat(db, duema, (d) => d);
   const presetsOf = (t: DeckType) => favFirst(presets.filter((d) => d.type === t), favs, (d) => d.id);
-  const q = sharedQ.trim().toLowerCase();
-  const sharedOf = (t: DeckType) => (shared ?? []).filter((s) => s.deck.type === t && (!q || s.deck.name.toLowerCase().includes(q) || s.owner.toLowerCase().includes(q)));
 
   return (
     <div className="page col">
@@ -151,26 +128,6 @@ export default function DeckList() {
         <DeckSection title="プリセット" note="「コピーして編集」で自分のデッキにできます">
           {presetsOf('duepa').map(presetTile)}
         </DeckSection>
-      </div>
-      <div className="panel col">
-        <div className="row">
-          <h3 className="grow" style={{ margin: 0 }}>
-            みんなのデッキ
-          </h3>
-          <input placeholder="デッキ名・投稿者で検索" value={sharedQ} onChange={(e) => setSharedQ(e.target.value)} style={{ maxWidth: 240 }} />
-        </div>
-        <span className="small muted">デッキ編集の「みんなに投稿する」をオンにして保存したデッキが載ります。「インポート」で自分のデッキにコピーできます。</span>
-        {shared == null && <div className="muted">読み込み中…</div>}
-        {shared != null && (
-          <>
-            <DeckSection title="デュエマ" empty={q ? '見つかりません' : 'まだ投稿がありません'}>
-              {sharedOf('duema').map(sharedTile)}
-            </DeckSection>
-            <DeckSection title="デュエパ" empty={q ? '見つかりません' : 'まだ投稿がありません'}>
-              {sharedOf('duepa').map(sharedTile)}
-            </DeckSection>
-          </>
-        )}
       </div>
     </div>
   );

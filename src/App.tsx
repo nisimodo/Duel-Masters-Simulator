@@ -9,6 +9,7 @@ import RoomEntry from './pages/RoomEntry';
 import RoomPage from './pages/RoomPage';
 import Settings from './pages/Settings';
 import TestPlay from './pages/TestPlay';
+import SharedDecks from './pages/SharedDecks';
 
 // 開発時だけの確認ページ
 const GachaPreview = lazy(() => import('./game/GachaPreview'));
@@ -55,6 +56,7 @@ function Shell({ children }: { children: ReactNode }) {
         <Link to="/play/duema">デュエマ対戦</Link>
         <Link to="/play/duepa">デュエパ対戦</Link>
         <Link to="/testplay">テストプレイ</Link>
+        <Link to="/shared">みんなのデッキ</Link>
         <Link to="/settings">設定</Link>
         <span className="grow" />
         <span className="muted uname">{user?.name}</span>
@@ -87,6 +89,7 @@ function Gate() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/play/:mode" element={<RoomEntry />} />
               <Route path="/testplay" element={<TestPlay />} />
+              <Route path="/shared" element={<SharedDecks />} />
               {import.meta.env.DEV && (
                 <Route
                   path="/dev/gacha"

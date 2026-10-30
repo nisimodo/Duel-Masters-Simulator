@@ -306,7 +306,7 @@ export default function DeckEditor() {
             )}
           </div>
           <div className="row small">
-            <label className="switch" title="オンにして保存すると、デッキ一覧の「みんなのデッキ」に載り、ほかの人がインポートできます">
+            <label className="switch" title="オンにして保存すると「みんなのデッキ」に載り、ほかの人がインポートできます">
               <input type="checkbox" role="switch" checked={!!deck.shared} onChange={(e) => update((d) => (d.shared = e.target.checked))} />
               みんなに投稿する
             </label>
