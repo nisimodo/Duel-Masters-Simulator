@@ -1,5 +1,5 @@
 // デッキリストを1枚の画像 (PNG) にする: デッキ名・文明・フォーマットと、カードを1枚ずつ並べたメインデッキ / 超GR / 超次元 / パートナー
-import { cardImageSmall, CIV_NAME, mainFace, type Card, type CardDB, type Civ } from './cards';
+import { cardImageSmall, CIV_NAME, type Card, type CardDB, type Civ } from './cards';
 import { deckCivs, deckFormat, FORMAT_LABEL, type Deck } from './deck';
 import { loadImage } from './resultImage';
 
@@ -21,12 +21,15 @@ const MAIN_COLS = 8;
 const SIDE_COLS = 4;
 const SIDE_GAP = 36;
 
+/** 並べる順のコスト: 画像に出る表の面のコスト (デュエルメイト呪文・禁断・ドラグハートなどは裏のクリーチャーではなく表) */
+export const frontCost = (c: Card) => c.faces[0]?.cost ?? 0;
+
 /** 枚数ぶん並べた、コスト順のカード */
 function expand(db: CardDB, m: Record<string, number>): Card[] {
   return Object.entries(m)
     .map(([cid, n]) => ({ card: db.byId.get(cid), n }))
     .filter((x): x is { card: Card; n: number } => !!x.card && x.n > 0)
-    .sort((a, b) => mainFace(a.card).cost - mainFace(b.card).cost || a.card.id.localeCompare(b.card.id))
+    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || a.card.id.localeCompare(b.card.id))
     .flatMap((x) => Array<Card>(x.n).fill(x.card));
 }
 
@@ -82,7 +85,7 @@ function drawCard(ctx: CanvasRenderingContext2D, card: Card, img: HTMLImageEleme
     }
     if (ly <= y + CH - 30) ctx.fillText(line, x + 8, ly);
     font(ctx, 16, true);
-    ctx.fillText(String(mainFace(card).cost), x + 8, y + CH - 12);
+    ctx.fillText(String(frontCost(card)), x + 8, y + CH - 12);
   }
   ctx.restore();
 }

@@ -1,6 +1,7 @@
 // デッキの中身の一覧 (カードの種類ごとに枚数つき)。カードを押すと詳細を出す
 import { useState } from 'react';
-import { mainFace, type Card, type CardDB } from '../lib/cards';
+import type { Card, CardDB } from '../lib/cards';
+import { frontCost } from '../lib/deckImage';
 import { mainSize, type Deck } from '../lib/deck';
 import { CardDetail, CardImg } from './CardView';
 
@@ -9,7 +10,7 @@ function entries(db: CardDB, m: Record<string, number>): { card: Card; n: number
   return Object.entries(m)
     .map(([cid, n]) => ({ card: db.byId.get(cid), n }))
     .filter((x): x is { card: Card; n: number } => !!x.card && x.n > 0)
-    .sort((a, b) => mainFace(a.card).cost - mainFace(b.card).cost || a.card.id.localeCompare(b.card.id));
+    .sort((a, b) => frontCost(a.card) - frontCost(b.card) || a.card.id.localeCompare(b.card.id));
 }
 
 export function DeckContents({ db, deck }: { db: CardDB; deck: Deck }) {
