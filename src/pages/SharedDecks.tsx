@@ -6,6 +6,7 @@ import { importSharedDeck, subscribeShared, type SharedDeck } from '../data/api'
 import { CIV_COLOR, CIV_NAME, type CardDB, type Civ } from '../lib/cards';
 import { DEFAULT_RULES, deckCivs, deckFormat, validateDeck, type Deck } from '../lib/deck';
 import { DeckSection, DeckTile } from '../components/DeckGrid';
+import { nameMatches } from '../lib/search';
 
 type CivKey = Civ | 'Z';
 const CIVS: CivKey[] = ['L', 'W', 'D', 'F', 'N', 'Z'];
@@ -80,7 +81,7 @@ export default function SharedDecks() {
     if (!db || !k) return [];
     const out = new Set<string>();
     for (const c of db.cards) {
-      if (c.name.includes(k) || c.readings?.some((r) => r.includes(k)) || c.faces.some((f) => f.name.includes(k))) out.add(c.name);
+      if (nameMatches(c, k)) out.add(c.name);
       if (out.size >= 30) break;
     }
     return [...out].filter((n) => !cards.includes(n));

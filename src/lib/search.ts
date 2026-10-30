@@ -65,6 +65,25 @@ const numOr = (s: string, d: number) => (s.trim() === '' || isNaN(Number(s)) ? d
 const nameKey = new WeakMap<Card, string>();
 const textKey = new WeakMap<Card, string>();
 
+/** カード名・読みの検索キー (各面の名前と読みを改行でつなぐ) */
+function nameKeyOf(c: Card): string {
+  let k = nameKey.get(c);
+  if (k == null) nameKey.set(c, (k = [c.name, ...c.faces.map((f) => f.name), ...c.readings].map(key).join('\n')));
+  return k;
+}
+
+/** カード名・読みに q (ひらがな・カタカナ・全角半角を問わない) が含まれるか */
+export function nameMatches(c: Card, q: string): boolean {
+  const k = key(q);
+  return !k || nameKeyOf(c).includes(k);
+}
+
+/** 面の名前が q に合うか (読みは面ごとに分かれていないので、カードの読みも見る) */
+export function faceNameMatches(c: Card, faceName: string, q: string): boolean {
+  const k = key(q);
+  return !k || key(faceName).includes(k) || c.readings.some((r) => key(r).includes(k));
+}
+
 export function searchCards(db: CardDB, q: SearchQuery): Card[] {
   const name = key(q.name);
   const text = key(q.text);
@@ -77,10 +96,8 @@ export function searchCards(db: CardDB, q: SearchQuery): Card[] {
   return db.cards.filter((c) => {
     if (q.zone && c.zone !== q.zone) return false;
     if (name) {
-      let k = nameKey.get(c);
       // 名前 + 各面の名前 + 読み (Wiki のルビ) で検索できる。区切り文字は無視
-      if (k == null) nameKey.set(c, (k = [c.name, ...c.faces.map((f) => f.name), ...c.readings].map(key).join('\n')));
-      if (!k.includes(name)) return false;
+      if (!nameKeyOf(c).includes(name)) return false;
     }
     if (text) {
       let k = textKey.get(c);

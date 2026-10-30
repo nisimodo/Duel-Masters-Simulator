@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
+import { faceNameMatches } from '../lib/search';
 import { autoPay, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 
@@ -716,7 +717,7 @@ function NamePicker({ db, pending, creature, exclude, onSubmit }: { db: CardDB; 
     if (!k) return [];
     const out = new Set<string>();
     for (const c of db.cards)
-      for (const f of c.faces) if ((!creature || f.isCreature) && f.name !== exclude && (f.name.includes(k) || c.readings?.some((r) => r.includes(k)))) out.add(f.name);
+      for (const f of c.faces) if ((!creature || f.isCreature) && f.name !== exclude && faceNameMatches(c, f.name, k)) out.add(f.name);
     return [...out].slice(0, 40);
   }, [db, q, creature, exclude]);
   return (
