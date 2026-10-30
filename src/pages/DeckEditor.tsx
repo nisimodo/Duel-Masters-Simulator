@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CardDetail, CardImg, CivDots, RegBadge } from '../components/CardView';
 import { useApp } from '../context';
-import { getDecks, saveDeck } from '../data/api';
+import { getDecks, saveDeck, SharedWriteError } from '../data/api';
 import { CIV_COLOR, CIV_NAME, mainFace, type Card, type Civ, type DeckZone } from '../lib/cards';
 import {
   copyLimit,
@@ -110,9 +110,27 @@ export default function DeckEditor() {
   };
 
   const save = async () => {
-    const newId = await saveDeck(user.uid, deck, user.name);
+    let newId: string;
+    let shareFailed = false;
+    try {
+      newId = await saveDeck(user.uid, deck, user.name);
+    } catch (e) {
+      if (!(e instanceof SharedWriteError)) {
+        setMsg({ text: `保存できませんでした: ${e instanceof Error ? e.message : e}` });
+        return;
+      }
+      newId = e.deckId;
+      shareFailed = true;
+    }
     setDirty(false);
-    setMsg({ text: deck.shared ? '保存しました (みんなのデッキにも最新の内容を投稿しました)' : '保存しました', warn: issues.length ? issues : undefined });
+    setMsg({
+      text: shareFailed
+        ? '保存しました。ただし、みんなのデッキには投稿できませんでした (Firebase のルールが古い可能性があります。database.rules.json を貼り直してください)'
+        : deck.shared
+          ? '保存しました (みんなのデッキにも最新の内容を投稿しました)'
+          : '保存しました',
+      warn: issues.length ? issues : undefined,
+    });
     if (id === 'new') nav(`/decks/${newId}`, { replace: true });
     else setDeck({ ...deck, id: newId });
   };

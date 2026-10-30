@@ -51,6 +51,7 @@ export default function SharedDecks() {
   const { user, db } = useApp();
   const nav = useNavigate();
   const [shared, setShared] = useState<SharedDeck[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [text, setText] = useState('');
   const [cards, setCards] = useState<string[]>([]);
@@ -59,7 +60,19 @@ export default function SharedDecks() {
   const [noCivs, setNoCivs] = useState<CivKey[]>([]);
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [hof, setHof] = useState<Hof>('all');
-  useEffect(() => (user ? subscribeShared(setShared) : undefined), [user]);
+  useEffect(
+    () =>
+      user
+        ? subscribeShared(
+            (v) => {
+              setShared(v);
+              setLoadError(null);
+            },
+            (e) => setLoadError(e.message || String(e)),
+          )
+        : undefined,
+    [user],
+  );
   const infos = useMemo(() => (db && shared ? shared.map((s) => infoOf(db, s)) : []), [db, shared]);
   // カード名の候補 (名前・読みの一部で検索)
   const suggest = useMemo(() => {
@@ -128,6 +141,15 @@ export default function SharedDecks() {
           </button>
         </div>
       )}
+      {loadError && (
+        <div className="panel col small warn">
+          <b>⚠ 投稿されたデッキを読み込めませんでした</b>
+          <span>
+            Firebase の Realtime Database のルールが古い可能性があります。管理者の方は、このサイトの <code>database.rules.json</code> の中身を Firebase コンソールの「ルール」タブに貼り直して「公開」してください。
+          </span>
+          <span className="muted">({loadError})</span>
+        </div>
+      )}
       <div className="panel col shared-filters">
         <div className="filter-row">
           <b className="filter-label">デッキ名・投稿者</b>
@@ -193,7 +215,7 @@ export default function SharedDecks() {
           </select>
         </div>
         <div className="row">
-          <span className="grow small muted">{shared == null ? '読み込み中…' : `${hits.length} / ${infos.length} 件`}</span>
+          <span className="grow small muted">{shared == null ? (loadError ? '読み込めませんでした' : '読み込み中…') : `${hits.length} / ${infos.length} 件`}</span>
           <button className="small" disabled={!filtered} onClick={clear}>
             条件クリア
           </button>

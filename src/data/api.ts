@@ -62,14 +62,30 @@ export async function saveDeck(uid: string, deck: Deck, ownerName?: string): Pro
   void _omit;
   await backend.set(`decks/${uid}/${id}`, encodeDeck(rest as Deck));
   // みんなのデッキ: 投稿するなら最新の内容を載せ、しないなら取り下げる
-  if (rest.shared) await backend.set(sharedPath(uid, id), { uid, owner: ownerName ?? '', deck: encodeDeck({ ...(rest as Deck), shared: false }), updatedAt: rest.updatedAt });
-  else await backend.remove(sharedPath(uid, id));
+  // (デッキの保存はできている。投稿だけ書けなかった時は SharedWriteError)
+  try {
+    if (rest.shared) await backend.set(sharedPath(uid, id), { uid, owner: ownerName ?? '', deck: encodeDeck({ ...(rest as Deck), shared: false }), updatedAt: rest.updatedAt });
+    else await backend.remove(sharedPath(uid, id));
+  } catch (e) {
+    console.error('みんなのデッキに書き込めませんでした', e);
+    if (rest.shared) throw new SharedWriteError(id);
+  }
   return id;
+}
+
+/** デッキは保存できたが、みんなのデッキへの投稿を書き込めなかった (Firebase のルールが古い等) */
+export class SharedWriteError extends Error {
+  readonly deckId: string;
+  constructor(deckId: string) {
+    super('みんなのデッキに投稿できませんでした');
+    this.deckId = deckId;
+  }
 }
 
 export async function deleteDeck(uid: string, id: string) {
   await backend.remove(`decks/${uid}/${id}`);
-  await backend.remove(sharedPath(uid, id));
+  // (投稿していなければ消すものはない。書けなくてもデッキの削除は済んでいる)
+  await backend.remove(sharedPath(uid, id)).catch((e) => console.error('みんなのデッキから取り下げられませんでした', e));
 }
 
 // ---------- みんなのデッキ (投稿されたデッキ) ----------
@@ -84,14 +100,19 @@ export interface SharedDeck {
 /** (キーの先頭が投稿者の uid なので、本人だけが書き換えられる) */
 const sharedPath = (uid: string, id: string) => `shared/${uid}_${encKey(id)}`;
 
-export function subscribeShared(cb: (list: SharedDeck[]) => void) {
-  return backend.subscribe<Record<string, { uid: string; owner?: string; deck: Partial<Deck>; updatedAt?: number }>>('shared', (v) => {
-    const list = Object.entries(v || {})
-      .filter(([, x]) => x && x.deck)
-      .map(([key, x]) => ({ key, uid: x.uid, owner: x.owner || '名無し', deck: decodeDeck(key, x.deck), updatedAt: x.updatedAt ?? 0 }));
-    list.sort((a, b) => b.updatedAt - a.updatedAt);
-    cb(list);
-  });
+/** onError: 読めなかった時 (Firebase のルールに shared がない等) */
+export function subscribeShared(cb: (list: SharedDeck[]) => void, onError?: (e: Error) => void) {
+  return backend.subscribe<Record<string, { uid: string; owner?: string; deck: Partial<Deck>; updatedAt?: number }>>(
+    'shared',
+    (v) => {
+      const list = Object.entries(v || {})
+        .filter(([, x]) => x && x.deck)
+        .map(([key, x]) => ({ key, uid: x.uid, owner: x.owner || '名無し', deck: decodeDeck(key, x.deck), updatedAt: x.updatedAt ?? 0 }));
+      list.sort((a, b) => b.updatedAt - a.updatedAt);
+      cb(list);
+    },
+    onError,
+  );
 }
 
 /** 投稿されたデッキを自分のデッキにコピーする */
