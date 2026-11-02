@@ -1801,6 +1801,57 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLeCount: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: 'マナゾーンに置くクリーチャーを選ぶ' },
       { op: 'move', target: { ref: 'it' }, to: 'mana' },
     ];
+  // 「次の自分のターンのはじめまで、そのクリーチャーに「ブロッカー」と「スピードアタッカー」を与え、それは破壊されない」
+  if ((mm = s.match(/^次の自分のターンのはじめまで、そのクリーチャーに((?:「[^」]+」と?)+)を与え、それは破壊されない$/)))
+    return [{ op: 'grant', target: { ref: 'it' }, kws: [...[...mm[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), '破壊されない'], until: 'nextOwnTurn' }];
+  // 「このターン、それらのGRクリーチャーに「スピードアタッカー」と「スレイヤー」と「ブロッカー」を与える」
+  if ((mm = s.match(/^このターン、それらのGRクリーチャーに((?:「[^」]+」と?)+)を与える$/))) return [{ op: 'grant', target: { ref: 'it' }, kws: [...mm[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), until: 'turn' }];
+  // 「次の自分のターンのはじめまで、自分のクリーチャー1体は呪文によって相手に選ばれない」
+  if ((mm = s.match(/^次の自分のターンのはじめまで、自分のクリーチャー(\d+)体は、?呪文によって相手に選ばれない$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '呪文によって相手に選ばれなくするクリーチャーを選ぶ' },
+      { op: 'grant', target: { ref: 'it' }, kws: ['呪文で選ばれない'], until: 'nextOwnTurn' },
+    ];
+  // 「相手は自身の手札を表向きにし、その中から闇ではないカードをすべて捨てる」
+  if ((mm = s.match(/^▶?相手は(?:自身|自分)の手札を表向きにし、その中から(光|水|闇|火|自然)ではないカードをすべて捨てる$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['hand'], kind: 'card', civNot: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[mm[1] as '光']] }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  // 「相手のマナゾーンにある闇ではないカードはすべて、次の自分のターンのはじめまでアンタップしない」
+  if ((mm = s.match(/^▶?相手のマナゾーンにある(光|水|闇|火|自然)ではないカードはすべて、次の自分のターンのはじめまでアンタップしない$/)))
+    return [{ op: 'restrict', target: { ref: 'sel', sel: { owner: 'opp', zones: ['mana'], kind: 'card', civNot: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[mm[1] as '光']] }, count: { all: true }, chooser: 'self' }, what: 'untap' }];
+  // 「相手はこのクリーチャーよりパワーが小さい自身のクリーチャーをすべて、シャッフルして山札の下に置く」
+  if (/^相手はこのクリーチャーよりパワーが小さい(?:自身|自分)のクリーチャーをすべて、?シャッフルして山札の(?:一番)?下に置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', powerLtSelf: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'shuffleToDeckBottom' },
+    ];
+  // 「相手はマナゾーンまたはシールドゾーンにある自身のカードを合計2枚選び、墓地に置く」
+  if ((mm = s.match(/^相手はマナゾーンまたはシールドゾーンにある(?:自身|自分)のカードを合計(\d+)枚選び、(?:持ち主の)?墓地に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['mana', 'shield'], kind: 'card' }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: '墓地に置くマナゾーンまたはシールドゾーンのカードを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  // 「パワーの合計がこのクリーチャーのパワー以下になるように相手のクリーチャーを好きな数選び、破壊する」
+  if (/^パワーの合計がこのクリーチャーのパワー以下になるように相手のクリーチャーを(?:好きな数|99枚まで)選び、破壊する$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: 99, upTo: true, sumPowerSelf: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'パワーの合計がこのクリーチャーのパワー以下になるように、破壊する相手のクリーチャーを選ぶ' },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
+  // 「そのクリーチャーのパワーを+4000し、「スピードアタッカー」と「パワード・ブレイカー」を与えてもよい」(このターン)
+  if ((mm = s.match(/^そのクリーチャーのパワーを\+(\d+)し、((?:「[^」]+」と?)+)を与えてもよい$/)))
+    return [{ op: 'optional', body: [{ op: 'power', target: { ref: 'it' }, delta: +mm[1], until: 'turn' }, { op: 'grant', target: { ref: 'it' }, kws: [...mm[2].matchAll(/「([^」]+)」/g)].map((x) => x[1]), until: 'turn' }], prompt: s0 }];
+  // 「(このクリーチャーが破壊された時、)自分の墓地から山札の下に置いてもよい」「自分の墓地からタップして出してもよい」
+  if (/^自分の墓地から山札の(?:一番)?下に置いてもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'move', target: { ref: 'self' }, to: 'deckBottom' }], prompt: 'このクリーチャーを墓地から山札の下に置いてもよい' }];
+  if (/^自分の墓地からタップして(?:バトルゾーンに)?出してもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'move', target: { ref: 'self' }, to: 'battleTapped' }], prompt: 'このクリーチャーを墓地からタップして出してもよい' }];
+  // 「その後、自分の墓地にあるカードの枚数よりコストが小さい相手のクリーチャーを1体選び、破壊する」
+  if ((mm = s.match(/^(?:その後、)?自分の墓地にあるカードの枚数よりコストが小さい相手のクリーチャーを(\d+)体選び、破壊する$/)))
+    return [
+      { op: 'countSet', sel: { owner: 'self', zones: ['grave'], kind: 'card' } },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLtCount: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: s0 },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
@@ -3314,6 +3365,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚を見る$`)))) {
     ctx.looked = true;
     return [{ op: 'top', n: +m[2], to: 'look', who: 'self' }];
+  }
+  if ((m = s.match(new RegExp(`^(自分の)?山札の下から${N}枚を表向きにする$`)))) {
+    ctx.looked = true;
+    return [{ op: 'top', n: +m[2], to: 'reveal', who: 'self', fromBottom: true }];
   }
   if ((m = s.match(new RegExp(`^(自分の)?山札の上から${N}枚(目)?を(すべて)?表向きにする$`)))) {
     ctx.looked = true;

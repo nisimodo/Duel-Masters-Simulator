@@ -120,7 +120,7 @@ export interface Sel {
   or?: Sel[];
 }
 
-export type Count = { n: number; upTo: boolean; sumPowerMax?: number; sumCostMax?: number; sumCostIt?: boolean; /** コストの合計の上限を数えた数 (countSet) にする */ sumCostCount?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' | 'zone' | 'race' } | { all: true };
+export type Count = { n: number; upTo: boolean; sumPowerMax?: number; /** パワーの合計がこのクリーチャーのパワー以下 */ sumPowerSelf?: boolean; sumCostMax?: number; sumCostIt?: boolean; /** コストの合計の上限を数えた数 (countSet) にする */ sumCostCount?: boolean; sumCostMin?: number; fromCount?: boolean; distinct?: 'type' | 'cost' | 'zone' | 'race' } | { all: true };
 
 export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'manaDownTapped' | 'shield' | 'shieldUp' | 'deckBottom' | 'deckTop' | 'battle' | 'battleTapped' | 'hyper';
 
@@ -246,7 +246,7 @@ export type Cond =
 export type Op =
   | { op: 'draw'; n: number; upTo?: boolean; who: 'self' | 'opp' | 'itOwner' }
   /** 山札の上から N 枚を移動する / 見る / 表向きにする */
-  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp' | 'gr'; nth?: boolean; /** n × 相手の人数 */ perOpp?: boolean }
+  | { op: 'top'; n: number; to: Dest | 'look' | 'reveal'; who: 'self' | 'opp' | 'gr'; nth?: boolean; /** 山札の下から */ fromBottom?: boolean; /** n × 相手の人数 */ perOpp?: boolean }
   /** 見たカードを、それがあった山札 (または超GR) の一番下に置く */
   | { op: 'lookedToBottom' }
   /** 自分の山札をすべて見る (サーチ) */

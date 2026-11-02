@@ -316,7 +316,7 @@ export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: numbe
     if (guarded) return false;
   }
   if (c.justDive != null) return false;
-  if ((c.grants ?? []).some((g) => g.kws.includes('選ばれない'))) return false;
+  if ((c.grants ?? []).some((g) => g.kws.includes('選ばれない') || (bySpell && g.kws.includes('呪文で選ばれない')))) return false;
   // 「自分のドラゴンは、呪文によって相手に選ばれない」などで得ている
   const sk = staticKws(s, L, iid);
   if (sk.includes('選ばれない') || (bySpell && sk.includes('呪文で選ばれない'))) return false;
@@ -347,7 +347,15 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
     const sideOk = sp.side === 'any' || (sp.side === 'self' ? a.owner === p : a.owner !== p);
     if (!sideOk) continue;
     if (sp.action !== 'use' && sp.action !== action) continue;
+    // 「自分の墓地にある〇〇」のようにゾーンを1つに限るものは、そのゾーンから実行する時だけ
+    if (sp.sel.zones.length === 1 && sp.sel.zones[0] !== c.zone) continue;
     if (!matchesSel(s, L, iid, { ...sp.sel, zones: [c.zone as never] })) continue;
+    // 「各ターン、N体目の召喚コスト」: このターンに召喚した、条件に合うクリーチャーの数
+    if (sp.nth != null) {
+      const ts = s.players[p].turnStat;
+      const done = ts?.turn === s.turn ? (ts.summonedCivs ?? []).filter((cv) => !sp.sel.civs?.length || cv.some((x) => sp.sel.civs!.includes(x))).length : 0;
+      if (done !== sp.nth - 1) continue;
+    }
     if (sp.delta < 0) {
       reduce += -sp.delta;
       floor = Math.max(floor, sp.floor);
@@ -399,8 +407,17 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
 }
 
 /** そのプレイヤーのマナが全文明を持つか */
-export function rainbowMana(s: GameState, L: Lookup, p: number): boolean {
-  return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'rainbowMana');
+export function rainbowMana(s: GameState, L: Lookup, p: number, forIid?: number): boolean {
+  return activeStatics(s, L).some((a) => {
+    const sp = a.spec;
+    if (a.owner !== p || sp.s !== 'rainbowMana') return false;
+    if (!sp.sel && !sp.zone) return true;
+    // 実行するカードを限る能力は、何を実行するかが分かる時だけ
+    const c = forIid != null ? s.cards[forIid] : undefined;
+    if (!c) return false;
+    if (sp.zone && c.zone !== sp.zone) return false;
+    return !sp.sel || matchesSel(s, L, forIid!, { ...sp.sel, zones: [c.zone as never] });
+  });
 }
 
 /** マナに置く時タップして置くカードか */

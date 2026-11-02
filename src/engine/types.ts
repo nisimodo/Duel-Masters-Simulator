@@ -124,6 +124,8 @@ export interface TurnStat {
   turn: number;
   /** 召喚したクリーチャー */
   summons: number;
+  /** 召喚したクリーチャーの文明 (召喚した順) */
+  summonedCivs?: import('../lib/cards').Civ[][];
   /** このターンに実行したクリーチャーではないカードの数 */
   nonCreatureUsed?: number;
   /** デュエパ: このターンに使ったカード・バトルゾーンに出したカードの名前 (同名は各ターン1回・1枚まで) */

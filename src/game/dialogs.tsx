@@ -105,12 +105,12 @@ export function PayDialog({
   const tapCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
   // 水晶ソウル: 裏向きのマナはN枚分
   const crystal = crystalOf(f);
-  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost, crystal) ?? []);
+  const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost, crystal, iid) ?? []);
   const sasaCands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'));
   const heCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
   const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = costNow(opts);
-    if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c, crystal) ?? []);
+    if (c != null) setPay(autoPay(s, L, me, f.civs as Civ[], c, crystal, iid) ?? []);
   };
   const [showAll, setShowAll] = useState(false);
   const ef = statics.find((x) => x.s === 'evoFrom');
@@ -143,8 +143,8 @@ export function PayDialog({
   const ok =
     totalCost != null &&
     (crystal && pay.some((m) => s.cards[m].manaDown)
-      ? payValue(s, pay, crystal) >= totalCost && pay.length <= totalCost && payCovers(L, s, upPay.length ? upPay : pay, f.civs as Civ[])
-      : pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[])));
+      ? payValue(s, pay, crystal) >= totalCost && pay.length <= totalCost && payCovers(L, s, upPay.length ? upPay : pay, f.civs as Civ[], iid)
+      : pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[], iid)));
   const needEvo = (f.isEvolution && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);

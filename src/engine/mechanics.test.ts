@@ -321,6 +321,15 @@ const db = buildDB(
     cr('srev', 7, 9000, ['S革命チェンジ：火のクリーチャー（自分の指定のクリーチャーが攻撃する時、そのクリーチャーと、手札または表向きでシールドゾーンにあるこのクリーチャーを入れ替えてもよい）']),
     { id: 'oppPicks', n: 'oppPicks', img: '', f: [{ n: 'oppPicks', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選ぶ。相手はそのクリーチャーを、破壊するか山札の上に置く。'] }] },
     { id: 'strongDraw', n: 'strongDraw', img: '', f: [{ n: 'strongDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分のクリーチャーのパワーが一番大きければ、カードを１枚引く。'] }] },
+    cr('jkRb', 3, 3000, ['自分のジョーカーズ・カードを実行する時、自分のマナゾーンにあるカードをすべての文明を持つかのようにタップしてもよい。']),
+    { id: 'jkW', n: 'jkW', img: '', f: [{ n: 'jkW', t: 'クリーチャー', c: 'W', co: 1, p: '1000', r: ['ジョーカーズ'], x: [] }] },
+    { id: 'plainW', n: 'plainW', img: '', f: [{ n: 'plainW', t: 'クリーチャー', c: 'W', co: 1, p: '1000', r: ['テスト'], x: [] }] },
+    cr('nth1', 3, 3000, ['各ターン、自分のクリーチャー１体目の召喚コストを１少なくする。ただしコストは０以下にならない。']),
+    cr('graveCost', 3, 3000, ['自分の墓地にあるカードの実行コストを２少なくする。ただしコストは０以下にならない。']),
+    cr('masterG', 7, 12000, ['マスター・G・ブレイカー（このクリーチャーは、相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする。このクリーチャーが出たターン、各ブレイクの前に、相手のクリーチャーを１体選び、破壊する）']),
+    cr('dragonW', 7, 12000, ['ドラゴン・ワールド・ブレイカー（このクリーチャーは相手のシールドをすべてブレイクする。各ブレイクの前に、自分の山札の上から１枚をシールド化するか、表向きにしてから自分のシールド１つの上に置く）']),
+    cr('nonDark', 3, 3000, ['このクリーチャーが出た時、相手は自身の手札を表向きにし、その中から闇ではないカードをすべて捨てる。']),
+    cr('shufLow', 3, 5000, ['このクリーチャーが出た時、相手はこのクリーチャーよりパワーが小さい自身のクリーチャーをすべて、シャッフルして山札の下に置く。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3061,6 +3070,76 @@ describe('named mechanics', () => {
       };
       expect(go('big', 'vanilla')).toBe(1);
       expect(go('vanilla', 'big')).toBe(0);
+    });
+  });
+
+  describe('2026年の新カードの能力 (全文明のマナ・N体目のコスト・ブレイカー)', () => {
+    const drain = (s: GameState) => {
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        const a: Action =
+          top.kind === 'choice' ? { t: 'choose', yes: true, picks: top.options?.slice(0, top.min ?? 0) ?? [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : top.kind === 'block' ? { t: 'block', guard: null } : { t: 'resolve', use: true };
+        s = act(s, top.player, a);
+      }
+      return s;
+    };
+    it('ジョーカーズ・カードを実行する時だけ、マナを全文明として支払える', () => {
+      const s = setup([{ p: 0, cid: 'jkRb', zone: 'battle' }, { p: 0, cid: 'jkW', zone: 'hand' }, { p: 0, cid: 'plainW', zone: 'hand' }]);
+      expect(autoPay(s, L, 0, ['W'], 1, undefined, find(s, 0, 'hand', 'jkW')!)).not.toBeNull();
+      expect(autoPay(s, L, 0, ['W'], 1, undefined, find(s, 0, 'hand', 'plainW')!)).toBeNull();
+    });
+    it('各ターン、自分のクリーチャー1体目の召喚コストを1少なくする', () => {
+      let s = setup([{ p: 0, cid: 'nth1', zone: 'battle' }, { p: 0, cid: 'big', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }], 3);
+      const b = find(s, 0, 'hand', 'big')!;
+      expect(costOf(s, L, 0, b, 0)).toBe(5);
+      const v = find(s, 0, 'hand', 'vanilla')!;
+      s = act(s, 0, { t: 'play', iid: v, face: 0, pay: autoPay(s, L, 0, [], 1)! });
+      s = drain(s);
+      expect(s.cards[v].zone).toBe('battle');
+      expect(costOf(s, L, 0, b, 0)).toBe(6);
+    });
+    it('自分の墓地にあるカードの実行コストを2少なくする', () => {
+      const s = setup([{ p: 0, cid: 'graveCost', zone: 'battle' }, { p: 0, cid: 'big', zone: 'hand' }]);
+      const b = find(s, 0, 'hand', 'big')!;
+      expect(costOf(s, L, 0, b, 0)).toBe(6);
+      moveCard(s, L, b, 'grave');
+      expect(costOf(s, L, 0, b, 0)).toBe(4);
+    });
+    it('マスター・G・ブレイカー: 相手のシールドをすべてブレイクし、その攻撃の後、自分のシールドをすべてブレイクする', () => {
+      let s = setup([{ p: 0, cid: 'masterG', zone: 'battle' }]);
+      const m = find(s, 0, 'battle', 'masterG')!;
+      s.cards[m].enteredTurn = s.turn - 1;
+      s = act(s, 0, { t: 'attack', attacker: m, player: 1 });
+      s = drain(s);
+      expect(s.players[1].shield.length).toBe(0);
+      expect(s.players[0].shield.length).toBe(0);
+    });
+    it('ドラゴン・ワールド・ブレイカー: 各ブレイクの前に、自分の山札の上から1枚をシールド化する', () => {
+      let s = setup([{ p: 0, cid: 'dragonW', zone: 'battle' }]);
+      const sh = s.players[0].shield.length;
+      const opp = s.players[1].shield.length;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'dragonW')!, player: 1 });
+      s = drain(s);
+      expect(s.players[1].shield.length).toBe(0);
+      expect(s.players[0].shield.length).toBe(sh + opp);
+    });
+    it('相手は手札を表向きにし、闇ではないカードをすべて捨てる', () => {
+      let s = setup([{ p: 0, cid: 'nonDark', zone: 'hand' }]);
+      const h = s.players[1].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'nonDark')!, face: 0, pay: autoPay(s, L, 0, [], 3)! });
+      s = drain(s);
+      expect(h).toBeGreaterThan(0);
+      expect(s.players[1].hand.length).toBe(0);
+    });
+    it('相手はこのクリーチャーよりパワーが小さい自身のクリーチャーをすべて、シャッフルして山札の下に置く', () => {
+      let s = setup([{ p: 0, cid: 'shufLow', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      const b = find(s, 1, 'battle', 'big')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'shufLow')!, face: 0, pay: autoPay(s, L, 0, [], 3)! });
+      s = drain(s);
+      expect(s.cards[v].zone).toBe('deck');
+      expect(s.players[1].deck[0]).toBe(v);
+      expect(s.cards[b].zone).toBe('battle');
     });
   });
 

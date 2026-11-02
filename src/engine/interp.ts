@@ -664,12 +664,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const who = op.who === 'opp' ? oppOf(s, ex) : ex.player;
         // 'gr': 自分の超GRの上 (配列の末尾が上)
         const deck = op.who === 'gr' ? s.players[who].gr : s.players[who].deck;
-        const ids = deck.slice(-(op.perOpp ? op.n * opps(s, ex.player).length : op.n)).reverse();
+        const ids = op.fromBottom ? deck.slice(0, op.n) : deck.slice(-(op.perOpp ? op.n * opps(s, ex.player).length : op.n)).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
           // 表向きにしたカードは「それ」で参照される
           ex.it = op.to === 'reveal' ? [...ids] : [];
-          if (op.to === 'reveal') log(s, who, `山札の上から${ids.length}枚を表向きにした: ${ids.map((i) => q(nameOf(s, L, i))).join('、')}`);
+          if (op.to === 'reveal') log(s, who, `山札の${op.fromBottom ? '下' : '上'}から${ids.length}枚を表向きにした: ${ids.map((i) => q(nameOf(s, L, i))).join('、')}`);
           else {
             s.players[ex.player].peek = [...ids];
             log(s, who, `山札の上から${ids.length}枚を見た`);
@@ -759,7 +759,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           min: cnt.upTo || ex.zeroOk ? 0 : n,
           max: n,
           purpose: op.purpose,
-          sumPowerMax: cnt.sumPowerMax,
+          sumPowerMax: cnt.sumPowerSelf && ex.src != null ? power(s, L, ex.src) : cnt.sumPowerMax,
           // 「コストの合計がその選んだクリーチャーのコスト以下になるよう」
           sumCostMin: cnt.sumCostMin,
           distinct: cnt.distinct,

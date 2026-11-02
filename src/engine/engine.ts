@@ -678,7 +678,10 @@ export function moveCard(
     if (card?.faces[opts.face ?? c.face]?.isCreature) {
       const ts = turnStat(s, c.owner);
       ts.enters++;
-      if (opts.summoned) ts.summons++;
+      if (opts.summoned) {
+        ts.summons++;
+        (ts.summonedCivs ??= []).push([...(card?.faces[opts.face ?? c.face]?.civs ?? card?.civs ?? [])] as Civ[]);
+      }
       if (c.enteredFree) ts.freeEnters++;
       if (from === 'hyper') ts.hyperEnters++;
     }
@@ -1737,6 +1740,11 @@ function advance(s: GameState, L: Lookup): boolean {
       for (const ex of after) runExec(s, L, ex);
       // 「攻撃の終わりに、アンタップする」
       const ac = s.cards[a.attacker];
+      // マスター・G・ブレイカー: その攻撃の後、自分のシールドをすべてブレイクする
+      if (ac?.zone === 'battle' && (faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'masterG') && s.players[a.owner].shield.length) {
+        log(s, a.owner, `マスター・G・ブレイカー: ${q(nameOf(s, L, a.attacker))} の攻撃の後、自分のシールドをすべてブレイクする`);
+        breakShields(s, L, a.owner, [...s.players[a.owner].shield], a.attacker);
+      }
       // 「闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する」
       if (ac?.zone === 'battle' && activeStatics(s, L).some((x) => x.spec.s === 'destroyAttackerAtEnd' && matchesSel(s, L, a.attacker, x.spec.sel))) {
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))} は攻撃の終わりに破壊される`);
@@ -2007,9 +2015,9 @@ export function manaCivs(s: GameState, L: Lookup, iid: number): Civ[] {
   return c.zone === 'mana' && c.manaDown ? [] : cardCivs(L, c.cid);
 }
 
-export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[]): boolean {
+export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[], forIid?: number): boolean {
   if (pay.length < need.length) return need.length === 0;
-  const rainbow = pay.length > 0 && rainbowMana(s, L, s.cards[pay[0]].owner);
+  const rainbow = pay.length > 0 && rainbowMana(s, L, s.cards[pay[0]].owner, forIid);
   const opts = pay.map((i) => (rainbow ? ALL_CIVS : manaCivs(s, L, i)));
   const used = new Array(pay.length).fill(false);
   const go = (k: number): boolean => {
@@ -2027,7 +2035,7 @@ export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[]): 
 }
 
 /** 支払いに使うマナを自動選択 (足りなければ null) */
-export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: number, crystal?: number): number[] | null {
+export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: number, crystal?: number, forIid?: number): number[] | null {
   const avail = s.players[p].mana.filter((i) => !s.cards[i].tapped);
   if (cost === 0) return [];
   // 水晶ソウルN: 裏向きのマナは1枚でN枚分。文明に必要なカード → 裏向きのカード → 残り の順に選ぶ
@@ -2050,7 +2058,7 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
     return left <= 0 ? chosen : null;
   }
   if (avail.length < cost) return null;
-  const rainbow = rainbowMana(s, L, p);
+  const rainbow = rainbowMana(s, L, p, forIid);
   const civsOf = (i: number) => (rainbow ? ALL_CIVS : manaCivs(s, L, i));
   // 必要文明を少ない文明のカードから優先で確保
   const chosen: number[] = [];
@@ -2069,7 +2077,7 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
   });
   while (chosen.length < cost && pool.length) chosen.push(pool.shift()!);
   if (chosen.length < cost) return null;
-  return payCovers(L, s, chosen, need) ? chosen.slice(0, cost) : null;
+  return payCovers(L, s, chosen, need, forIid) ? chosen.slice(0, cost) : null;
 }
 
 export const untappedMana = (s: GameState, p: number) => s.players[p].mana.filter((i) => !s.cards[i].tapped).length;
@@ -2344,8 +2352,30 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
   // 総合ルール 101.4g: S・トリガーなどの解決中にブレイクされて新しく待機したものは、既に待機していたものより先に解決する
   const waiting = s.pending.findIndex((x) => x.kind === 'trigger');
   const pendingBefore = s.pending.length;
+  const bst = breaker != null ? (faceOf(s, L, breaker)?.statics ?? []) : [];
+  const bOwner = breaker != null ? s.cards[breaker].owner : -1;
   for (const sh of shields) {
     if (s.cards[sh].zone !== 'shield') continue;
+    // ドラゴン・ワールド・ブレイカー: 各ブレイクの前に、自分の山札の上から1枚をシールド化する
+    if (bOwner !== target && bst.some((x) => x.s === 'dragonWorld') && s.players[bOwner].deck.length) {
+      moveCard(s, L, s.players[bOwner].deck.at(-1)!, 'shield', { faceUp: false });
+      log(s, bOwner, 'ドラゴン・ワールド・ブレイカー: 山札の上から1枚をシールド化');
+    }
+    // マスター・G・ブレイカー: 出たターンは、各ブレイクの前に相手のクリーチャーを1体破壊する
+    if (bOwner !== target && bst.some((x) => x.s === 'masterG') && s.cards[breaker!].enteredTurn === s.turn && s.players[target].battle.some((b) => faceOf(s, L, b)?.isCreature)) {
+      runExec(s, L, {
+        player: bOwner,
+        src: breaker!,
+        ops: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: 'マスター・G・ブレイカー: 破壊する相手のクリーチャーを選ぶ' },
+          { op: 'destroy', target: { ref: 'it' } },
+        ],
+        it: [],
+        looked: [],
+        did: false,
+        name: nameOf(s, L, breaker!),
+      });
+    }
     // シールド・セイバー: かわりにこのクリーチャーを破壊
     const saver = pl.battle.find((b) => (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'shieldSaver'));
     if (saver != null) {
@@ -2953,10 +2983,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       const val = a.pay.reduce((n, m) => n + (s.cards[m].manaDown ? crystal.n : 1), 0);
       if (val < cost || a.pay.length > cost) return `コスト${cost}分のマナを選んでください (裏向きのマナは${crystal.n}枚分)`;
       const up = a.pay.filter((m) => !s.cards[m].manaDown);
-      if (!payCovers(L, s, up.length ? up : a.pay, face.civs)) return '文明が足りません';
+      if (!payCovers(L, s, up.length ? up : a.pay, face.civs, a.iid)) return '文明が足りません';
     } else if (!a.force) {
       if (a.pay.length !== cost) return `コスト${cost}分のマナを選んでください`;
-      if (cost > 0 && !payCovers(L, s, a.pay, face.civs)) return '文明が足りません';
+      if (cost > 0 && !payCovers(L, s, a.pay, face.civs, a.iid)) return '文明が足りません';
     }
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;

@@ -58,7 +58,7 @@ export type StaticSpec =
   /** この条件を満たす時だけ召喚できる */
   | { s: 'summonOnlyIf'; cond: StaticCond }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
-  | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number }
+  | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number; /** 各ターン、N体目の召喚だけ */ nth?: number }
   | { s: 'untargetable'; bySpellOnly: boolean; cond?: StaticCond }
   | { s: 'noAttacked' }
   | { s: 'attackUntapped'; sel?: Sel }
@@ -69,7 +69,11 @@ export type StaticSpec =
   /** このクリーチャーは sel に攻撃されない */
   | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
-  | { s: 'rainbowMana' }
+  /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
+  | { s: 'masterG' }
+  /** ドラゴン・ワールド・ブレイカー: 各ブレイクの前に、自分の山札の上から1枚をシールド化する */
+  | { s: 'dragonWorld' }
+  | { s: 'rainbowMana'; /** このカードを実行する時だけ */ sel?: Sel; /** このゾーンから実行する時だけ */ zone?: 'hyper' }
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper'; cond?: StaticCond }
   /** 自分の〇〇を墓地・マナゾーンから召喚してもよい (バトルゾーンにある間) */
   | { s: 'summonFromSel'; sel: Sel; zone: 'mana' | 'grave' }
@@ -964,7 +968,16 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     if (tg) return [{ s: 'grant', target: tg, kws, when: 'always' }];
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
+  if (/^マスター・G・ブレイカー/.test(t0)) return [{ s: 'masterG' }];
+  if (/^ドラゴン・ワールド・ブレイカー/.test(t0)) return [{ s: 'dragonWorld' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];
+  // 「自分のジョーカーズ・カードを実行する時、自分のマナゾーンにあるカードをすべての文明を持つかのようにタップしてもよい」
+  if ((m = t0.match(/^自分の(.+?)を(実行|召喚)する時、自分のマナゾーンにあるカードを、?すべての文明を持つかのようにタップしてもよい$/))) {
+    if (/^超次元ゾーンから(?:カード)?$/.test(m[1])) return [{ s: 'rainbowMana', zone: 'hyper' }];
+    const sel = parseSel(m[1].replace(/・カード$/, ''), { zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'hyper'] });
+    if (sel) return [{ s: 'rainbowMana', sel: { ...sel, kind: m[2] === '召喚' ? 'creature' : 'card' } }];
+  }
+  if ((m = t0.match(/^自分の(超次元ゾーン)からカードを実行する時、自分のマナゾーンにあるカードを、?すべての文明を持つかのようにタップしてもよい$/))) return [{ s: 'rainbowMana', zone: 'hyper' }];
   if ((m = t0.match(/^このクリーチャー(?:を|は)、?(?:自分の)?(マナゾーン|墓地|超次元ゾーン)から召喚してもよい$/))) return [{ s: 'summonFrom', zone: m[1] === '墓地' ? 'grave' : m[1] === '超次元ゾーン' ? 'hyper' : 'mana' }];
   if ((m = t0.replace(/^自分の(墓地|マナゾーン)から(.+?)を召喚してもよい$/, '$2を自分の$1から召喚してもよい').match(/^([^、]+?)を、?自分の(墓地|マナゾーン)から召喚してもよい$/)) && !/^この|\d/.test(m[1])) {
     const zone = m[2] === '墓地' ? 'grave' : 'mana';
@@ -1076,8 +1089,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
 
   // ---- コスト ----
+  // 「各ターン、自分の光のクリーチャー1体目の召喚コストを1少なくしてもよい」
+  if ((m = t.match(/^各ターン、自分の(.*?)クリーチャー(\d+)体目の召喚コストを(\d+)少なく(?:する|してもよい)(?:[、。]?ただし.*)?$/))) {
+    const sel = parseSel(m[1] + 'クリーチャー', { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
+    if (sel) return [{ s: 'cost', side: 'self', sel: { ...sel, kind: 'creature' }, action: 'summon', delta: -m[3], floor: floorOf(full), nth: +m[2] }];
+  }
   if ((m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)を(召喚|唱える|使う|実行する)(?:する)?コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/)) ||
-    (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/))) {
+    (m = t.replace(/^(自分|相手)の、/, '$1の').match(/^(自分|相手)?の?(.+?)の(召喚|実行)コスト(?:を|は)(\d+)(少なく|多く)(?:する|なる|してもよい)(?:[、。]?ただし.*)?$/))) {
     const sel = parseSel(m[2], { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
     if (sel) {
       const action = m[3] === '召喚' ? 'summon' : m[3] === '唱える' ? 'cast' : 'use';
