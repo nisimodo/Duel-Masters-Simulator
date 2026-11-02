@@ -74,7 +74,7 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^自分のマナゾーンにあるカードと同じ文明を持つ、?/, () => (sel.civShareMana = true));
     changed ||= take(/^自分のマナゾーンにあるカードの枚数より、?コストが小さい/, () => (sel.costVs = { by: 'mana', cmp: 'lt' }));
     changed ||= take(/^自分のマナゾーンにあるカードの枚数以下のコストを持つ/, () => (sel.costVs = { by: 'mana', cmp: 'le' }));
-    changed ||= take(/^自分の手札の枚数以下のコストを持つ/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
+    changed ||= take(/^自分の手札の枚数以下のコストを持つ、?/, () => (sel.costVs = { by: 'hand', cmp: 'le' }));
     changed ||= take(/^(?:この|その)ターン(?:中)?に(?:バトルゾーンに)?出た/, () => (sel.enteredThisTurn = true));
     changed ||= take(/^種族に([^、]+?)とある、?/, (m) => (sel.races = [...(sel.races ?? []), m[1]]));
     changed ||= take(/^自分のシールドの数以下のコストを持つ/, () => (sel.costVs = { by: 'shield', cmp: 'le' }));

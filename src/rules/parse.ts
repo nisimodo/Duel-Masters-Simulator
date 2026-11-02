@@ -1197,7 +1197,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   }
   // 「その中から1枚を表向きでシールド化し、残りを1枚ずつ、手札と墓地に置く」
   {
-    const t2 = s.match(/^その中から(\d+)枚を(表向きで)?シールド化し、残りを1枚ずつ、手札と墓地に置く$/);
+    const t2 = s.match(/^その中から(\d+)枚を(表向きで)?シールド化し、残りを1枚(?:ずつ)?、手札と墓地に置く$/);
     if (t2) {
       const deckSel: Sel = { owner: 'any', zones: ['deck'], kind: 'card' };
       return [
@@ -1919,6 +1919,32 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'shield'], kind: 'card', or: [{ owner: 'opp', zones: ['battle'], kind: 'creature' }, { owner: 'opp', zones: ['shield'], kind: 'card' }] }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: 'マナゾーンに置くクリーチャーまたはシールドを選ぶ' },
       { op: 'move', target: { ref: 'it' }, to: 'mana' },
     ];
+  if (/^次の自分のターンのはじめまで、自分のクリーチャーすべてのハイパーモードを解放する$/.test(s)) return [{ op: 'hyperAll' }];
+  // 「自分のクロスギアを好きな数、コストを支払わずに自分のクリーチャーにクロスしてもよい」
+  if (/^自分のクロスギアを好きな数、?コストを支払わずに自分のクリーチャーにクロス(?:してもよい|する)$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'crossgear' }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'クロスするクロスギアを選ぶ' },
+      { op: 'crossFree', gear: { ref: 'it' }, onto: 'pick' },
+    ];
+  // 「エレメントが6つ以上あれば、他の進化ではないエレメントをすべて破壊する」
+  if ((mm = s.match(/^エレメントが(\d+)つ以上あれば、他の進化ではないエレメントをすべて破壊する$/)))
+    return [{ op: 'if', cond: { c: 'count', sel: { owner: 'any', zones: ['battle'], kind: 'element' }, cmp: '>=', n: +mm[1] }, body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'element', nonEvolution: true, other: true }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' }, { op: 'destroy', target: { ref: 'it' } }] }];
+  // 「その中からこのクリーチャー以下のコストのクリーチャーを1体出してもよい」
+  if ((mm = s.match(/^その中からこのクリーチャー以下のコストのクリーチャーを(\d+)体(?:バトルゾーンに)?出(?:してもよい|す)$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'creature', costLeSelf: true }, count: { n: +mm[1], upTo: true } }, purpose: 'benefit', prompt: 'このクリーチャー以下のコストのクリーチャーを出す' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「その中から進化クリーチャー以外のクリーチャーを1体相手に選ばせ、バトルゾーンに出す」
+  if ((mm = s.match(/^その中から進化クリーチャー以外のクリーチャーを(\d+)体相手に選ばせ、(?:バトルゾーンに)?出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'creature', nonEvolution: true }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: '相手が出すクリーチャーを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「このターン、そのクリーチャーのパワーを、こうして墓地に置いた魔導具カード1枚につき-2000する」
+  if ((mm = s.match(/^このターン、そのクリーチャーのパワーを、こうして墓地に置いた(.+?)カード(\d+)枚につき([+-−])(\d+)する$/))) {
+    return [{ op: 'powerPerCount', target: { ref: 'it' }, per: { owner: 'self', zones: ['grave'], kind: 'card', races: [mm[1]], inLooked: true }, delta: ((mm[3] === '+' ? 1 : -1) * +mm[4]) / +mm[2] }];
+  }
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)

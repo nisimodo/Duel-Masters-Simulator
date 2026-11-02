@@ -89,6 +89,10 @@ export interface Sel {
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
+  /** 直前に見た・置いたカード (looked) の中だけ */
+  inLooked?: boolean;
+  /** 「このクリーチャー以下のコスト」 */
+  costLeSelf?: boolean;
   /** 「そのクリーチャーと同じ種族を持つ」(誘発させたクリーチャー・選んだクリーチャー) */
   raceOfIt?: boolean;
   /** コストが奇数 / 偶数 */
@@ -130,7 +134,7 @@ export type Dest = 'grave' | 'hand' | 'mana' | 'manaTapped' | 'manaDown' | 'mana
 export type Target =
   | { ref: 'it' } // 直前に選んだカード (「その」「それ」)
   | { ref: 'self' } // この効果の発生源のカード
-  | { ref: 'looked'; sel?: Sel; count?: Count } // 山札から見ている/表向きにしたカード (条件・枚数で絞って選ぶ)
+  | { ref: 'looked'; sel?: Sel; count?: Count; /** 相手に選ばせる */ chooser?: 'self' | 'opp' } // 山札から見ている/表向きにしたカード (条件・枚数で絞って選ぶ)
   | { ref: 'rest' } // 見ている中で選ばれなかったカード (「残り」)
   | { ref: 'under'; count: Count; sel?: Sel } // このクリーチャーの下にあるカード
   | { ref: 'saved' } // 先に選んで保存しておいたカード
@@ -447,6 +451,8 @@ export type Op =
   | { op: 'nextUseCost'; n: number; floor: number }
   /** このターン、そのクリーチャーが破壊された時、自分はカードを n 枚引く */
   | { op: 'onDestroyedDraw'; n: number }
+  /** 次の自分のターンのはじめまで、自分のクリーチャーすべてのハイパーモードを解放する */
+  | { op: 'hyperAll' }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */

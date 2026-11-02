@@ -187,6 +187,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
         if (sel.self && iid !== ex.src) continue;
+        if (sel.inLooked && !ex.looked.includes(iid)) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
@@ -212,6 +213,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         }
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
+        if (sel.costLeSelf && !(maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false, ex.src)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
@@ -726,6 +728,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         } else if (t.ref === 'looked') {
           // 条件のゾーンに今あるカードだけ (先に別の場所へ動かしたカードは除く)
           cands = ex.looked.filter((i) => s.cards[i].zone !== 'gone' && (!t.sel || ((t.sel.zones as string[]).includes(s.cards[i].zone) && matchesSel(s, L, i, t.sel))));
+          // 「このクリーチャー以下のコスト」
+          if (t.sel?.costLeSelf) cands = cands.filter((i) => maxCost(L, s.cards[i].cid) <= maxCost(L, s.cards[ex.src].cid));
+          if (t.chooser === 'opp') chooser = oppOf(s, ex);
           cnt = t.count ?? { n: 1, upTo: false };
         } else if (t.ref === 'under') {
           cands = [...(s.cards[ex.src]?.under ?? [])].filter((i) => !t.sel || matchesSel(s, L, i, t.sel));
@@ -1067,6 +1072,17 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.ops.shift();
         ex.ops.unshift(...programOf(trigs[k].effect).ops);
         continue;
+      }
+      case 'hyperAll': {
+        for (const b of s.players[ex.player].battle) {
+          const bc = s.cards[b];
+          const bcard = L(bc.cid);
+          if (bc.face !== 0 || !bcard?.hyper) continue;
+          bc.face = 1;
+          bc.hyperUntil = ex.player;
+          log(s, ex.player, `${q(bcard.faces[0].name)} のハイパーモードを解放した`);
+        }
+        break;
       }
       case 'onDestroyedDraw':
         for (const i of ex.it) if (s.cards[i]?.zone === 'battle') s.cards[i].onDestroyedDraw = { turn: s.turn, player: ex.player, n: op.n };

@@ -336,6 +336,8 @@ const db = buildDB(
     cr('countDisc', 3, 3000, ['このクリーチャーが攻撃する時、このクリーチャーに含まれるカード１枚につき、相手の手札を１枚見ないで選び、捨てさせる。']),
     { id: 'twinCk', n: 'twinCk', img: '', f: [{ n: 'twinCk', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のパワー3000以下のクリーチャーを１体選び、破壊する。自分のマナゾーンにツインパクトカードがあれば、かわりに相手のパワー5000以下のクリーチャーを１体選び、破壊する。'] }] },
     cr('rep2', 1, 1000, ['このクリーチャーが出た時、次の能力を２回まで使う。', '▶カードを１枚引く。']),
+    { id: 'oppPickSp', n: 'oppPickSp', img: '', f: [{ n: 'oppPickSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から４枚を表向きにする。その中から進化クリーチャー以外のクリーチャーを１体相手に選ばせ、バトルゾーンに出す。残りを好きな順序で自分の山札の一番下に戻す。'] }] },
+    { id: 'eleWipe', n: 'eleWipe', img: '', f: [{ n: 'eleWipe', t: 'タマシード', c: 'F', co: 0, p: null, r: [], x: ['このタマシードが出た時、エレメントが６つ以上あれば、他の進化ではないエレメントをすべて破壊する。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3194,6 +3196,24 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'attack', attacker: c, player: 1 });
       s = drain(s);
       expect(s.players[1].grave.length).toBe(g + 2);
+    });
+    it('その中から進化クリーチャー以外のクリーチャーを1体相手に選ばせ、出す', () => {
+      let s = setup([{ p: 0, cid: 'oppPickSp', zone: 'hand' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'oppPickSp')!, face: 0, pay: [] });
+      for (let k = 0; k < 4 && s.pending[0]?.kind !== 'choice'; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      const q = s.pending[0];
+      expect(q?.kind === 'choice' && q.player).toBe(1);
+      s = act(s, 1, { t: 'choose', picks: q?.kind === 'choice' ? q.options.slice(0, 1) : [] });
+      s = drain(s);
+      expect(s.players[0].battle.length).toBe(1);
+    });
+    it('エレメントが6つ以上あれば、他の進化ではないエレメントをすべて破壊する', () => {
+      let s = setup([{ p: 0, cid: 'eleWipe', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const w = find(s, 0, 'hand', 'eleWipe')!;
+      s = act(s, 0, { t: 'play', iid: w, face: 0, pay: [] });
+      s = drain(s);
+      expect(s.players[0].battle).toEqual([w]);
+      expect(s.players[1].battle.length).toBe(0);
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);
