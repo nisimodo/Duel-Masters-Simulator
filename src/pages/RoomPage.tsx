@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { backend } from '../backend';
 import { useApp, useFavs } from '../context';
+import { DeckViewDialog, ViewButton } from '../components/DeckViewDialog';
 import {
   addCpu,
   encodeDeck,
@@ -149,6 +150,7 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
   const me = room.members[uid];
   const presets = usePresetDecks(db, room.rules);
   const { favs, toggle } = useFavs();
+  const [view, setView] = useState<Deck | null>(null);
   const pick = (d: Deck | null) => updateMember(room.key, uid, { deckId: d?.id ?? null, deck: d ? (encodeDeck(d) as unknown as Deck) : null, ready: false });
   const tile = (d: Deck, kind: 'mine' | 'preset') => (
     <DeckTile
@@ -161,6 +163,7 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
       caution={formatCaution(db, room.rules, d)}
       selected={me?.deckId === d.id}
       showUpdated={kind === 'mine'}
+      actions={<ViewButton onClick={() => setView(d)} />}
       fav={favs.has(d.id)}
       onFav={() => toggle(d.id)}
       onClick={() => pick(me?.deckId === d.id ? null : d)}
@@ -180,6 +183,7 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
           </button>
         }
       />
+      {view && <DeckViewDialog db={db} deck={view} onClose={() => setView(null)} />}
     </Fold>
   );
 }
@@ -189,6 +193,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
   const [sel, setSel] = useState('');
   const presets = usePresetDecks(db, room.rules);
   const { favs, toggle } = useFavs();
+  const [view, setView] = useState<Deck | null>(null);
   const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
   const chosen = sel === 'random' ? null : (myDecks.find((d) => d.id === sel) ?? presets.find((d) => d.id === sel));
   const ok = sel === 'random' || (!!chosen && validateDeck(db, chosen, room.rules).length === 0);
@@ -209,6 +214,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
       caution={formatCaution(db, room.rules, d)}
       selected={sel === d.id}
       showUpdated={kind === 'mine'}
+      actions={<ViewButton onClick={() => setView(d)} />}
       fav={favs.has(d.id)}
       onFav={() => toggle(d.id)}
       onClick={() => setSel(sel === d.id ? '' : d.id)}
@@ -240,6 +246,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
         }
       />
       {!chosen && sel !== 'random' && <span className="small muted">デッキを選んでから「CPUを追加」を押してください</span>}
+      {view && <DeckViewDialog db={db} deck={view} onClose={() => setView(null)} />}
     </Fold>
   );
 }

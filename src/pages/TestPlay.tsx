@@ -1,6 +1,7 @@
 // テストプレイ: 2つのデッキをCPU同士で何度も高速に対戦させ、勝率と勝因・敗因を見る
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, useFavs } from '../context';
+import { DeckViewDialog, ViewButton } from '../components/DeckViewDialog';
 import { favFirst, subscribeDecks } from '../data/api';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 import { expandDeck, presetToDeck, splitByFormat, type Deck } from '../lib/deck';
@@ -167,6 +168,8 @@ export default function TestPlay() {
     return favFirst([...mine, ...presets], favs, (o) => o.id);
   }, [db, decks, favs]);
   const [slot, setSlot] = useState<0 | 1>(0);
+  // 中身を見ているデッキ
+  const [view, setView] = useState<Deck | null>(null);
   const [pick, setPick] = useState<[string | null, string | null]>([null, null]);
   const [count, setCount] = useState(50);
   const [stats, setStats] = useState<SimStats | null>(null);
@@ -225,6 +228,7 @@ export default function TestPlay() {
       db={db}
       deck={o.deck}
       showUpdated={!o.preset}
+      actions={<ViewButton onClick={() => setView(o.deck)} />}
       fav={favs.has(o.id)}
       onFav={() => toggle(o.id)}
       selected={pick[0] === o.id || pick[1] === o.id}
@@ -398,6 +402,7 @@ export default function TestPlay() {
           <img className="result-preview" src={preview.url} alt="テストプレイの結果画像" style={preview.shape === 'landscape' ? { width: 'min(860px, 88vw)' } : { height: 'min(70vh, 1200px)' }} />
         </Modal>
       )}
+      {view && <DeckViewDialog db={db} deck={view} onClose={() => setView(null)} />}
     </div>
   );
 }

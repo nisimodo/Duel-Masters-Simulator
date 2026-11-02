@@ -4,12 +4,15 @@ import { useApp, useFavs } from '../context';
 import { deleteDeck, favFirst, saveDeck, subscribeDecks } from '../data/api';
 import { DEFAULT_RULES, presetToDeck, splitByFormat, validateDeck, type Deck, type DeckType } from '../lib/deck';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
+import { DeckViewDialog, ViewButton } from '../components/DeckViewDialog';
 
 export default function DeckList() {
   const { user, db } = useApp();
   const { favs, toggle } = useFavs();
   const [decks, setDecks] = useState<Deck[] | null>(null);
   const [msg, setMsg] = useState('');
+  // 中身を見ているデッキ
+  const [view, setView] = useState<Deck | null>(null);
   const nav = useNavigate();
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
   const presets = useMemo(() => (db ? db.presets.map((p) => ({ ...presetToDeck(db, p.id).deck, id: p.id, name: p.name, type: (p.mode ?? 'duema') as DeckType })) : []), [db]);
@@ -28,6 +31,7 @@ export default function DeckList() {
       onClick={() => nav(`/decks/${d.id}`)}
       actions={
         <>
+          <ViewButton onClick={() => setView(d)} />
           <button className="small" onClick={() => nav(`/decks/${d.id}`)}>
             編集
           </button>
@@ -55,9 +59,12 @@ export default function DeckList() {
       fav={favs.has(d.id)}
       onFav={() => toggle(d.id)}
       actions={
-        <button className="small" onClick={() => copyToMine(d, 'プリセット')}>
-          コピーして編集
-        </button>
+        <>
+          <ViewButton onClick={() => setView(d)} />
+          <button className="small" onClick={() => copyToMine(d, 'プリセット')}>
+            コピーして編集
+          </button>
+        </>
       }
     />
   );
@@ -129,6 +136,7 @@ export default function DeckList() {
           {presetsOf('duepa').map(presetTile)}
         </DeckSection>
       </div>
+      {view && <DeckViewDialog db={db} deck={view} onClose={() => setView(null)} />}
     </div>
   );
 }
