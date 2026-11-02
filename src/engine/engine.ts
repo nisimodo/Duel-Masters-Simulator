@@ -81,6 +81,7 @@ export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
     else if (kw === 'Q・ブレイカー') k.breaker = Math.max(k.breaker, 4);
     else if (kw === 'ワールド・ブレイカー' || kw === '∞ブレイカー') k.breaker = 99;
     else if (kw === '攻撃できない') k.cantAttack = true;
+    else if (kw === 'ターンの終わりにアンタップ') k.untapAtEnd = true;
     else if (kw === '攻撃されない') k.noAttacked = true;
     else if (kw === 'プレイヤー攻撃不可') k.cantAttackPlayer = true;
     else if (/^ブレイク\+\d+$/.test(kw)) k.breaker += +kw.slice(4);
@@ -345,6 +346,26 @@ export function moveCard(
   // ドリームレア (総合ルール 815.2): 自分のドリーム・エレメントがある間、同じ名前のものは出せない
   if (to === 'battle' && from !== 'battle' && card && dreamBlocked(s, L, c.owner, card)) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (同じ名前のドリーム・エレメントがバトルゾーンにある)`);
+    return from as ZoneName;
+  }
+  // 「エレメントが手札以外から出る時、かわりに持ち主の手札に戻す」
+  if (to === 'battle' && from !== 'battle' && from !== 'hand' && activeStatics(s, L).some((x) => x.spec.s === 'nonHandEnterToHand')) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は手札以外から出るかわりに手札へ`);
+    return moveCard(s, L, iid, 'hand');
+  }
+  // 「自分のターン中、相手は多色ではないクリーチャーを出せない」「このクリーチャーの攻撃中、相手はクリーチャーを出せない」
+  if (
+    to === 'battle' &&
+    from !== 'battle' &&
+    card?.faces[opts.face ?? c.face]?.isCreature &&
+    activeStatics(s, L).some(
+      (x) =>
+        x.owner !== c.owner &&
+        ((x.spec.s === 'oppEnterBlock' && (!x.spec.ownTurn || s.active === x.owner) && matchesSel(s, L, iid, { ...x.spec.sel, owner: 'any', zones: [from as never] })) ||
+          (x.spec.s === 'oppNoEnterWhileAttacking' && s.attack?.attacker === x.src)),
+    )
+  ) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (相手の能力)`);
     return from as ZoneName;
   }
   // 「このクリーチャーは、召喚以外の方法で出ない」
@@ -744,7 +765,8 @@ export function moveCard(
       fireWatchers(s, L, c.owner, null, 'ownManaPut', null, iid);
     }
     if (dest === 'shield' && c.faceUp && from !== 'shield') fireSelf(s, L, iid, 0, ['toShieldFaceUp']);
-    if (dest === 'shield' && from !== 'shield') fireWatchers(s, L, c.owner, null, 'ownShieldAdded', null, iid);
+    if (dest === 'shield' && from !== 'shield') fireWatchers(s, L, c.owner, null, 'ownShieldAdded', 'oppShieldAdded', iid);
+    if (dest === 'shield' && from !== 'shield' && c.faceUp) fireWatchers(s, L, c.owner, null, 'ownShieldFaceUp', null, iid);
     if (from === 'shield' && dest !== 'shield') fireWatchers(s, L, c.owner, null, 'ownShieldLeft', null, iid);
     if (dest === 'battle' && from !== 'battle' && (card?.faces[c.face]?.races ?? []).some((r) => r.includes('コマンド'))) {
       const civs = cardCivs(L, c.cid);
@@ -849,7 +871,9 @@ export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
   const tg = attackTargets(s, L, attacker);
   // 「可能ならクリーチャーを攻撃する」
   if ((s.cards[attacker].grants ?? []).some((g) => g.kws.includes('攻撃先クリーチャー')) && tg.cards.length) return tg.cards;
-  return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure') || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
+  // 「各ターン、相手のクリーチャーがはじめて攻撃するなら」: このターンにまだ誰も攻撃していない時だけ
+  const firstAttack = !s.players[s.cards[attacker].owner].battle.some((b) => s.cards[b].attackedTurn === s.turn);
+  return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure' && (!x.firstOnly || firstAttack)) || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
 }
 
 /** 封印を1つ外して墓地に置く (なくなれば「封印がすべてなくなった時」) */
@@ -1576,8 +1600,7 @@ function finishEndTurn(s: GameState, L: Lookup) {
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== -1);
   }
   for (const iid of s.players[p].battle) {
-    const f = faceOf(s, L, iid);
-    if (f?.kw.untapAtEnd) s.cards[iid].tapped = false;
+    if (kwOf(s, L, iid).untapAtEnd) s.cards[iid].tapped = false;
   }
   // パートナーを表向きに
   for (const iid of s.players[p].partner) {
@@ -1697,6 +1720,11 @@ function advance(s: GameState, L: Lookup): boolean {
       for (const ex of after) runExec(s, L, ex);
       // 「攻撃の終わりに、アンタップする」
       const ac = s.cards[a.attacker];
+      // 「闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する」
+      if (ac?.zone === 'battle' && activeStatics(s, L).some((x) => x.spec.s === 'destroyAttackerAtEnd' && matchesSel(s, L, a.attacker, x.spec.sel))) {
+        log(s, a.owner, `${q(nameOf(s, L, a.attacker))} は攻撃の終わりに破壊される`);
+        moveCard(s, L, a.attacker, 'grave');
+      }
       // 「このクリーチャーの攻撃の終わりに、自分のシールドがN以上あれば、自分はゲームに勝つ」
       const wa = ac?.zone === 'battle' ? (faceOf(s, L, a.attacker)?.statics ?? []).find((x) => x.s === 'winAfterAttack') : undefined;
       if (wa && wa.s === 'winAfterAttack' && s.players[a.owner].shield.length >= wa.shields) {

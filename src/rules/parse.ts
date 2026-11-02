@@ -1758,6 +1758,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['grave'], kind: 'spell', costMax: +mm[1] }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
       { op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true },
     ];
+  // 「自分のマナゾーンにあるカードが7枚以上なら、このクリーチャーを自分の手札から出す」
+  if ((mm = s.match(/^自分のマナゾーンにあるカードが(\d+)枚以上なら、このクリーチャーを(?:自分の)?手札から(?:バトルゾーンに)?出す$/)))
+    return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '>=', n: +mm[1] }, body: [{ op: 'play', target: { ref: 'self' }, mode: 'put' }] }];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)

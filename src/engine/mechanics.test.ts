@@ -310,6 +310,10 @@ const db = buildDB(
     cr('handTax', 2, 5000, ['手札から召喚するなら、このクリーチャーの召喚コストを２多くする。']),
     cr('tapIn', 1, 5000, ['相手のカードは、マナゾーンにタップして置かれ、バトルゾーンにタップして出る。']),
     cr('noRedir', 1, 5000, ['このクリーチャーの攻撃先は変更されない。']),
+    cr('backToHand', 1, 5000, ['エレメントが手札以外から出る時、かわりに持ち主の手札に戻す。']),
+    cr('monoBlock', 1, 5000, ['自分のターン中、相手は多色ではないクリーチャーを出せない。']),
+    { id: 'notDarkKill', n: 'notDarkKill', img: '', f: [{ n: 'notDarkKill', t: 'クリーチャー', c: 'D', co: 1, p: '5000', r: ['テスト'], x: ['闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する。'] }] },
+    cr('elemCost', 8, 5000, ['このクリーチャーの召喚コストを、自分のエレメント１つにつき１少なくする。ただしコストは０以下にならない。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2940,6 +2944,39 @@ describe('named mechanics', () => {
       expect(r.error).toBeNull();
       const blk = r.state.pending.find((x) => x.kind === 'block');
       expect(blk && blk.kind === 'block' ? blk.guards : []).toEqual([]);
+    });
+  });
+
+  describe('2026年の新カードの常在型能力 (4)', () => {
+    it('エレメントが手札以外から出る時、かわりに持ち主の手札に戻す', () => {
+      const s = setup([{ p: 0, cid: 'backToHand', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'mana' }]);
+      const v = find(s, 1, 'mana', 'vanilla')!;
+      moveCard(s, L, v, 'battle');
+      expect(s.cards[v].zone).toBe('hand');
+    });
+    it('自分のターン中、相手は多色ではないクリーチャーを出せない (相手のターンなら出せる)', () => {
+      const s = setup([{ p: 0, cid: 'monoBlock', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'mana' }, { p: 1, cid: 'big', zone: 'mana' }]);
+      const v = find(s, 1, 'mana', 'vanilla')!;
+      moveCard(s, L, v, 'battle');
+      expect(s.cards[v].zone).toBe('mana');
+      s.active = 1;
+      const b = find(s, 1, 'mana', 'big')!;
+      moveCard(s, L, b, 'battle');
+      expect(s.cards[b].zone).toBe('battle');
+    });
+    it('闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する', () => {
+      let s = setup([{ p: 1, cid: 'notDarkKill', zone: 'battle' }, { p: 0, cid: 'sa', zone: 'battle' }]);
+      const a = find(s, 0, 'battle', 'sa')!;
+      s = act(s, 0, { t: 'attack', attacker: a, player: 1 });
+      for (let k = 0; k < 12 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'trigger' ? { t: 'trigger', use: false } : top.kind === 'choice' ? { t: 'choose', picks: top.options.slice(0, top.min) } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[1].shield.slice(0, 1) } : { t: 'resolve', use: true });
+      }
+      expect(s.cards[a].zone).toBe('grave');
+    });
+    it('召喚コストを自分のエレメント1つにつき1少なくする', () => {
+      const s = setup([{ p: 0, cid: 'elemCost', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'big', zone: 'battle' }]);
+      expect(costOf(s, L, 0, find(s, 0, 'hand', 'elemCost')!, 0)).toBe(6);
     });
   });
 

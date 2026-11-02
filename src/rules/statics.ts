@@ -135,7 +135,7 @@ export type StaticSpec =
   /** 可能なら毎ターン攻撃する */
   | { s: 'mustAttack' }
   /** 相手のクリーチャーは可能ならこのクリーチャーを攻撃する */
-  | { s: 'lure' }
+  | { s: 'lure'; /** 「各ターン、相手のクリーチャーがはじめて攻撃するなら」 */ firstOnly?: boolean }
   /** 相手は呪文を唱えることができない */
   | { s: 'oppSpellLock'; sel?: Sel; ownTurn?: boolean; all?: boolean }
   /** 蠅の王 クリス=タブラ=ラーサ 「相手は、自分のマナゾーンにある裏向きのカードの枚数よりコストが小さい呪文を唱えられない」 */
@@ -301,6 +301,14 @@ export type StaticSpec =
   | { s: 'lureChoose' }
   /** 「このクリーチャーの攻撃先は変更されない」 */
   | { s: 'noRedirect' }
+  /** 「自分のターン中、相手は多色ではないクリーチャーを出せない」 */
+  | { s: 'oppEnterBlock'; sel: Sel; ownTurn: boolean }
+  /** 「このクリーチャーの攻撃中、相手はクリーチャーを出せない」 */
+  | { s: 'oppNoEnterWhileAttacking' }
+  /** 「エレメントが手札以外から出る時、かわりに持ち主の手札に戻す」 */
+  | { s: 'nonHandEnterToHand' }
+  /** 「闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する」 */
+  | { s: 'destroyAttackerAtEnd'; sel: Sel }
   /** 「相手のカードは、マナゾーンにタップして置かれ、バトルゾーンにタップして出る」 */
   | { s: 'oppTapInManaBattle' }
   /** 「相手のエレメントは、実行以外の方法で出ない」 */
@@ -755,6 +763,24 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?召喚以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'summonOnlyEnter' }];
   if (/^相手がクリーチャーを選ぶ(?:なら|時)、可能ならこのクリーチャーを選ぶ$/.test(t0)) return [{ s: 'lureChoose' }];
   if (/^このクリーチャーの攻撃先は、?変更されない$/.test(t0)) return [{ s: 'noRedirect' }];
+  if (/^各ターン、?相手のクリーチャーがはじめて攻撃するなら、可能ならこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure', firstOnly: true }];
+  if (/^自分のターン中、相手は多色ではないクリーチャーを(?:バトルゾーンに)?出せない$/.test(t0)) return [{ s: 'oppEnterBlock', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', monocolor: true }, ownTurn: true }];
+  if (/^このクリーチャーの攻撃中、相手はクリーチャーを(?:バトルゾーンに)?出せない$/.test(t0)) return [{ s: 'oppNoEnterWhileAttacking' }];
+  if (/^エレメントが手札以外から(?:バトルゾーンに)?出る時、かわりに持ち主の手札に戻す$/.test(t0)) return [{ s: 'nonHandEnterToHand' }];
+  {
+    const da = t0.match(/^(.+?)の攻撃の終わりに、そのクリーチャーを破壊する$/);
+    const dsel = da && !/^この/.test(da[1]) && parseSel(da[1]);
+    if (dsel) return [{ s: 'destroyAttackerAtEnd', sel: { ...dsel, owner: 'any', zones: ['battle'] } }];
+  }
+  // 「自分の他のクリーチャーすべてに「ブロッカー」を与え、それらを自分のターンの終わりにアンタップする」
+  {
+    const ba = t0.match(/^(自分の.+?)すべてに「ブロッカー」を与え、それらを自分のターンの終わりにアンタップする$/);
+    const bt = ba && target(ba[1]);
+    if (bt) return [{ s: 'grant', target: bt, kws: ['ブロッカー', 'ターンの終わりにアンタップ'], when: 'always' }];
+  }
+  // 「このクリーチャーの召喚コストを、自分のエレメント1つにつき1少なくする」「クリーチャー1体につき1少なくする」
+  if ((m = t0.match(/^このクリーチャーの召喚コストを、?(自分の)?(エレメント|クリーチャー)(\d+)(?:つ|体)につき(\d+)少なくする/)) && m[3] === '1')
+    return [{ s: 'sympathy', sel: { owner: m[1] ? 'self' : 'any', zones: ['battle'], kind: m[2] === 'エレメント' ? 'card' : 'creature' }, floor: floorOf(full), zone: 'battle', each: +m[4] }];
   if (/^相手のカードは、?マナゾーンにタップして置かれ、バトルゾーンにタップして出る$/.test(t0)) return [{ s: 'oppTapInManaBattle' }];
   if (/^相手のエレメントは、?実行以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'oppEnterOnlyPlay' }];
   if ((m = t0.match(/^このクリーチャーの召喚コストを、?このターン自分が引いたカード(\d+)枚につき(\d+)少なくする/))) return [{ s: 'costPerDraw', n: +m[2] / +m[1], floor: floorOf(full) }];
