@@ -338,6 +338,8 @@ const db = buildDB(
     cr('rep2', 1, 1000, ['このクリーチャーが出た時、次の能力を２回まで使う。', '▶カードを１枚引く。']),
     { id: 'oppPickSp', n: 'oppPickSp', img: '', f: [{ n: 'oppPickSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分の山札の上から４枚を表向きにする。その中から進化クリーチャー以外のクリーチャーを１体相手に選ばせ、バトルゾーンに出す。残りを好きな順序で自分の山札の一番下に戻す。'] }] },
     { id: 'eleWipe', n: 'eleWipe', img: '', f: [{ n: 'eleWipe', t: 'タマシード', c: 'F', co: 0, p: null, r: [], x: ['このタマシードが出た時、エレメントが６つ以上あれば、他の進化ではないエレメントをすべて破壊する。'] }] },
+    cr('fb2', 1, 1000, ['このクリーチャーが出た時、自分の山札の上からテスト・クリーチャーが２体出るまで表向きにし、その２体を出す。その後、山札をシャッフルする。']),
+    cr('atkHelper', 1, 1000, ['自分のクリーチャーが攻撃する時、カードを１枚引いてもよい。その後、攻撃しているクリーチャーよりコストが小さいクリーチャーを１体、自分の手札から出してもよい。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3214,6 +3216,19 @@ describe('named mechanics', () => {
       s = drain(s);
       expect(s.players[0].battle).toEqual([w]);
       expect(s.players[1].battle.length).toBe(0);
+    });
+    it('山札の上からテスト・クリーチャーが2体出るまで表向きにし、その2体を出す', () => {
+      let s = setup([{ p: 0, cid: 'fb2', zone: 'hand' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'fb2')!, face: 0, pay: freeMana(s, 0, 1) });
+      s = drain(s);
+      expect(s.players[0].battle.length).toBe(3);
+    });
+    it('攻撃しているクリーチャーよりコストが小さいクリーチャーを手札から出す', () => {
+      let s = setup([{ p: 0, cid: 'atkHelper', zone: 'battle' }, { p: 0, cid: 'big', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);
+      const v = find(s, 0, 'hand', 'vanilla')!;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'big')!, player: 1 });
+      s = drain(s);
+      expect(s.cards[v].zone).toBe('battle');
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

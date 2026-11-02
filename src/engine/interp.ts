@@ -214,6 +214,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (sel.costLeSelf && !(maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.src].cid))) continue;
+        if (sel.costLtAttacker && !(s.attack && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[s.attack.attacker].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false, ex.src)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
       }
@@ -263,6 +264,10 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const opts = ex.looked.map((i) => L(s.cards[i].cid)?.faces.map((f) => f.cost) ?? [0]);
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
+    }
+    case 'wonBattleTurn': {
+      const ts = s.players[ex.player].turnStat;
+      return ts?.turn === s.turn && (ts.battleWins ?? 0) > 0;
     }
     case 'ownStrongest': {
       const all = s.players.flatMap((pl) => pl.battle).filter((i) => faceOf(s, L, i)?.isCreature);
@@ -1510,6 +1515,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = host != null ? s.cards[host].under.filter((u) => /オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length : 0;
         } else if (op.cardsOfSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? 1 + s.cards[ex.src].under.length : 0;
+        } else if (op.itLen) {
+          ex.count = ex.it.length;
         } else if (op.costOfIt) {
           ex.count = ex.it.length ? maxCost(L, s.cards[ex.it[0]].cid) : 0;
         } else if (op.cardsOfIt) {
@@ -1976,19 +1983,19 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'revealUntil': {
         const deck = s.players[ex.player].deck;
         const shown: number[] = [];
-        let found: number | null = null;
+        const founds: number[] = [];
         for (let k = deck.length - 1; k >= 0; k--) {
           const i = deck[k];
           shown.push(i);
           const ok = matchesSel(s, L, i, op.sel) && (!op.sel.costLtSelf || maxCost(L, s.cards[i].cid) < maxCost(L, s.cards[ex.src].cid));
           if (ok) {
-            found = i;
-            break;
+            founds.push(i);
+            if (founds.length >= (op.n ?? 1)) break;
           }
         }
         ex.looked = shown;
-        ex.it = found != null ? [found] : [];
-        log(s, ex.player, `山札の上から${shown.length}枚を表向きにした${found != null ? ` → ${q(nameOf(s, L, found))}` : ' (見つからなかった)'}`);
+        ex.it = founds;
+        log(s, ex.player, `山札の上から${shown.length}枚を表向きにした${founds.length ? ` → ${founds.map((f) => q(nameOf(s, L, f))).join('、')}` : ' (見つからなかった)'}`);
         break;
       }
       case 'handToDeck': {

@@ -89,6 +89,8 @@ export interface Sel {
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
+  /** 攻撃しているクリーチャーよりコストが小さい */
+  costLtAttacker?: boolean;
   /** 直前に見た・置いたカード (looked) の中だけ */
   inLooked?: boolean;
   /** 「このクリーチャー以下のコスト」 */
@@ -163,7 +165,8 @@ export type Cond =
   | { c: 'usedAtLeast'; n: number }
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
-  | { c: 'ownStrongest' } // バトルゾーンでパワーが一番大きいクリーチャーが自分のクリーチャー
+  | { c: 'ownStrongest' }
+  | { c: 'wonBattleTurn' } // このターン、自分のクリーチャーがバトルに勝っている // バトルゾーンでパワーが一番大きいクリーチャーが自分のクリーチャー
   | { c: 'selfTapped' }
   /** このクリーチャーがこのターンに攻撃した */
   | { c: 'selfAttacked' }
@@ -332,7 +335,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; /** このクリーチャーに含まれるカード */ cardsOfSelf?: boolean; /** そのカードのコスト */ costOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
+  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; /** このクリーチャーに含まれるカード */ cardsOfSelf?: boolean; /** そのカードのコスト */ costOfIt?: boolean; /** こうして動かしたカードの枚数 */ itLen?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -528,7 +531,7 @@ export type Op =
   /** このカードの呪文側を唱える (ラスト・バースト等) */
   | { op: 'castSelfSpell'; it?: boolean }
   /** 山札の上から条件に合うカードが出るまで表向きにする (見つかったカードが it、全部が looked) */
-  | { op: 'revealUntil'; sel: Sel }
+  | { op: 'revealUntil'; sel: Sel; /** N体出るまで */ n?: number }
   /** 今選んでいるカードを保存 (2つ目の選択のため) */
   | { op: 'save' }
   /** 保存しておいたカード (saved) を it に加える (「選んだクリーチャーをすべて〜」) */

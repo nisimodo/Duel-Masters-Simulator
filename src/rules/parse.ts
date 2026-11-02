@@ -1921,7 +1921,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   if (/^次の自分のターンのはじめまで、自分のクリーチャーすべてのハイパーモードを解放する$/.test(s)) return [{ op: 'hyperAll' }];
   // 「自分のクロスギアを好きな数、コストを支払わずに自分のクリーチャーにクロスしてもよい」
-  if (/^自分のクロスギアを好きな数、?コストを支払わずに自分のクリーチャーにクロス(?:してもよい|する)$/.test(s))
+  if (/^自分のクロスギアを(?:好きな数、?|99枚まで)コストを支払わずに自分のクリーチャーにクロス(?:してもよい|する)$/.test(s))
     return [
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'crossgear' }, count: { n: 99, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'クロスするクロスギアを選ぶ' },
       { op: 'crossFree', gear: { ref: 'it' }, onto: 'pick' },
@@ -1945,6 +1945,42 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if ((mm = s.match(/^このターン、そのクリーチャーのパワーを、こうして墓地に置いた(.+?)カード(\d+)枚につき([+-−])(\d+)する$/))) {
     return [{ op: 'powerPerCount', target: { ref: 'it' }, per: { owner: 'self', zones: ['grave'], kind: 'card', races: [mm[1]], inLooked: true }, delta: ((mm[3] === '+' ? 1 : -1) * +mm[4]) / +mm[2] }];
   }
+  // 覚醒 「このターン、自分のクリーチャーがバトルに勝っていれば、このクリーチャーをコストが大きいほうに裏返す」
+  if (/^このターン、自分のクリーチャーがバトルに勝っていれば、このクリーチャーをコスト[がの]大きいほうに裏返す$/.test(s)) return [{ op: 'if', cond: { c: 'wonBattleTurn' }, body: [{ op: 'flip', target: { ref: 'self' }, to: 'big' }] }];
+  // 「その後、攻撃しているクリーチャーよりコストが小さいクリーチャーを1体、自分の手札から出してもよい」
+  if ((mm = s.match(/^(?:その後、)?攻撃しているクリーチャーよりコストが小さいクリーチャーを(\d+)体、?自分の手札から(?:バトルゾーンに)?出(?:してもよい|す)$/) ?? s.match(/^自分の手札から攻撃しているクリーチャーよりコストが小さいクリーチャーを(\d+)体(?:バトルゾーンに)?出(?:してもよい|す)$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'creature', costLtAttacker: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '手札から出すクリーチャーを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「相手は、このようにして墓地に置かれたカード1枚につき自分自身のシールドを1枚選び、墓地に置く」
+  if (/^相手は、?このようにして墓地に置かれたカード1枚につき(?:自分自身|自身|自分)のシールドを1枚選び、墓地に置く$/.test(s))
+    return [
+      { op: 'countSet', itLen: true },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { n: 99, upTo: false, fromCount: true }, chooser: 'opp' }, purpose: 'sacrifice', prompt: '墓地に置くシールドを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'grave' },
+    ];
+  // 「その後、相手はクリーチャーを好きな数、自身の墓地から出す」
+  if (/^(?:その後、)?相手はクリーチャーを(?:好きな数、?|99枚まで)(?:自身|自分)の墓地から(?:バトルゾーンに)?出す$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['grave'], kind: 'creature' }, count: { n: 99, upTo: true }, chooser: 'opp' }, purpose: 'benefit', prompt: '墓地から出すクリーチャーを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // ジャンケン 「自分が勝った場合、3枚までカードを引いてもよい」
+  if ((mm = s.match(/^(\d+)枚までカードを引(?:いてもよい|く)$/))) return [{ op: 'draw', n: +mm[1], upTo: true, who: 'self' }];
+  if ((mm = s.match(/^自分が勝った場合、(\d+)枚までカードを引いてもよい$/))) return [{ op: 'if', cond: { c: 'did' }, body: [{ op: 'draw', n: +mm[1], upTo: true, who: 'self' }] }];
+  // 「このターンに破壊された自分のエレメントをすべて、自分の墓地から出してもよい」
+  if (/^このターンに破壊された自分のエレメントをすべて、自分の墓地から(?:バトルゾーンに)?出してもよい$/.test(s))
+    return [
+      {
+        op: 'optional',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'element', leftThisTurn: true }, count: { all: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'all' },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ],
+        prompt: s0,
+      },
+    ];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
@@ -3258,6 +3294,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^この(カード|クリーチャー)の呪文側を、?(バトルゾーンに置いたまま)?、?コストを支払わずに唱える$/.test(s)) return [{ op: 'castSelfSpell' }];
 
   // ---- 〜が出るまで山札を表向きにする ----
+  if ((m = s.match(/^(?:自分の)?山札の上から、?(.+?)が(\d+)体出るまで(?:カードを)?表向きにし、その\2体を(?:バトルゾーンに)?出す$/))) {
+    const sel = parseSel(m[1], { zones: ['deck'] });
+    if (sel) {
+      ctx.looked = true;
+      return [{ op: 'revealUntil', sel, n: +m[2] }, { op: 'play', target: { ref: 'it' }, mode: 'put' }];
+    }
+  }
   if ((m = s.match(/^(?:自分の)?山札の上から、?(.+?)が出るまで(?:カードを)?表向きにする$/))) {
     const sel = parseSel(m[1], { zones: ['deck'] });
     if (sel) {

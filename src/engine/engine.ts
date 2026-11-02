@@ -2404,6 +2404,8 @@ function battleInner(s: GameState, L: Lookup, att: number, def: number) {
   }
   s.inBattleNow = false;
   s.battleFoe = undefined;
+  if (killD && !killA) turnStat(s, s.cards[att].owner).battleWins = (turnStat(s, s.cards[att].owner).battleWins ?? 0) + 1;
+  if (killA && !killD) turnStat(s, s.cards[def].owner).battleWins = (turnStat(s, s.cards[def].owner).battleWins ?? 0) + 1;
   if (killD && !killA) fireWatchers(s, L, s.cards[att].owner, att, 'ownWinBattle', null, att);
   if (killA && !killD) fireWatchers(s, L, s.cards[def].owner, def, 'ownWinBattle', null, def);
   for (const w of [killD && !killA ? att : null, killA && !killD ? def : null]) {
