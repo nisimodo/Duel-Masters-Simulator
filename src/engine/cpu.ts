@@ -85,6 +85,44 @@ function extraTurnAttacker(s: GameState, p: number, L: Lookup, iid: number): boo
   if ((f.triggers ?? []).some((t) => t.events.includes('attack') && hasOp(programOf(t.effect).ops, 'extraTurn'))) return true;
   return castsOnAttack(f) && s.players[p].hand.some((h) => L(s.cards[h].cid)?.faces.some((x) => x.isSpell && givesExtraTurn(x)));
 }
+/** 山札切れ (LO) への方針: seek = 山札を引き切って勝つ (シャコガイルがいる) / safe = 山札が少ないが負けない算段がある / avoid = 引かない / ok = 山札は十分 */
+type DeckPlan = 'seek' | 'safe' | 'avoid' | 'ok';
+
+/** 山札が尽きても負けない・勝てるカード (シャコガイル・無敵虹帝・クリスターナル・Κ) か */
+function isDeckSaver(s: GameState, f: Face | undefined): boolean {
+  return (f?.statics ?? []).some((x) => (x.s === 'deckOutWin' && s.mode !== 'duepa') || (x.s === 'loseReplace' && x.pay === 'manaToDeck') || (x.s === 'eternalK' && !!x.onLose));
+}
+
+/** そのカードを (このターンか次のターンに) 使えそうか: マナの枚数と文明が足りる */
+function affordable(s: GameState, p: number, L: Lookup, iid: number): boolean {
+  const card = L(s.cards[iid].cid);
+  const f = card?.faces.find((x) => x.isCreature) ?? card?.faces[0];
+  if (!card || !f) return false;
+  const mana = s.players[p].mana;
+  const civs = new Set(mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
+  return (f.cost ?? 0) <= mana.length + 1 && f.civs.every((c) => civs.has(c));
+}
+
+export function deckPlan(s: GameState, p: number, L: Lookup): DeckPlan {
+  if (!on(p, 'deck')) return 'ok';
+  const pl = s.players[p];
+  // シャコガイルが出ていれば、山札を引き切ってLOを目指す
+  if (pl.battle.some((b) => isDeckSaver(s, faceOf(s, L, b)) && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'deckOutWin'))) return 'seek';
+  if (pl.deck.length > 8) return 'ok';
+  // 負けない・勝てるカードが出ている、または手札・山札にあって使える算段があれば引いてよい
+  if (pl.battle.some((b) => isDeckSaver(s, faceOf(s, L, b)))) return 'safe';
+  if ([...pl.hand, ...pl.deck].some((i) => isDeckSaver(s, L(s.cards[i].cid)?.faces.find((x) => x.isCreature)) && affordable(s, p, L, i))) return 'safe';
+  return 'avoid';
+}
+
+/** 自分の山札を n 枚減らす効果の価値 (山札切れの方針で変わる)。mill: 引くのではなく削る (シャコガイルは最後の1枚を引かないと勝てない) */
+function selfDeckValue(s: GameState, p: number, L: Lookup, n: number, gain: number, mill = false): number {
+  const plan = deckPlan(s, p, L);
+  if (plan === 'seek') return mill && n >= s.players[p].deck.length ? -200 : 10 * n;
+  if (plan === 'avoid') return n >= s.players[p].deck.length ? -200 : -15 * n;
+  return gain * n;
+}
+
 // (デュエパでは追加ターンを得る効果は無効)
 const noExtraTurn = (s: GameState, L: Lookup) => s.mode === 'duepa' || activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn');
 
@@ -386,7 +424,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
         const t = threatOf(s, L, targets[0]);
         v += 25 + t * 4;
         if (metaScore(faceOf(s, L, targets[0])) > 0) v += 60; // メタカードの除去は最優先
-      } else if (h.kind === 'draw' || h.kind === 'manaTop') v += (on(p, 'deck') && me.deck.length <= 8 ? -6 : 6) * h.n;
+      } else if (h.kind === 'draw' || h.kind === 'manaTop') v += selfDeckValue(s, p, L, h.n, 6);
       else if (h.kind === 'shieldTop') v += defensive ? 15 : 6;
       else if (h.kind === 'discardRandom') v += 8;
       else if (h.kind === 'grSummon') v += 10;
@@ -662,7 +700,7 @@ function chooseAttack(s: GameState, p: number, L: Lookup): Action | null {
 
   // 山札が少ない時は、攻撃する時に自分の山札を減らすクリーチャーで攻撃しない (とどめを刺せる時は別)
   const selfMill = (i: number) => (faceOf(s, L, i)?.triggers ?? []).some((t) => t.events.includes('attack') && programOf(t.effect).ops.some((o) => (o.op === 'top' && o.who === 'self') || (o.op === 'draw' && o.who === 'self')));
-  const deckLow = on(p, 'deck') && me.deck.length <= 6;
+  const deckLow = on(p, 'deck') && me.deck.length <= 6 && deckPlan(s, p, L) === 'avoid';
   // 攻撃すると追加ターンを得られるなら、ブロッカーでも真っ先にプレイヤーへ攻撃する
   for (const iid of attackers) {
     if (!extraTurnAttacker(s, p, L, iid)) continue;
@@ -734,8 +772,8 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
         continue;
       }
     }
-    if (o.op === 'draw') v += (o.who === 'self' ? (low ? -6 : handFull ? 1 : 4) : -4) * o.n;
-    else if (o.op === 'top' && o.who === 'self' && low && o.to !== 'look' && o.to !== 'reveal') v -= 6 * o.n;
+    if (o.op === 'draw') v += o.who === 'self' ? selfDeckValue(s, p, L, o.n, handFull ? 1 : 4) : -4 * o.n;
+    else if (o.op === 'top' && o.who === 'self' && (low || deckPlan(s, p, L) === 'seek') && o.to !== 'look' && o.to !== 'reveal') v += selfDeckValue(s, p, L, o.n, 0, true);
     else if (o.op === 'top') v += o.to === 'mana' || o.to === 'manaTapped' ? 3 * o.n : o.to === 'shield' ? 4 * o.n : o.to === 'hand' ? 4 * o.n : 1;
     // 「その中から〜を1枚、手札に加える」: 山札から探す
     else if (o.op === 'choose' && o.target.ref === 'looked' && nx?.op === 'move' && nx.to === 'hand') v += 4;
@@ -768,9 +806,13 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
 function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameState['pending'][number], { kind: 'choice' }>): Action {
   if (top.mode === 'yesno') {
     const op = top.exec.ops[0];
-    const deckLow = s.players[p].deck.length <= 8;
-    const risky = op?.op === 'optional' && op.body.some((o) => o.op === 'draw' || (o.op === 'top' && o.who === 'self'));
-    if (deckLow && risky) return { t: 'choose', yes: false };
+    const risky = op?.op === 'optional' && op.body.some((o) => (o.op === 'draw' && o.who === 'self') || (o.op === 'top' && o.who === 'self'));
+    if (risky) {
+      // 山札切れの方針: シャコガイルがいれば引く、山札が少なく負けない算段がなければ引かない
+      const plan = deckPlan(s, p, L);
+      if (plan === 'seek') return { t: 'choose', yes: true };
+      if (plan === 'avoid' || (s.players[p].deck.length <= 8 && !on(p, 'deck'))) return { t: 'choose', yes: false };
+    }
     // 「呪文を1枚、手札から唱えてもよい」: 唱えて得になる呪文がなければ唱えない
     const [c0, c1] = op?.op === 'optional' ? op.body : [];
     if (on(p, 'decline') && c0?.op === 'choose' && c0.target.ref === 'sel' && c1?.op === 'play' && c1.mode === 'cast') {
@@ -1126,8 +1168,11 @@ export function cpuPlan(s: GameState, p: number, L: Lookup): Action[] {
     const out: Action[] = [];
     let cur = s;
     for (const h of hintsFromText(top.effect.split('\n'))) {
-      // 自分の山札を削る効果は任意なら使わない
-      if (h.kind === 'mill' && top.optional) continue;
+      // 自分の山札を削る効果は任意なら使わない (シャコガイルで山札を引き切る時は使う)
+      // 山札が少なく負けない算段がない時は、任意で引く効果も使わない
+      const plan = deckPlan(cur, p, L);
+      if (h.kind === 'mill' && top.optional && plan !== 'seek') continue;
+      if (h.kind === 'draw' && top.optional && plan === 'avoid') continue;
       for (const ea of hintActions(cur, p, L, h)) {
         const r = applyAction(cur, p, ea, L);
         if (!r.error) {

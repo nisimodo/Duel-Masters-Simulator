@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
 import { turnStat as turnStatOf, abilityPick, applyAction, autoPay, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
-import { cpuPlan } from './cpu';
+import { cpuPlan, deckPlan } from './cpu';
 import { parseSel } from '../rules/selector';
 import { abilitiesIgnored, costOf } from './statics';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
@@ -296,6 +296,7 @@ const db = buildDB(
     cr('minogami', 1, 5000, ['マッハファイター', '無敵虹帝：自分がゲームに負ける時、または相手が勝つ時、かわりに自分のマナゾーンにあるカードを８枚、シャッフルしてから山札の一番下に置く。']),
     { id: 'winSp', n: 'winSp', img: '', f: [{ n: 'winSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分はゲームに勝つ。'] }] },
     { id: 'extraSp', n: 'extraSp', img: '', f: [{ n: 'extraSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターンの後で、自分のターンをもう一度行う。'] }] },
+    { id: 'mayDraw', n: 'mayDraw', img: '', f: [{ n: 'mayDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['カードを２枚まで引いてもよい。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2788,6 +2789,38 @@ describe('named mechanics', () => {
       const b = find(s, 0, 'hand', 'sa')!;
       moveCard(s, L, b, 'battle');
       expect(s.cards[b].zone).toBe('hand');
+    });
+  });
+
+  describe('CPU: 山札切れを避ける', () => {
+    const lowDeck = (s: GameState, n: number) => {
+      while (s.players[0].deck.length > n) moveCard(s, L, s.players[0].deck.at(-1)!, 'grave');
+      return s;
+    };
+    it('山札が少なく負けない算段がなければ引かない (avoid)', () => {
+      expect(deckPlan(lowDeck(setup([]), 5), 0, L)).toBe('avoid');
+      expect(deckPlan(setup([]), 0, L)).toBe('ok');
+    });
+    it('シャコガイルが出ていれば山札を引き切りに行く (seek)', () => {
+      expect(deckPlan(lowDeck(setup([{ p: 0, cid: 'shako', zone: 'battle' }]), 5), 0, L)).toBe('seek');
+      // デュエパでは特殊勝利が無効なので目指さない
+      const d = lowDeck(setup([{ p: 0, cid: 'shako', zone: 'battle' }]), 5);
+      d.mode = 'duepa';
+      expect(deckPlan(d, 0, L)).toBe('avoid');
+    });
+    it('シャコガイル・無敵虹帝を手札から出せる算段があれば引いてよい (safe)', () => {
+      expect(deckPlan(lowDeck(setup([{ p: 0, cid: 'shako', zone: 'hand' }]), 5), 0, L)).toBe('safe');
+      expect(deckPlan(lowDeck(setup([{ p: 0, cid: 'minogami', zone: 'hand' }]), 5), 0, L)).toBe('safe');
+    });
+    it('任意の「カードを引いてもよい」は avoid なら引かず、seek なら引く', () => {
+      for (const [zone, want] of [['hand', false], ['battle', true]] as const) {
+        let s = lowDeck(setup([{ p: 0, cid: 'mayDraw', zone: 'hand' }, ...(zone === 'battle' ? [{ p: 0, cid: 'shako', zone: 'battle' as const }] : [])]), 5);
+        s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'mayDraw')!, face: 0, pay: [] });
+        for (let k = 0; k < 3 && s.pending[0]?.kind === 'ability'; k++) s = act(s, 0, cpuPlan(s, 0, L)[0]);
+        const q = s.pending[0];
+        expect(q?.kind === 'choice' && q.mode).toBe('yesno');
+        expect((cpuPlan(s, 0, L)[0] as { yes?: boolean }).yes).toBe(want);
+      }
     });
   });
 

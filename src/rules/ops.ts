@@ -430,6 +430,8 @@ export type Op =
   | { op: 'ekLose'; reason: string }
   /** 選んだカード (it) をシャッフルしてから山札の一番下に置く */
   | { op: 'shuffleToDeckBottom' }
+  /** 深淵送り: 深淵ゾーンへ (置換効果は使えず、そのゲーム中はほかのゾーンへ移らない) */
+  | { op: 'abyss'; target: Target }
   /** 次の自分のターンのはじめまで、相手のパワー max 以下のクリーチャーに攻撃されない */
   | { op: 'lowGuard'; max: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */

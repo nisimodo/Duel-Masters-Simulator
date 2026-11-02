@@ -1738,6 +1738,18 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^その相手は、?この呪文を、?コストを支払わずに唱え(?:る|てもよい)$/.test(s)) return [{ op: 'asPlayer', who: 'itOwner', body: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'self' }, mode: 'cast', byMe: true }], prompt: 'この呪文をコストを支払わずに唱える' }] }];
   // バラギアラ-MAX 「次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない」
   if ((mm = s.match(/^次の自分のターンのはじめまで、?自分は、?相手のパワー(\d+)以下のクリーチャーに攻撃されない$/))) return [{ op: 'lowGuard', max: +mm[1] }];
+  // アビスラブ=ジャシン帝 「相手のクリーチャーを1体まで選び、深淵送りにする」
+  {
+    const ab = s.match(/^(.+?)を(\d+)(体|枚|つ)(まで)?選び、深淵送りにする$/);
+    const at = ab && selTarget(ab[1], ab[2], ab[4], false, 'self');
+    if (at && at.ref === 'sel') return [{ op: 'choose', target: at, purpose: 'hostile', prompt: '深淵送りにするものを選ぶ' }, { op: 'abyss', target: { ref: 'it' } }];
+    // 禁忌の昇淵 アビスベル 「相手のエレメントと手札をすべて深淵送りにする」
+    if (/^相手のエレメントと手札をすべて深淵送りにする$/.test(s))
+      return [
+        { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'hand'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+        { op: 'abyss', target: { ref: 'it' } },
+      ];
+  }
   // D-Jealousy-灰撫 「バトルゾーンにある自分のクリーチャー1体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱える」
   if (/^(?:バトルゾーンにある)?自分のクリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(?:る|てもよい)$/.test(s))
     return [

@@ -18,6 +18,8 @@ import {
   log,
   lose,
   moveCard,
+  detach,
+  noteMove,
   removeSeal,
   nameOf,
   playCard,
@@ -1001,6 +1003,24 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'ekLeave':
         if (s.cards[op.iid]?.zone === 'battle') moveCard(s, L, op.iid, op.to, { pos: op.pos, noEK: true });
         break;
+      case 'abyss': {
+        // 深淵送り: 移動は妨げられず、下のカードも一緒に、そのゲーム中は戻らない (ゲームから除いたのと同じ)
+        const ids = (resolveRef(s, ex, op.target) ?? []).filter((i) => s.cards[i].zone !== 'gone');
+        for (const i of ids) {
+          const c = s.cards[i];
+          for (const u of [...c.under]) {
+            detach(s, u);
+            s.cards[u].zone = 'gone';
+          }
+          c.under = [];
+          const from = c.zone;
+          detach(s, i);
+          c.zone = 'gone';
+          noteMove(s, i, from, 'gone');
+        }
+        if (ids.length) log(s, ex.player, `${ids.map((i) => q(nameOf(s, L, i))).join('、')} を深淵送りにした`);
+        break;
+      }
       case 'shuffleToDeckBottom': {
         const ids = ex.it.filter((i) => s.cards[i].zone !== 'gone');
         shuffleArr(s, ids);
