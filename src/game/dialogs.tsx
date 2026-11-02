@@ -544,7 +544,8 @@ export function PendingDialog({
                   style={{ textAlign: 'left', whiteSpace: 'normal' }}
                   onClick={() => setPicks(picks.includes(i) ? picks.filter((x) => x !== i) : [...picks, i].slice(-pending.max))}
                 >
-                  ▼ {l}
+                  {/* (カードの「▼」の選択肢でない、封印の位置などの選択には付けない) */}
+                  {cv?.op === 'modal' && cv.cornerSeal ? l : `▼ ${l}`}
                 </button>
               ))}
             </div>
