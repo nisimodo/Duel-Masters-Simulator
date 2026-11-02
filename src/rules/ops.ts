@@ -168,7 +168,8 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'ownStrongest' }
-  | { c: 'formerUnderHas'; cost: number } // 離れる前、このクリーチャーの下にコストNのクリーチャーがあった
+  | { c: 'formerUnderHas'; cost: number }
+  | { c: 'selfEnteredTurn' } // このクリーチャーがこのターン出ていた // 離れる前、このクリーチャーの下にコストNのクリーチャーがあった
   | { c: 'itSameNameSaved' } // そのカードが、保存したカード (手札に戻したクリーチャー) と同じ名前
   | { c: 'lookedSameCostCreatures' } // 表向きにしたカードがすべて同じコストのクリーチャー
   | { c: 'linkedWith'; names: string[] } // このクリーチャーがその名前のカードとリンクしている

@@ -1007,6 +1007,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  // 「各ターン、自分の各アオハル組の最初の攻撃の終わりに、そのクリーチャーをアンタップする」
+  if ((m = t0.match(/^各ターン、自分の各(.+?)の最初の攻撃の終わりに、そのクリーチャーをアンタップする$/))) {
+    const sel = parseSel(m[1]) ?? ({ owner: 'self', zones: ['battle'], kind: 'creature', races: [m[1]] } as Sel);
+    return [{ s: 'grant', target: { t: 'sel', sel: { ...sel, owner: 'self', zones: ['battle'], kind: 'creature' } }, kws: ['最初の攻撃後アンタップ'], when: 'always' }];
+  }
   if (/^相手のターンにこのクリーチャーが自分の手札から捨てられる時、墓地に置くかわりに(?:バトルゾーンに)?出してもよい$/.test(t0)) return [{ s: 'discardToBattleOpp' }];
   if (/^相手の、?クリーチャーの能力または呪文によって、このクリーチャーが自分の手札から捨てられた時、このクリーチャーを自分の墓地から(?:バトルゾーンに)?出してもよい$/.test(t0)) return [{ s: 'discardToBattleOpp' }];
   if ((m = t0.match(/^(.+?)を召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい$/))) {
@@ -1024,6 +1029,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     let mm: RegExpMatchArray | null;
     if ((mm = body.match(/^このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'selfCost', delta: -mm[1], cond, floor: floorOf(full) }];
     if (/^このクリーチャーは攻撃できない$/.test(body)) return [{ s: 'grant', target: { t: 'self' }, kws: ['攻撃できない'], when: 'always', cond }];
+    if (/^自分のシールドゾーンにあるこのクリーチャーに「S・トリガー」を与える$/.test(body)) return [{ s: 'grant', target: { t: 'self' }, kws: ['S・トリガー'], when: 'always', cond }];
     if ((mm = body.match(/^このクリーチャーのパワーを\+(\d+)し、((?:「[^」]+」と?)+)を与える$/)))
       return [
         { s: 'power', target: { t: 'self' }, delta: +mm[1], when: 'always', cond },

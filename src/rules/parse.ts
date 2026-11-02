@@ -2181,6 +2181,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLeCount: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'hostile', prompt: s0 },
       { op: 'destroy', target: { ref: 'it' } },
     ];
+  // 「このクリーチャーがこのターン出ていて、自分のシールドが2つ以下なら、〜」
+  if ((mm = s.match(/^このクリーチャーがこのターン出ていて、自分のシールドが(\d+)つ以下なら、(.+)$/))) {
+    const body = sentence(mm[2], ctx);
+    if (body) return [{ op: 'if', cond: { c: 'and', a: { c: 'selfEnteredTurn' }, b: { c: 'shields', who: 'self', cmp: '<=', n: +mm[1] } }, body }];
+  }
+  // 「(コスト5以下のクリーチャーがどこからでも自分の墓地に置かれた時、)それを出してもよい」
+  if (/^それを(?:バトルゾーンに)?出してもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'play', target: { ref: 'it' }, mode: 'put' }], prompt: s0 }];
+  // 「(自分の無色クリーチャーが離れた時、)そのクリーチャーとコストが同じ無色クリーチャーを1体、自分のマナゾーンから出してもよい」
+  if ((mm = s.match(/^(?:自分のマナゾーンから)?そのクリーチャーとコストが同じ無色クリーチャーを(\d+)体、?(?:自分のマナゾーンから)?(?:バトルゾーンに)?出(?:してもよい|す)$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'creature', colorless: true, costEqIt: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: 'マナゾーンから出す無色クリーチャーを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「(自分の封印が墓地に置かれた時、)そのカードを自分の墓地から手札に戻してもよい」
+  if (/^そのカードを自分の墓地から手札に戻してもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'move', target: { ref: 'it' }, to: 'hand' }], prompt: s0 }];
   // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
   if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」
@@ -4419,6 +4434,25 @@ export function parseEffect(text: string): Program {
         complete: true,
         unparsed: [],
       };
+    // 招龍邪技 「自分のクリーチャー1体とタマシードを1枚選ぶ。その後、相手は自身のクリーチャー1体とタマシードを1枚選ぶ。こうして選ばれなかったクリーチャーとタマシードをすべて破壊する」
+    if (/^自分のクリーチャー1体とタマシードを1枚選ぶ。その後、相手は自身のクリーチャー1体とタマシードを1枚選ぶ。こうして選ばれなかったクリーチャーとタマシードをすべて破壊する。?$/.test(nt)) {
+      const pick = (owner: 'self' | 'opp', kind: 'creature' | 'tamaseed'): Op[] => [
+        { op: 'choose', target: { ref: 'sel', sel: { owner, zones: ['battle'], kind }, count: { n: 1, upTo: false }, chooser: owner === 'opp' ? 'opp' : 'self' }, purpose: 'benefit', prompt: `残す${kind === 'creature' ? 'クリーチャー' : 'タマシード'}を選ぶ` },
+        { op: 'saveAppend' },
+      ];
+      return {
+        ops: [
+          ...pick('self', 'creature'),
+          ...pick('self', 'tamaseed'),
+          ...pick('opp', 'creature'),
+          ...pick('opp', 'tamaseed'),
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creatureOrTama', notSaved: true }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+          { op: 'destroy', target: { ref: 'it' } },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+    }
     const tap3 = nt.match(/^自分のマナゾーンのカードを(\d+)枚タップしてもよい。タップしたカードがすべて光のカードであれば、そのターンの終わりにこのクリーチャーをアンタップする。すべて火のカードであれば、このクリーチャーはそのターン、タップされていないクリーチャーを攻撃できる。すべて自然のカードであれば、そのターン、このクリーチャーのパワーは\+(\d+)される。?$/);
     if (tap3) {
       const all = (civ: 'L' | 'F' | 'N'): Cond => ({ c: 'itMatches', sel: { owner: 'self', zones: ['mana'], kind: 'card', civs: [civ] } });

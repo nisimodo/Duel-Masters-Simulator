@@ -275,6 +275,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
     }
+    case 'selfEnteredTurn':
+      return s.cards[ex.src]?.enteredTurn === s.turn;
     case 'formerUnderHas':
       return (s.cards[ex.src]?.formerUnder ?? []).some((u) => L(s.cards[u].cid)?.faces.some((f) => f.isCreature && f.cost === c.cost));
     case 'itSameNameSaved': {

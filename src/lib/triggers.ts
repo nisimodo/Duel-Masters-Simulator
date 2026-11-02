@@ -50,6 +50,7 @@ export type TrigEvent =
   | 'otherOwnLeave' // 自分の他のクリーチャーが離れた時
   | 'anyOtherLeave' // 他のクリーチャーが離れた時 (どのプレイヤーのでも)
   | 'ownDiscard' // 自分の手札を捨てた時
+  | 'ownSealToGrave' // 自分の封印が墓地に置かれた時
   | 'oppToGrave' // カードが相手の墓地に置かれた時
   | 'flipped' // このクリーチャーが龍解した時 / 覚醒した時
   | 'ownShieldAdded' // 自分のシールドゾーンにカードが置かれた時
@@ -118,6 +119,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   otherOwnLeave: '自分の他のクリーチャーが離れた時',
   anyOtherLeave: '他のクリーチャーが離れた時',
   ownDiscard: '自分の手札を捨てた時',
+  ownSealToGrave: '自分の封印が墓地に置かれた時',
   oppToGrave: '相手の墓地にカードが置かれた時',
   oppTappedMyTurn: '自分のターンに相手のクリーチャーがタップした時',
   oppTapped: '相手のクリーチャーがタップした時',
@@ -319,6 +321,9 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
     if (/^他のクリーチャーが(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('anyOtherLeave');
+    if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の(?!他の)[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause) && !/^(?:各ターン(?:に)?(?:1|一)度、)?自分のクリーチャーが/.test(clause) && !/シールド|封印|ターン中|相手/.test(clause)) (ev.add('leave'), ev.add('otherOwnLeave'));
+    if (/^(?:各ターン(?:に)?(?:1|一)度、)?コスト\d+以下のクリーチャーがどこからでも自分の墓地に置かれた時$/.test(clause)) ev.add('ownToGrave');
+    if (/^自分の封印が墓地に置かれた時$/.test(clause)) ev.add('ownSealToGrave');
     if (/^(?:各ターン(?:に)?(?:1|一)度、|各ターン、?はじめて、?)?自分(?:が|の)手札を(?:\d+枚)?捨てた時$/.test(clause)) ev.add('ownDiscard');
     // 龍装艦 チェンジザ 「各ターン、コスト5以下の呪文を自分の手札からはじめて捨てた時」
     const discardOf = clause.match(/^各ターン、?(.+?)を自分の手札からはじめて捨てた時$/);
@@ -373,7 +378,9 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
       const es = parseSel(ex[1].replace(/^(?:自身の)?マナゾーン(?:にある|の)カードをタップせずに、?/, ''));
       if (es) subject = { ...es, kind: es.kind === 'creature' && !/クリーチャー/.test(ex[1]) ? 'card' : es.kind, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
     }
-    const lv = ev.has('otherOwnLeave') && clause.match(/自分の他の([^、]+?)が(?:バトルゾーンを)?離れた時$/);
+    const tg = ev.has('ownToGrave') && clause.match(/コスト(\d+)以下のクリーチャーがどこからでも自分の墓地に置かれた時$/);
+    if (tg) subject = { owner: 'self', zones: ['grave'], kind: 'creature', costMax: +tg[1] };
+    const lv = ev.has('otherOwnLeave') && clause.match(/自分の(?:他の)?([^、]+?)が(?:バトルゾーンを)?離れた時$/);
     if (lv && !/^クリーチャー$/.test(lv[1])) {
       const ls = parseSel(lv[1]);
       if (ls) subject = { ...ls, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };

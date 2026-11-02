@@ -358,6 +358,9 @@ const db = buildDB(
     cr('discDraw', 2, 2000, ['各ターン、はじめて自分の手札を捨てた時、カードを１枚引いてもよい。']),
     cr('madness', 6, 6000, ['相手のターンにこのクリーチャーが自分の手札から捨てられる時、墓地に置くかわりに出してもよい。']),
     cr('monoBan', 3, 3000, ['相手は、多色以外のクリーチャーをバトルゾーンに出す時、バトルゾーンに出すかわりに墓地に置く。']),
+    cr('raceLeave', 3, 3000, ['各ターンに１度、自分のテストが離れた時、カードを１枚引く。']),
+    cr('reanim', 3, 3000, ['各ターンに１度、コスト２以下のクリーチャーがどこからでも自分の墓地に置かれた時、それを出してもよい。']),
+    { id: 'shoryu', n: 'shoryu', img: '', f: [{ n: 'shoryu', t: '呪文', c: 'D', co: 0, p: null, r: [], x: ['自分のクリーチャー１体とタマシードを１枚選ぶ。その後、相手は自身のクリーチャー１体とタマシードを１枚選ぶ。こうして選ばれなかったクリーチャーとタマシードをすべて破壊する。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3351,6 +3354,30 @@ describe('named mechanics', () => {
       const v = find(s, 1, 'hand', 'vanilla')!;
       moveCard(s, L, v, 'battle');
       expect(s.cards[v].zone).toBe('grave');
+    });
+    it('各ターンに1度、自分のテスト(種族)が離れた時 (このクリーチャーも含む)', () => {
+      let s = setup([{ p: 0, cid: 'raceLeave', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }]);
+      const h = s.players[0].hand.length;
+      const [a, b] = s.players[0].battle.filter((i) => s.cards[i].cid === 'vanilla');
+      moveCard(s, L, a, 'grave');
+      s = drain(act(s, 0, { t: 'note', m: '' }));
+      moveCard(s, L, b, 'grave');
+      s = drain(act(s, 0, { t: 'note', m: '' }));
+      expect(s.players[0].hand.length).toBe(h + 1);
+    });
+    it('コスト2以下のクリーチャーがどこからでも自分の墓地に置かれた時、それを出してもよい', () => {
+      let s = setup([{ p: 0, cid: 'reanim', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }]);
+      const v = find(s, 0, 'hand', 'vanilla')!;
+      moveCard(s, L, v, 'grave');
+      s = drain(act(s, 0, { t: 'note', m: '' }));
+      expect(s.cards[v].zone).toBe('battle');
+    });
+    it('招龍邪技: 選ばれなかったクリーチャーとタマシードをすべて破壊する', () => {
+      let s = setup([{ p: 0, cid: 'shoryu', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'shoryu')!, face: 0, pay: [] });
+      s = drain(s);
+      expect(s.players[0].battle.length).toBe(1);
+      expect(s.players[1].battle.length).toBe(1);
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

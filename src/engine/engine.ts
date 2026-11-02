@@ -986,6 +986,7 @@ export function removeSeal(s: GameState, L: Lookup, host: number, to?: 'deckBott
     sc.zone = 'grave';
     sc.faceUp = true;
     s.players[sc.owner].grave.push(seal);
+    fireWatchers(s, L, sc.owner, null, 'ownSealToGrave', null, seal);
   }
   log(s, hc.owner, `${q(nameOf(s, L, host))} の封印を1つ外した${to === 'deckBottom' ? ' (山札の一番下へ)' : ''}`);
   const hf = L(hc.cid)?.faces[hc.face];
@@ -1862,6 +1863,12 @@ function advance(s: GameState, L: Lookup): boolean {
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))}: シールドが${wa.shields}つ以上あるので勝利`);
         for (const o of opponentsOf(s, a.owner)) lose(s, o, '特殊勝利');
         return true;
+      }
+      // 「各ターン、自分の各〇〇の最初の攻撃の終わりに、アンタップする」
+      if (ac?.zone === 'battle' && ac.firstAtkUntap !== s.turn && staticKws(s, L, a.attacker).includes('最初の攻撃後アンタップ')) {
+        ac.firstAtkUntap = s.turn;
+        ac.tapped = false;
+        log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ (最初の攻撃の終わり)`);
       }
       if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack' || (x.s === 'untapAfterAttackIf' && s.players.some((pl) => !pl.lost && pl.shield.length < x.shieldsLess))) || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
         ac.tapped = false;

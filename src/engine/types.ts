@@ -31,6 +31,8 @@ export interface CardInst {
   parent: number | null;
   /** ターン終了時まで有効なパワー修正 */
   powerMod: number;
+  /** powerMod の内訳 (表示用。cid: 効果を出したカード / null: 手動) */
+  powerSrc?: { cid: string | null; n: number }[];
   /** 「そのバトルの終わりまで、パワーを±N」(バトルが終わったら0に戻す) */
   battleMod?: number;
   /** このターン攻撃できない (G・ストライク等) */
@@ -99,6 +101,8 @@ export interface CardInst {
   corners?: number[];
   /** 最終禁断フィールド: まだ使っていない封印の能力 (テキストの順の番号。禁断爆発は除く) */
   cornerFx?: number[];
+  /** 「各ターン、最初の攻撃の終わりにアンタップ」を使ったターン */
+  firstAtkUntap?: number;
   /** 終焉の禁断 ドルマゲドンX: まだ使える禁断コアの数 */
   cores?: number;
   /** バトルゾーンに出た順番 (総合ルール 608.5: 能力を無視しあう時は先に出ていたほうを優先) */
@@ -126,7 +130,7 @@ export interface CardInst {
   /** シールド・フォースで選んだシールド */
   forceShield?: number;
   /** 効果で一時的に得たキーワード能力 (until: -1 = ターンの終わりまで / n = プレイヤーnの次のターンのはじめまで) */
-  grants?: { kws: string[]; until: number }[];
+  grants?: { kws: string[]; until: number; /** 効果を出したカード (表示用) */ src?: string }[];
 }
 
 /** プレイヤーがそのターンにしたこと (ターンが変わると数え直す) */
