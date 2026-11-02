@@ -1113,6 +1113,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `シールド・プラス: 山札の上から${op.n}枚をシールドの下に置いた`);
         break;
       }
+      case 'saveAppend':
+        ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
+        break;
       case 'hyperAll': {
         for (const b of s.players[ex.player].battle) {
           const bc = s.cards[b];
@@ -1550,6 +1553,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = host != null ? s.cards[host].under.filter((u) => /オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length : 0;
         } else if (op.cardsOfSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? 1 + s.cards[ex.src].under.length : 0;
+        } else if (op.savedCostSum) {
+          ex.count = (ex.saved ?? []).reduce((a, i) => a + maxCost(L, s.cards[i].cid), 0);
         } else if (op.itLen) {
           ex.count = ex.it.length;
         } else if (op.costOfIt) {

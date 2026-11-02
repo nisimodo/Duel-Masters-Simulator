@@ -347,6 +347,8 @@ const db = buildDB(
     { id: 'jpB', n: 'jpB', img: '', f: [{ n: 'jpB', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['Jack-Pot'], x: [] }] },
     { id: 'drgJ', n: 'drgJ', img: '', f: [{ n: 'drgJ', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['アーマード・ドラゴン'], x: [] }] },
     { id: 'jpSp', n: 'jpSp', img: '', f: [{ n: 'jpSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分のマナゾーンにドラゴン・クリーチャーが１体以上あれば、異なる名前のJack-Potを好きな数、自分の手札またはマナゾーンから出してもよい。'] }] },
+    cr('jt2', 5, 5000, ['このクリーチャーが攻撃する時、Jトルネードを２回までする。そのJトルネードされたクリーチャーのコストの合計以下のコストを持つ呪文を１枚、自分の手札または墓地からコストを支払わずに唱えてもよい。']),
+    { id: 'sp2draw', n: 'sp2draw', img: '', f: [{ n: 'sp2draw', t: '呪文', c: 'F', co: 2, p: null, r: [], x: ['カードを１枚引く。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3273,6 +3275,14 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'choose', picks: [a2[0], opts.find((i) => s.cards[i].cid === 'jpB')!] });
       s = drain(s);
       expect(s.players[0].battle.length).toBe(2);
+    });
+    it('Jトルネードを2回までして、戻したクリーチャーのコストの合計以下の呪文を唱える', () => {
+      let s = setup([{ p: 0, cid: 'jt2', zone: 'battle' }, { p: 0, cid: 'jkW', zone: 'battle' }, { p: 0, cid: 'jkW', zone: 'battle' }, { p: 0, cid: 'sp2draw', zone: 'hand' }]);
+      const sp = find(s, 0, 'hand', 'sp2draw')!;
+      s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'jt2')!, player: 1 });
+      s = drain(s);
+      expect(s.players[0].battle.filter((i) => s.cards[i].cid === 'jkW').length).toBe(0);
+      expect(s.cards[sp].zone).not.toBe('hand');
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

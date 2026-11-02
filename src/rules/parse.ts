@@ -2073,6 +2073,46 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ctx.looked = true;
     return [{ op: 'shuffle' }, { op: 'countSet', sel: { owner: 'self', zones: ['battle'], kind: 'element' } }, { op: 'top', n: 0, to: 'look', who: 'self', fromCount: true }];
   }
+  // 「JトルネードをN回までする」(あとで「そのJトルネードされたクリーチャー」を使う)
+  if ((mm = s.match(/^Jトルネードを(\d+)回までする$/)))
+    return [
+      {
+        op: 'repeat',
+        n: +mm[1],
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: ['ジョーカーズ'], other: true }, count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'sacrifice', prompt: 'Jトルネード: 手札に戻すジョーカーズを選ぶ (しないなら選ばない)' },
+          { op: 'move', target: { ref: 'it' }, to: 'hand' },
+          { op: 'saveAppend' },
+        ],
+      },
+    ];
+  // 「そのJトルネードされたクリーチャーのコストの合計以下のコストを持つ呪文を1枚、自分の手札または墓地からコストを支払わずに唱えてもよい」
+  if ((mm = s.match(/^そのJトルネードされたクリーチャーのコストの合計以下のコストを持つ呪文を(\d+)枚、自分の手札または墓地からコストを支払わずに唱えてもよい$/)))
+    return [
+      { op: 'countSet', savedCostSum: true },
+      {
+        op: 'optional',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand', 'grave'], kind: 'spell', costLeCount: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
+          { op: 'play', target: { ref: 'it' }, mode: 'cast' },
+        ],
+        prompt: s0,
+      },
+    ];
+  // 「そうしたら、そのJトルネードされたクリーチャーの「このクリーチャーが出た時」で始まる能力を1つ使う」
+  if (/^(?:そうしたら、)?そのJトルネードされたクリーチャーの「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を1つ使う$/.test(s)) return [{ op: 'useEnterOf' }];
+  // アタック・チャンス呪文 「こうしてパワー6000以上のクリーチャーを(シールド化/表向きに/手札に戻/捨て)したら、〜」
+  if ((mm = s.match(/^こうしてパワー(\d+)以上のクリーチャーを(?:シールド化|表向きに|手札に戻|捨て)したら、(.+)$/))) {
+    const body = sentence(mm[2], ctx);
+    if (body) return [{ op: 'if', cond: { c: 'itMatches', sel: { owner: 'any', zones: ['battle', 'hand', 'grave', 'mana', 'shield', 'deck'], kind: 'creature', powerMin: +mm[1] } }, body }];
+  }
+  // 「その後、コストの合計が5以下になるように、進化ではないクリーチャーを2体まで、封印を1つずつ付けて自分の墓地から出す」
+  if ((mm = s.match(/^(?:その後、)?コストの合計が(\d+)以下になるように、?進化ではないクリーチャーを(\d+)体まで、?封印を(\d+)つずつ付けて自分の墓地から(?:バトルゾーンに)?出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'creature', nonEvolution: true }, count: { n: +mm[2], upTo: true, sumCostMax: +mm[1] }, chooser: 'self' }, purpose: 'benefit', prompt: `コストの合計が${mm[1]}以下になるように選ぶ` },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+      { op: 'seal', target: { ref: 'it' }, n: +mm[3] },
+    ];
   // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
   if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」
