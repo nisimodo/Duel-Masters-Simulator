@@ -17,4 +17,4 @@ it('warm-images と画面の縮めた画像のURLが同じ', () => {
     checked++;
   }
   expect(checked).toBeGreaterThan(1000);
-});
+}, 60000); // (全カードを読み込むので、ほかのテストと並んで動くと時間がかかる)

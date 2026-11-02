@@ -1761,6 +1761,29 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「自分のマナゾーンにあるカードが7枚以上なら、このクリーチャーを自分の手札から出す」
   if ((mm = s.match(/^自分のマナゾーンにあるカードが(\d+)枚以上なら、このクリーチャーを(?:自分の)?手札から(?:バトルゾーンに)?出す$/)))
     return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, cmp: '>=', n: +mm[1] }, body: [{ op: 'play', target: { ref: 'self' }, mode: 'put' }] }];
+  // 「このクリーチャーと攻撃しているクリーチャーを持ち主の手札に戻す」
+  if (/^このクリーチャーと攻撃しているクリーチャーを持ち主の手札に戻す$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', attackingNow: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+      { op: 'move', target: { ref: 'self' }, to: 'hand' },
+    ];
+  // 「(そうしたら、)相手は自身の山札の上から1枚をシールド化してもよい / タップしてマナゾーンに置いてもよい」(相手が決める)
+  if ((mm = s.match(/^(?:そうしたら、)?相手は自身の山札の上から(\d+)枚を(シールド化|タップしてマナゾーンに置|マナゾーンに置)(?:し|い)?てもよい$/))) {
+    const to = mm[2] === 'シールド化' ? 'shield' : mm[2].startsWith('タップ') ? 'manaTapped' : 'mana';
+    const body: Op[] = [{ op: 'asPlayer', who: 'opp', body: [{ op: 'top', n: +mm[1], to, who: 'self' }] }];
+    const opt: Op = { op: 'optional', byOpp: true, body, prompt: `山札の上から${mm[1]}枚を${to === 'shield' ? 'シールド化する' : 'マナゾーンに置く'}` };
+    return s.startsWith('そうしたら、') ? [{ op: 'if', cond: { c: 'did' }, body: [opt] }] : [opt];
+  }
+  // 「自分の表向きのシールド1つにつき、カードを1枚引く」
+  if ((mm = s.match(/^自分の表向きのシールド1つにつき、?カードを(\d+)枚引く$/)))
+    return [{ op: 'countSet', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true } }, { op: 'repeatCount', body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // 「自分のクリーチャー1体に封印を1つ付ける」
+  if ((mm = s.match(/^自分のクリーチャー(\d+)体に封印を(\d+)つ付ける$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: '封印を付けるクリーチャーを選ぶ' },
+      { op: 'seal', target: { ref: 'it' }, n: +mm[2] },
+    ];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
