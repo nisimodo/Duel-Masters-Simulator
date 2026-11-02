@@ -145,8 +145,8 @@ export interface Side {
   /** 大きく出す数字 (勝率・順位) */
   big: string;
   bigColor?: string;
-  /** 数字の下の行 */
-  lines: { text: string; color?: string }[];
+  /** 数字の下の行 (wrap: 入らなければ2行に分ける。それ以外は横に縮めて1行に収める) */
+  lines: { text: string; color?: string; px?: number; wrap?: boolean }[];
   thumb: HTMLImageElement | null;
   /** 画像が使えない時に代わりに描く (デッキの文明の色とカード名) */
   civs: Civ[];
@@ -195,16 +195,17 @@ function drawHead(ctx: CanvasRenderingContext2D, s: Side, x: number, y: number, 
   // 枠が大きい時は文字も大きくする
   const k = Math.min(1.6, Math.max(1, h / 340));
   const px = (n: number) => Math.round(n * k);
-  // デッキ名は2行まで折り返す
-  font(ctx, px(36), true);
-  const nameLines = wrap(ctx, s.name, maxW);
-  const names = nameLines.length > 2 ? [nameLines[0], fit(ctx, nameLines.slice(1).join(''), maxW)] : nameLines;
   // 上から順に、行の高さ (文字の上端・下端) を測って重ならないように並べる
   const lines: { text: string; px: number; bold: boolean; color: string; gap: number; big?: boolean }[] = [
     { text: s.tag, px: px(28), bold: true, color: s.tagColor, gap: 0 },
-    ...names.map((n, i) => ({ text: n, px: px(36), bold: true, color: C.text, gap: px(i ? 4 : 10) })),
+    { text: s.name, px: px(36), bold: true, color: C.text, gap: px(10) },
     { text: s.big, px: px(104), bold: true, color: s.bigColor ?? C.accent, gap: px(14), big: true },
-    ...s.lines.map((l, i) => ({ text: l.text, px: px(i ? 26 : 30), bold: false, color: l.color ?? (i ? C.muted : C.text), gap: px(i ? 10 : 14) })),
+    ...s.lines.flatMap((l, i) => {
+      const size = px(l.px ?? (i ? 26 : 30));
+      const base = { px: size, bold: false, color: l.color ?? (i ? C.muted : C.text) };
+      font(ctx, size);
+      return splitLine(ctx, l.text, maxW, !!l.wrap).map((text, j) => ({ ...base, text, gap: j ? px(4) : px(i ? 10 : 14) }));
+    }),
   ];
   const metric = (l: (typeof lines)[number]) => {
     font(ctx, l.px, l.bold);
@@ -223,9 +224,19 @@ function drawHead(ctx: CanvasRenderingContext2D, s: Side, x: number, y: number, 
     cy += l.gap + m.up;
     font(ctx, l.px, l.bold);
     ctx.fillStyle = l.color;
-    ctx.fillText(fit(ctx, l.text, maxW), tx, cy);
+    // 1行に収まらない文字は、切らずに横幅を縮めて (文字の縦横比を変えて) 収める (デッキ選択の画面と同じ)
+    ctx.fillText(l.text, tx, cy, maxW);
     cy += m.down;
   }
+}
+
+/** 入らない文は2行に分ける (「《カード名》の」の後ろで分けられればそこで)。3行目以降は2行目に入れて縮める */
+function splitLine(ctx: CanvasRenderingContext2D, text: string, maxW: number, allowWrap: boolean): string[] {
+  if (!allowWrap || ctx.measureText(text).width <= maxW) return [text];
+  const at = text.lastIndexOf('》の');
+  if (at > 0) return [text.slice(0, at + 2), text.slice(at + 2)];
+  const ls = wrap(ctx, text, maxW);
+  return [ls[0], ls.slice(1).join('')];
 }
 
 const ROW_H = 36;
@@ -498,10 +509,12 @@ export interface OnlineEntry {
   deck: Deck | null;
   /** 順位 (決まらなかった時は null) */
   place: number | null;
+  /** 勝った・負けた理由 (勝ったプレイヤーは勝因、負けたプレイヤーは敗因) */
+  reason: string | null;
 }
 
-/** オンライン対戦の結果の画像 (プレイヤー名・デッキ名・サムネイル・順位) */
-export async function renderOnlineResultImage(db: CardDB, entries: OnlineEntry[], info: { mode: string; reason: string; turns: number }, shape: ImageShape, thumbTimeoutMs = 10000): Promise<ResultImage> {
+/** オンライン対戦の結果の画像 (プレイヤー名・デッキ名・サムネイル・順位 (デュエマは勝利・敗北)・勝因・敗因) */
+export async function renderOnlineResultImage(db: CardDB, entries: OnlineEntry[], info: { mode: string; duema: boolean; reason: string; turns: number }, shape: ImageShape, thumbTimeoutMs = 10000): Promise<ResultImage> {
   const thumbs = await loadThumbs(
     db,
     entries.map((e) => e.deck),
@@ -515,9 +528,15 @@ export async function renderOnlineResultImage(db: CardDB, entries: OnlineEntry[]
       bar: win ? C.accent : col.bar,
       tagColor: win ? C.accent : col.label,
       name: e.deck?.name ?? '(デッキ不明)',
-      big: e.place != null ? `${e.place}位` : '引き分け',
-      bigColor: win ? C.accent : C.text,
-      lines: win ? [{ text: '勝利！', color: C.accent }] : [],
+      // デュエマ (1対1) は順位ではなく勝敗
+      big: e.place == null ? '引き分け' : info.duema ? (win ? '勝利' : '敗北') : `${e.place}位`,
+      bigColor: win ? C.accent : e.place != null && info.duema ? C.muted : C.text,
+      lines: e.reason
+        ? [
+            { text: win ? '勝因' : '敗因', color: C.muted, px: 24 },
+            { text: e.reason, color: win ? C.accent : C.text, px: 28, wrap: true },
+          ]
+        : [],
       thumb: thumbs[i],
       ...thumbInfo(db, e.deck),
       sections: [],
