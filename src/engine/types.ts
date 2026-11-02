@@ -93,6 +93,8 @@ export interface CardInst {
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
   endOfTurn?: 'joe' | 'bad' | 'abyss' | 'ninja';
+  /** 最終禁断フィールド: まだ封印が残っている位置 (能力の番号) */
+  corners?: number[];
   /** 終焉の禁断 ドルマゲドンX: まだ使える禁断コアの数 */
   cores?: number;
   /** バトルゾーンに出た順番 (総合ルール 608.5: 能力を無視しあう時は先に出ていたほうを優先) */

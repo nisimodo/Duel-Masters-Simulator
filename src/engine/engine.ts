@@ -958,10 +958,22 @@ export function removeSeal(s: GameState, L: Lookup, host: number, to?: 'deckBott
   const hf = L(hc.cid)?.faces[hc.face];
   const corner = /最終禁断フィールド/.test(hf?.type ?? '') ? (hf?.triggers ?? []).filter((t) => t.events.includes('unsealOne')) : [];
   if (corner.length === 4) {
-    // 最終禁断フィールド: 外した封印の位置の能力だけを使う (右下の禁断爆発は最後に外す)
-    const left = hc.under.filter((u) => s.cards[u].sealOf === host).length;
-    const pick = corner[[1, 2, 0, 3][Math.min(3, Math.max(0, 3 - left))]];
-    if (!(sealIgnored(s, L, host) || abilitiesIgnored(s, L, host))) pushAbility(s, L, host, hc.face, pick, 'unsealOne');
+    // 最終禁断フィールド: 外す封印の位置を選び、その位置の能力だけを使う (右下は禁断爆発)
+    const left = hc.corners ?? [0, 1, 2, 3];
+    // テキストの順 (左下・左上・右上・右下) の能力を、表示は左上・右上・左下・右下の順に
+    const POS = ['左下', '左上', '右上', '右下'];
+    const order = [1, 2, 0, 3].filter((k) => left.includes(k));
+    const options = order.map((k) => ({ label: `${POS[k]}の封印: ${corner[k].effect.replace(/。$/, '')}`, body: [{ op: 'cornerUsed' as const, k }, ...programOf(corner[k].effect).ops] }));
+    if (options.length && !(sealIgnored(s, L, host) || abilitiesIgnored(s, L, host)))
+      runExec(s, L, {
+        player: hc.owner,
+        src: host,
+        ops: options.length === 1 ? options[0].body : [{ op: 'modal', pick: 1, options, cornerSeal: true }],
+        it: [],
+        looked: [],
+        did: false,
+        name: hf?.name ?? '',
+      });
   } else fireSelf(s, L, host, hc.face, ['unsealOne']);
   if (!isSealed(s, host)) fireSelf(s, L, host, hc.face, ['unsealedAll']);
 }

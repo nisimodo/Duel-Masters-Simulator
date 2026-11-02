@@ -876,6 +876,10 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
       return { t: 'choose', options: order.slice(0, top.min) };
     }
     if (op?.op !== 'modal') return { t: 'choose', options: [0] };
+    if (op.cornerSeal) {
+      const k = op.options.findIndex((o) => !o.label.startsWith('右下'));
+      return { t: 'choose', options: [k >= 0 ? k : 0] };
+    }
     // 相手の効果で選ばされる時: 相手 (効果を使った人) にとって価値が低いものを選ぶ
     if (op.byOpp) {
       const owner = top.exec.player;

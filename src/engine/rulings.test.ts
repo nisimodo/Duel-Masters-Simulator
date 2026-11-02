@@ -235,10 +235,15 @@ describe('総合ルールの変更点', () => {
     // 闇または火のコスト5以上のコマンドを召喚すると、各ターン1つだけ封印を外す
     const [c1, c2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'cmdF');
     s = act(s, 0, { t: 'play', iid: c1, face: 0, pay: s.players[0].mana.slice(0, 5) });
+    s = drain(s, (x) => x.pending[0]?.kind === 'choice');
+    // 外す封印の位置を選ぶ (4か所)。右上を選ぶと、その能力 (スレイヤー) だけを使う
+    const q0 = s.pending[0];
+    expect(q0?.kind === 'choice' && q0.mode === 'modal' && q0.labels?.length).toBe(4);
+    s = act(s, 0, { t: 'choose', options: [1] });
     s = drain(s);
     expect(s.cards[f].under.length).toBe(3);
-    // 外した封印の位置 (左上) の能力だけを使う
-    expect(s.log.filter((l) => l.m.includes('封印が外された時')).length).toBe(1);
+    expect(s.cards[f].corners).toEqual([0, 1, 3]);
+    expect(s.log.some((l) => l.m.includes('スレイヤー'))).toBe(true);
     s = act(s, 0, { t: 'play', iid: c2, face: 0, pay: s.players[0].mana.filter((m) => !s.cards[m].tapped).slice(0, 5) });
     s = drain(s);
     expect(s.cards[f].under.length).toBe(3);

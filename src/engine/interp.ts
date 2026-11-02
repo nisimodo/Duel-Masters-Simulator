@@ -1044,6 +1044,11 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `${ids.length}枚をシャッフルして山札の一番下に置いた`);
         break;
       }
+      case 'cornerUsed': {
+        const c = s.cards[ex.src];
+        if (c) c.corners = (c.corners ?? [0, 1, 2, 3]).filter((x) => x !== op.k);
+        break;
+      }
       case 'nextUseCost':
         s.players[ex.player].nextUse = { turn: s.turn, n: op.n, floor: op.floor };
         log(s, ex.player, `このターン中、次にカードを使う時、そのコストを${op.n}少なくする`);

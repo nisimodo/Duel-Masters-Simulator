@@ -274,7 +274,9 @@ export type Op =
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put'; /** 自分が唱える (相手のカードでも) */ byMe?: boolean; /** 唱えた後、墓地のかわりに */ after?: 'deckBottom' | 'shieldUp' }
   | { op: 'optional'; body: Op[]; prompt: string; byOpp?: boolean }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
-  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean; /** 相手が選ぶ (選んだものは自分の効果として処理する) */ byOpp?: boolean }
+  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean; /** 相手が選ぶ (選んだものは自分の効果として処理する) */ byOpp?: boolean; /** 最終禁断フィールド: 外す封印の位置を選ぶ (最後の選択肢は禁断爆発) */ cornerSeal?: boolean }
+  /** 最終禁断フィールド: その位置の封印を外したことにする */
+  | { op: 'cornerUsed'; k: number }
   | { op: 'repeat'; n: number; body: Op[] }
   /** sel に合うカードの数だけ body をくり返す (「自分の〇〇1体につき、〜」) */
   | { op: 'repeatPer'; sel: Sel; body: Op[] }
