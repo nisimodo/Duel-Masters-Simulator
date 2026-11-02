@@ -255,6 +255,12 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
     }
+    case 'ownStrongest': {
+      const all = s.players.flatMap((pl) => pl.battle).filter((i) => faceOf(s, L, i)?.isCreature);
+      if (!all.length) return false;
+      const best = Math.max(...all.map((i) => power(s, L, i)));
+      return all.some((i) => s.cards[i].owner === ex.player && power(s, L, i) === best) && !all.some((i) => s.cards[i].owner !== ex.player && power(s, L, i) === best);
+    }
     case 'did':
       return ex.did;
     case 'shieldsLess':
@@ -959,7 +965,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         // 爆進ダブル等: 条件を満たせば両方とも選べる
         const all = !!op.bonus && evalCond(s, L, ex, op.bonus);
         ask(s, ex, {
-          player: ex.player,
+          player: op.byOpp ? oppOf(s, ex) : ex.player,
           mode: 'modal',
           prompt: `${ex.name}: 次のうちいずれか${op.pick}つを選ぶ${all ? ' (すべて選んでもよい)' : ''}`,
           options: [],

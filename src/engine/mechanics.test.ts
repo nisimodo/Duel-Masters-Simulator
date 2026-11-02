@@ -319,6 +319,8 @@ const db = buildDB(
     { id: 'oddEven', n: 'oddEven', img: '', f: [{ n: 'oddEven', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['奇数または偶数を選ぶ。次の自分のターンのはじめまで、選んだ側のコストの相手のクリーチャーは攻撃もブロックもできない。'] }] },
     { id: 'costLockSp', n: 'costLockSp', img: '', f: [{ n: 'costLockSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターン、相手はコスト５以下のクリーチャーを出せない。'] }] },
     cr('srev', 7, 9000, ['S革命チェンジ：火のクリーチャー（自分の指定のクリーチャーが攻撃する時、そのクリーチャーと、手札または表向きでシールドゾーンにあるこのクリーチャーを入れ替えてもよい）']),
+    { id: 'oppPicks', n: 'oppPicks', img: '', f: [{ n: 'oppPicks', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選ぶ。相手はそのクリーチャーを、破壊するか山札の上に置く。'] }] },
+    { id: 'strongDraw', n: 'strongDraw', img: '', f: [{ n: 'strongDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分のクリーチャーのパワーが一番大きければ、カードを１枚引く。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3033,6 +3035,32 @@ describe('named mechanics', () => {
       expect(s.cards[r].zone).toBe('battle');
       expect(s.cards[a].zone).toBe('shield');
       expect(s.cards[a].faceUp).toBe(true);
+    });
+  });
+
+  describe('2026年の新カードの能力 (相手が選ぶ・一番大きければ)', () => {
+    it('相手はそのクリーチャーを、破壊するか山札の上に置く (相手が選ぶ)', () => {
+      let s = setup([{ p: 0, cid: 'oppPicks', zone: 'hand' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const b = find(s, 1, 'battle', 'big')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'oppPicks')!, face: 0, pay: [] });
+      for (let k = 0; k < 4 && s.pending[0]?.kind !== 'choice'; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      if (s.pending[0]?.kind === 'choice' && s.pending[0].mode !== 'modal') s = act(s, 0, { t: 'choose', picks: [b] });
+      const q = s.pending[0];
+      expect(q?.kind === 'choice' && q.mode === 'modal' && q.player).toBe(1);
+      s = act(s, 1, { t: 'choose', options: [1] });
+      expect(s.cards[b].zone).toBe('deck');
+      expect(s.players[1].deck.at(-1)).toBe(b);
+    });
+    it('自分のクリーチャーのパワーが一番大きければ引く', () => {
+      const go = (mine: string, theirs: string) => {
+        let s = setup([{ p: 0, cid: 'strongDraw', zone: 'hand' }, { p: 0, cid: mine, zone: 'battle' }, { p: 1, cid: theirs, zone: 'battle' }]);
+        const h = s.players[0].hand.length;
+        s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'strongDraw')!, face: 0, pay: [] });
+        for (let k = 0; k < 4 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+        return s.players[0].hand.length - (h - 1);
+      };
+      expect(go('big', 'vanilla')).toBe(1);
+      expect(go('vanilla', 'big')).toBe(0);
     });
   });
 

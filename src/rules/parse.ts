@@ -1786,6 +1786,21 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     ];
   // 「このターン、相手はコスト5以下のクリーチャーを出せない」
   if ((mm = s.match(/^(?:この|その)ターン、相手はコスト(\d+)以下のクリーチャーを(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterCostLockTurn', max: +mm[1] }];
+  // 「相手はそのクリーチャーを、破壊するか山札の上に置く」(相手が選ぶ)
+  if (/^相手はそのクリーチャーを、?破壊するか(?:持ち主の)?山札の上に置く$/.test(s))
+    return [{ op: 'modal', pick: 1, byOpp: true, options: [{ label: '破壊する', body: [{ op: 'destroy', target: { ref: 'it' } }] }, { label: '山札の上に置く', body: [{ op: 'move', target: { ref: 'it' }, to: 'deckTop' }] }] }];
+  // 「そのターン、バトルゾーンでタップされているクリーチャーすべてのパワーは-3000される」
+  if ((mm = s.match(/^(?:この|その)ターン、(?:バトルゾーンで)?タップされているクリーチャーすべてのパワーを([+-]\d+)する$/)))
+    return [{ op: 'power', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature', tapped: true }, count: { all: true }, chooser: 'self' }, delta: +mm[1], until: 'turn' }];
+  // 「自分のクリーチャーのパワーが一番大きければ、カードを1枚引く」
+  if ((mm = s.match(/^自分のクリーチャーのパワーが一番大きければ、カードを(\d+)枚引く$/))) return [{ op: 'if', cond: { c: 'ownStrongest' }, body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
+  // 「相手の、自分のクリーチャーの数以下のコストを持つクリーチャーを1体選び、持ち主のマナゾーンに置く」
+  if ((mm = s.match(/^相手の、?自分のクリーチャーの数以下のコストを持つクリーチャーを(\d+)体選び、持ち主のマナゾーンに置く$/)))
+    return [
+      { op: 'countSet', sel: { owner: 'self', zones: ['battle'], kind: 'creature' } },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLeCount: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: 'マナゾーンに置くクリーチャーを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'mana' },
+    ];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)

@@ -874,6 +874,12 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
       return { t: 'choose', options: order.slice(0, top.min) };
     }
     if (op?.op !== 'modal') return { t: 'choose', options: [0] };
+    // 相手の効果で選ばされる時: 相手 (効果を使った人) にとって価値が低いものを選ぶ
+    if (op.byOpp) {
+      const owner = top.exec.player;
+      const worst = op.options.map((o, i) => ({ i, v: opsValue(s, owner, L, o.body) })).sort((a, b) => a.v - b.v);
+      return { t: 'choose', options: worst.slice(0, top.max).map((x) => x.i) };
+    }
     const scored = op.options.map((o, i) => ({ i, v: opsValue(s, p, L, o.body) })).sort((a, b) => b.v - a.v);
     return { t: 'choose', options: scored.slice(0, top.max).map((x) => x.i) };
   }

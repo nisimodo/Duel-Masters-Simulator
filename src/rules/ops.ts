@@ -157,6 +157,7 @@ export type Cond =
   | { c: 'usedAtLeast'; n: number }
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
+  | { c: 'ownStrongest' } // バトルゾーンでパワーが一番大きいクリーチャーが自分のクリーチャー
   | { c: 'selfTapped' }
   /** このクリーチャーがこのターンに攻撃した */
   | { c: 'selfAttacked' }
@@ -273,7 +274,7 @@ export type Op =
   | { op: 'play'; target: Target; mode: 'use' | 'summon' | 'cast' | 'put'; /** 自分が唱える (相手のカードでも) */ byMe?: boolean; /** 唱えた後、墓地のかわりに */ after?: 'deckBottom' | 'shieldUp' }
   | { op: 'optional'; body: Op[]; prompt: string; byOpp?: boolean }
   | { op: 'if'; cond: Cond; body: Op[]; else?: Op[] }
-  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean }
+  | { op: 'modal'; pick: number; options: { label: string; body: Op[] }[]; bonus?: Cond; optional?: boolean; /** 相手が選ぶ (選んだものは自分の効果として処理する) */ byOpp?: boolean }
   | { op: 'repeat'; n: number; body: Op[] }
   /** sel に合うカードの数だけ body をくり返す (「自分の〇〇1体につき、〜」) */
   | { op: 'repeatPer'; sel: Sel; body: Op[] }
