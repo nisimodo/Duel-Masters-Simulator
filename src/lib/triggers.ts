@@ -272,13 +272,15 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
       if (self) ev.add('destroyed');
       else if (opp) ev.add('oppDestroyed');
       else if (own) ev.add('otherOwnDestroyed');
+      // 「(各ターン、はじめて) クリーチャーが破壊された時」: だれのクリーチャーでも
+      else if (/^(?:各ターン、?はじめて、?)?クリーチャーが破壊された時$/.test(clause)) (ev.add('destroyed'), ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
     }
     if (/離れ(た|る)時/.test(clause) && self) ev.add('leave');
     if (/墓地に置かれた時/.test(clause) && self) ev.add('toGrave');
     if (/ブレイク(した|する)時/.test(clause) && self) ev.add('breakShield');
     if (/ブレイクされた時/.test(clause) && /自分のシールド/.test(clause)) ev.add('ownShieldBroken');
     // (Dの寺院 タブラサ・チャンタラム 「自分のマナゾーンにカードを置いた時」も)
-    const manaPut = clause.match(/自分のマナゾーンに(.+?)が置かれた時/) ?? clause.match(/自分のマナゾーンに(カード)を置いた時/);
+    const manaPut = clause.match(/自分のマナゾーンに(.+?)が置かれた時/) ?? clause.match(/自分のマナゾーンに(カード)を置いた時/) ?? clause.match(/^(.+?カード(?:または.+?カード)?)を自分のマナゾーンに置いた時$/);
     if (manaPut) ev.add('ownManaPut');
     if (/この(カード|クリーチャー)を(自分の)?(手札から)?マナゾーンに置いた時/.test(clause)) ev.add('toManaSelf');
     if (/表向きで(自分の)?シールドゾーンに置かれた時/.test(clause) && self) ev.add('toShieldFaceUp');
@@ -289,7 +291,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/自分の「無月の門」能力を使った時/.test(clause)) ev.add('mugetsuUsed');
     if (/この(?:クリーチャー|ドラグハート)が(?:龍解|覚醒|禁断爆発|禁断解放)した時/.test(clause)) ev.add('flipped');
     if (/自分のシールドゾーンにカードが置かれた時/.test(clause)) ev.add('ownShieldAdded');
-    if (/カードが自分のシールドゾーンを離れた時|自分のシールドが(?:シールドゾーンを)?離れた時/.test(clause)) ev.add('ownShieldLeft');
+    if (/カードが自分のシールドゾーンを離れた時|自分のシールドが(?:シールドゾーンを)?離れた時|^カードが自分のシールドゾーンから(?:手札または墓地|手札|墓地)に置かれた時$/.test(clause)) ev.add('ownShieldLeft');
     if (/他のクリーチャーが破壊された時/.test(clause) && !own && !opp) (ev.add('otherOwnDestroyed'), ev.add('oppDestroyed'));
     if (/このクリーチャーがバトルした時/.test(clause)) ev.add('battle');
     if (/このクリーチャーがバトルゾーンから(?:自分の)?墓地に置かれる時/.test(clause)) ev.add('destroyed');

@@ -348,6 +348,11 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (同じ名前のドリーム・エレメントがバトルゾーンにある)`);
     return from as ZoneName;
   }
+  // 「相手の山札から、手札以外のゾーンにカードが置かれる時、かわりにそのカードを持ち主の山札の下に置く」
+  if (from === 'deck' && to !== 'hand' && to !== 'deck' && activeStatics(s, L).some((x) => x.spec.s === 'oppDeckToBottom' && x.owner !== c.owner)) {
+    log(s, c.owner, '山札から出るかわりに山札の下へ (相手の能力)');
+    return moveCard(s, L, iid, 'deck', { pos: 'bottom', silent: true });
+  }
   // 「エレメントが手札以外から出る時、かわりに持ち主の手札に戻す」
   if (to === 'battle' && from !== 'battle' && from !== 'hand' && activeStatics(s, L).some((x) => x.spec.s === 'nonHandEnterToHand')) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は手札以外から出るかわりに手札へ`);
@@ -797,7 +802,10 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
   // 暴命天 バラギアラ 「すべてのクリーチャーは、シールドをさらに1つブレイクする」
   const bonus = (s.cards[iid].breakBonus ?? 0) + activeStatics(s, L).reduce((n, x) => n + (x.spec.s === 'allBreakPlus' ? x.spec.n : 0), 0);
   // (パワーがマイナスでもブレイク数は減らさない)
-  return (powered ? k.breaker + Math.max(0, Math.floor(power(s, L, iid, true) / 6000)) : k.breaker) + bonus;
+  const n = (powered ? k.breaker + Math.max(0, Math.floor(power(s, L, iid, true) / 6000)) : k.breaker) + bonus;
+  // 「相手のクリーチャーは、1度につき最大2つしかシールドをブレイクできない」
+  const caps = activeStatics(s, L).flatMap((x) => (x.spec.s === 'oppBreakCap' && x.owner !== s.cards[iid].owner ? [x.spec.n] : []));
+  return caps.length ? Math.min(n, ...caps) : n;
 }
 
 /** 置換効果の支払い (最初の選択) ができるか */

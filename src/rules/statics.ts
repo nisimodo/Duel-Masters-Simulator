@@ -301,6 +301,10 @@ export type StaticSpec =
   | { s: 'lureChoose' }
   /** 「このクリーチャーの攻撃先は変更されない」 */
   | { s: 'noRedirect' }
+  /** 「相手のクリーチャーは、1度につき最大2つしかシールドをブレイクできない」 */
+  | { s: 'oppBreakCap'; n: number }
+  /** 「相手の山札から、手札以外のゾーンにカードが置かれる時、かわりにそのカードを持ち主の山札の下に置く」 */
+  | { s: 'oppDeckToBottom' }
   /** 「自分のターン中、相手は多色ではないクリーチャーを出せない」 */
   | { s: 'oppEnterBlock'; sel: Sel; ownTurn: boolean }
   /** 「このクリーチャーの攻撃中、相手はクリーチャーを出せない」 */
@@ -763,6 +767,16 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^このクリーチャーは、?召喚以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'summonOnlyEnter' }];
   if (/^相手がクリーチャーを選ぶ(?:なら|時)、可能ならこのクリーチャーを選ぶ$/.test(t0)) return [{ s: 'lureChoose' }];
   if (/^このクリーチャーの攻撃先は、?変更されない$/.test(t0)) return [{ s: 'noRedirect' }];
+  if ((m = t0.match(/^相手のクリーチャーは、?(?:1|一)度につき最大(\d+)つしかシールドをブレイクできない$/))) return [{ s: 'oppBreakCap', n: +m[1] }];
+  if (/^相手の山札から、?手札以外のゾーンにカードが置かれる時、かわりにそのカードを持ち主の山札の(?:一番)?下に置く$/.test(t0)) return [{ s: 'oppDeckToBottom' }];
+  // 「このクリーチャーは、リンクしている時「Q・ブレイカー」を得、自分のターンの終わりにアンタップされる」
+  if ((m = t0.match(/^このクリーチャーは、?リンクしている時「([^」]+)」を得、自分のターンの終わりにアンタップされる$/))) return [{ s: 'grant', target: { t: 'self' }, kws: [m[1], 'ターンの終わりにアンタップ'], when: 'always', cond: { c: 'linked' } }];
+  // 「このクリーチャーは、バトルゾーンにある自分の多色クリーチャー1体につき「パワーアタッカー+3000」を得る」
+  {
+    const pa = t0.match(/^このクリーチャーは、?(?:バトルゾーンにある)?自分の(.+?)1体につき「パワーアタッカー\+(\d+)」を得る$/);
+    const psel = pa && parseSel(pa[1]);
+    if (pa && psel) return [{ s: 'power', target: { t: 'self' }, delta: +pa[2], when: 'attack', per: { sel: { ...psel, owner: 'self', zones: ['battle'] }, each: 1 } }];
+  }
   if (/^各ターン、?相手のクリーチャーがはじめて攻撃するなら、可能ならこのクリーチャーを攻撃する$/.test(t0)) return [{ s: 'lure', firstOnly: true }];
   if (/^自分のターン中、相手は多色ではないクリーチャーを(?:バトルゾーンに)?出せない$/.test(t0)) return [{ s: 'oppEnterBlock', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', monocolor: true }, ownTurn: true }];
   if (/^このクリーチャーの攻撃中、相手はクリーチャーを(?:バトルゾーンに)?出せない$/.test(t0)) return [{ s: 'oppNoEnterWhileAttacking' }];

@@ -314,6 +314,8 @@ const db = buildDB(
     cr('monoBlock', 1, 5000, ['自分のターン中、相手は多色ではないクリーチャーを出せない。']),
     { id: 'notDarkKill', n: 'notDarkKill', img: '', f: [{ n: 'notDarkKill', t: 'クリーチャー', c: 'D', co: 1, p: '5000', r: ['テスト'], x: ['闇ではないクリーチャーの攻撃の終わりに、そのクリーチャーを破壊する。'] }] },
     cr('elemCost', 8, 5000, ['このクリーチャーの召喚コストを、自分のエレメント１つにつき１少なくする。ただしコストは０以下にならない。']),
+    cr('breakCap', 1, 5000, ['相手のクリーチャーは、１度につき最大２つしかシールドをブレイクできない。']),
+    cr('deckGuard', 1, 5000, ['相手の山札から、手札以外のゾーンにカードが置かれる時、かわりにそのカードを持ち主の山札の下に置く。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2977,6 +2979,20 @@ describe('named mechanics', () => {
     it('召喚コストを自分のエレメント1つにつき1少なくする', () => {
       const s = setup([{ p: 0, cid: 'elemCost', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'big', zone: 'battle' }]);
       expect(costOf(s, L, 0, find(s, 0, 'hand', 'elemCost')!, 0)).toBe(6);
+    });
+  });
+
+  describe('2026年の新カードの常在型能力 (5)', () => {
+    it('相手のクリーチャーは1度につき最大2つしかシールドをブレイクできない', () => {
+      const s = setup([{ p: 1, cid: 'breakCap', zone: 'battle' }, { p: 0, cid: 'boumei', zone: 'battle' }]);
+      expect(breakCount(s, L, find(s, 0, 'battle', 'boumei')!)).toBe(2);
+    });
+    it('相手の山札から手札以外へ置かれる時、かわりに山札の下へ', () => {
+      const s = setup([{ p: 0, cid: 'deckGuard', zone: 'battle' }]);
+      const top = s.players[1].deck.at(-1)!;
+      moveCard(s, L, top, 'grave');
+      expect(s.cards[top].zone).toBe('deck');
+      expect(s.players[1].deck[0]).toBe(top);
     });
   });
 
