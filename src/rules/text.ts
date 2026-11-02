@@ -9,6 +9,7 @@ export function normText(s: string): string {
     // 新しい表記の「{xB} 〜」(スーパー・S・トリガーで与えられる能力) は「xB 〜」と同じ
     .replace(/^\{(xB|oB)\}\s*/, '$1 ')
     .replace(/^\{[A-Z]+\}\s*/, '')
+    .replace(/このArtifact/g, 'このカード')
     // 古い表記の統一: 「出たとき」→「出た時」、「戻してよい」→「戻してもよい」
     .replace(/とき/g, '時')
     .replace(/([てで])よい/g, '$1もよい')

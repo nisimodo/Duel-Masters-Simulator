@@ -365,7 +365,7 @@ export type Op =
   /** 封印を付ける (山札の上から裏向きで) */
   | { op: 'seal'; target: Target; n: number }
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
-  | { op: 'unseal'; from: 'self' | 'any'; n: number }
+  | { op: 'unseal'; from: 'self' | 'any'; n: number; /** 外した封印を置く場所 (ふつうは墓地) */ to?: 'deckBottom' }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
   | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean; /** 数字: 「何枚〜するか」を選ぶ (選んだ数を count にする。CPU は多いほうを選ぶ) */ howMany?: string }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
@@ -439,6 +439,8 @@ export type Op =
   | { op: 'lowGuard'; max: number }
   /** このターン、相手はコスト max 以下のクリーチャーを出せない */
   | { op: 'enterCostLockTurn'; max: number }
+  /** このターン中、次にカードを使う時、そのコストを n 少なくする (最低 floor) */
+  | { op: 'nextUseCost'; n: number; floor: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */

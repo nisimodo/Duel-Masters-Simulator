@@ -68,6 +68,7 @@ export type TrigEvent =
   | 'oppTappedMyTurn' // 自分のターンに相手のクリーチャーがタップした時
   | 'oppTapped' // 相手のクリーチャーがタップした時
   | 'ownShieldFaceUp' // カードが表向きで自分のシールドゾーンに置かれた時
+  | 'ownGStrike' // 自分が「G・ストライク」を使った時
   | 'oppShieldAdded'; // カードが相手のシールドゾーンに置かれた時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
@@ -117,6 +118,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   oppTappedMyTurn: '自分のターンに相手のクリーチャーがタップした時',
   oppTapped: '相手のクリーチャーがタップした時',
   ownShieldFaceUp: 'カードが表向きで自分のシールドゾーンに置かれた時',
+  ownGStrike: '自分が「G・ストライク」を使った時',
   oppShieldAdded: 'カードが相手のシールドゾーンに置かれた時',
   flipped: '龍解・覚醒した時',
   ownShieldAdded: 'シールドゾーンにカードが置かれた時',
@@ -316,6 +318,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^自分のターン(?:中)?に、?相手のクリーチャーがタップした時$/.test(clause)) ev.add('oppTappedMyTurn');
     else if (/^相手のクリーチャーがタップ(?:した|された)時$/.test(clause)) ev.add('oppTapped');
     if (/^カードが(?:表向きで自分のシールドゾーンに|自分のシールドゾーンに表向きで)置かれた時$/.test(clause)) ev.add('ownShieldFaceUp');
+    if (/^自分が「G・ストライク」を使った時$/.test(clause)) ev.add('ownGStrike');
     if (/^カードが相手のシールドゾーンに置かれた時$/.test(clause)) ev.add('oppShieldAdded');
     // Dの揺籠 メリーボーイラウンド 「自分のターンに、1枚目のカードを引いた時」/ Dの牢閣 メメント守神宮 「いずれかのプレイヤーが自身のターンに最初のカードを引いた時」
     const firstDraw = /(?:自分の|自身の)ターンに、?(?:1|一)枚目のカードを引いた時|自身のターンに最初のカードを引いた時/.test(clause);

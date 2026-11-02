@@ -249,7 +249,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const startPlay = (iid: number, face: number) => {
     const c = cardAt(iid);
     const f = c.faces[face];
-    const simple = !f.isEvolution && !(f.statics ?? []).some((x) => x.s === 'sasageru' || x.s === 'hyperEnergy' || x.s === 'gzero');
+    const simple = !f.isEvolution && !/NEO/.test(f.type) && !(f.statics ?? []).some((x) => x.s === 'sasageru' || x.s === 'hyperEnergy' || x.s === 'gzero');
     if (simple && costOf(s, L, me, iid, face) === 0) act({ t: 'play', iid, face, pay: [] });
     else setPay({ iid, face });
   };
@@ -378,6 +378,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       }
       case 'mana':
         summonFromItems(iid, items);
+        if (own && (card.faces[0].statics ?? []).some((x) => x.s === 'manaTapDraw')) items.push({ label: 'タップしてカードを1枚引く (手札がちょうど7枚の時)', disabled: !isMyTurn || c.tapped, onClick: () => act({ t: 'manaAbility', iid }) });
         items.push({ label: c.tapped ? 'アンタップ' : 'タップ', onClick: () => act({ t: 'tap', iid, v: !c.tapped }) });
         if (own) items.push({ label: 'コストを支払わずに使う', onClick: () => act({ t: 'play', iid, face: 0, pay: [], free: true, force: true }) });
         items.push(...moveItems(iid, ['mana']));

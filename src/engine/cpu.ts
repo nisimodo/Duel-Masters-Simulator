@@ -584,7 +584,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
           const bases = em.oneEach ? zones.map((z) => pool.find((b) => s.cards[b].zone === z)).filter((b): b is number => b != null) : pool;
           if (bases.length < em.min) return;
           evo = em.oneEach ? bases : bases.slice(0, em.exact ? em.min : Math.max(em.min, Math.min(bases.length, 3)));
-        } else if (f.isEvolution) {
+        } else if (f.isEvolution || /NEO/.test(f.type)) {
           const base = [...me.battle]
             .filter((b) => {
               const bf = faceOf(s, L, b);
@@ -593,8 +593,10 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
             })
             .sort((a, b) => power(s, L, a) - power(s, L, b))[0];
           if (base == null) {
-            if (!(f.statics ?? []).some((x) => x.s === 'deckEvo')) return;
-            evo = [];
+            // NEOクリーチャーは進化元がなければふつうに召喚する
+            if (/NEO/.test(f.type) && !f.isEvolution) evo = undefined;
+            else if (!(f.statics ?? []).some((x) => x.s === 'deckEvo')) return;
+            else evo = [];
           } else evo = [base];
         }
         // 革命チェンジ/侵略持ちは、攻撃時に使える場面なら温存

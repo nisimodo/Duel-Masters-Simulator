@@ -875,6 +875,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     if (sm) return [{ op: 'seal', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, n: num(sm[1]) }];
     sm = s.match(new RegExp(`^(自分の|この(?:タマシード|クリーチャー|カード|フィールド|鼓動)の)封印を${N1}(?:つ|枚)(?:まで)?、?(?:自分の)?墓地に置く$`));
     if (sm) return [{ op: 'unseal', from: sm[1] === '自分の' ? 'any' : 'self', n: num(sm[2]) }];
+    // Black Lotus 「このArtifactに付けた封印を1つ、自分の山札の一番下に置く」
+    sm = s.match(new RegExp(`^この(?:カード|タマシード|クリーチャー)に付けた封印を${N1}つ、?自分の山札の(?:一番)?下に置く$`));
+    if (sm) return [{ op: 'unseal', from: 'self', n: num(sm[1]), to: 'deckBottom' }];
   }
   // 種族・文明・数字を選ぶ
   {
@@ -1852,6 +1855,9 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLtCount: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: s0 },
       { op: 'destroy', target: { ref: 'it' } },
     ];
+  if (/^これを自分の墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
+  if ((mm = s.match(/^このターン中?、次にカードを使う時、そのコストを最大(\d+)少なく(?:してもよい|する)$/))) return [{ op: 'nextUseCost', n: +mm[1], floor: 0 }];
+  if (/^ただし、?コストは0より少なくはならない$/.test(s)) return [];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)

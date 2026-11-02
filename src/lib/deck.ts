@@ -116,7 +116,8 @@ export const DECK_SIZE: Record<DeckType, number> = { duema: 40, duepa: 60 };
 /** カードのテキストによるデッキ枚数の増加 (例: 《13番目の計画》) */
 export function deckSizeBonus(db: CardDB, deck: Deck): number {
   let bonus = 0;
-  for (const [id, n] of Object.entries(deck.main)) {
+  // (ルール・プラスは超次元ゾーンに置いてゲームを始める: 総合ルール 314.3a)
+  for (const [id, n] of [...Object.entries(deck.main), ...Object.entries(deck.hyper ?? {})]) {
     const b = Math.max(0, ...(db.byId.get(id)?.faces.map((f) => f.kw.deckSizeBonus) ?? [0]));
     bonus += b * n;
   }

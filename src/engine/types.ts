@@ -92,7 +92,9 @@ export interface CardInst {
   /** エクストラEXライフの残りのシールド */
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
-  endOfTurn?: 'joe' | 'bad' | 'abyss';
+  endOfTurn?: 'joe' | 'bad' | 'abyss' | 'ninja';
+  /** バトルゾーンに出た順番 (総合ルール 608.5: 能力を無視しあう時は先に出ていたほうを優先) */
+  enterSeq?: number;
   /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
   hyperUntil?: number;
   /** G・リンクで下に重なっているゴッド (リンク先の一番上のカード) */
@@ -174,6 +176,8 @@ export interface PlayerState {
   charged: boolean;
   /** このターン、次に召喚するクリーチャーのコスト軽減 */
   nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number; grants?: string[] };
+  /** このターン中、次にカードを使う時のコストの軽減 */
+  nextUse?: { turn: number; n: number; floor: number };
   /** このターン、マナゾーンから召喚できる残りの数 */
   manaSummon?: { turn: number; left: number; staticUsed?: number };
   /** このターン最後に使ったカードの種類 (サイクロン用) */
@@ -493,6 +497,8 @@ export type Action =
     }
   | { t: 'hyperize'; iid: number; taps: number[] }
   | { t: 'tapAbility'; iid: number }
+  /** マナゾーンにあるカードをタップして使う能力 (土地) */
+  | { t: 'manaAbility'; iid: number }
   /** デュエリスト: 種族を持つデュエルメイト・カードを超次元ゾーンからコストを支払わずに実行する */
   | { t: 'duelist'; iid: number; target: number }
   /** 輪廻∞: バトルゾーンのこのカードの呪文側を唱える */

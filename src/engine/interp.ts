@@ -81,8 +81,9 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (k === 'creatureOrTama' && !f.isCreature && !t.includes('タマシード')) return false;
   if (k === 'aura' && !t.includes('オーラ')) return false;
   if (k === 'castle' && !t.includes('城')) return false;
-  if (sel.evolution && !f.isEvolution) return false;
-  if (sel.nonEvolution && f.isEvolution) return false;
+  const evoNow = f.isEvolution || (/NEO/.test(t) && s.cards[iid]?.zone === 'battle' && s.cards[iid].under.some((u) => L(s.cards[u].cid)?.faces[0]?.isCreature));
+  if (sel.evolution && !evoNow) return false;
+  if (sel.nonEvolution && evoNow) return false;
   if (sel.twinpact && !card.twin) return false;
   const civs = card.twin ? card.civs : f.civs.length ? f.civs : card.civs;
   if (sel.civs?.length) {
@@ -1042,6 +1043,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `${ids.length}枚をシャッフルして山札の一番下に置いた`);
         break;
       }
+      case 'nextUseCost':
+        s.players[ex.player].nextUse = { turn: s.turn, n: op.n, floor: op.floor };
+        log(s, ex.player, `このターン中、次にカードを使う時、そのコストを${op.n}少なくする`);
+        break;
       case 'enterCostLockTurn':
         for (const o of opps(s, ex.player)) s.players[o].enterCostLock = { turn: s.turn, max: op.max };
         log(s, ex.player, `このターン、相手はコスト${op.max}以下のクリーチャーを出せない`);
@@ -1241,7 +1246,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (let k = 0; k < op.n; k++) {
           const host = op.from === 'self' ? ex.src : s.players[owner].battle.find((b) => isSealed(s, b));
           if (host == null || !isSealed(s, host)) break;
-          removeSeal(s, L, host);
+          removeSeal(s, L, host, op.to);
         }
         break;
       }

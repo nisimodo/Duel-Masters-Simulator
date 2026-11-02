@@ -6,7 +6,7 @@ import { parseKeywords, type Keywords } from '../lib/keywords';
 import { matchesCond } from './cond';
 import { hintsFromText } from './effects';
 import { condHolds, matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
-import { abilitiesIgnored, activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
+import { abilitiesIgnored, kingCellsFor, sealIgnored, spellEffectIgnored, activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
 import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
@@ -52,7 +52,7 @@ export function log(s: GameState, p: number | null, m: string) {
 export function kwOf(s: GameState, L: Lookup, iid: number): Keywords {
   const f = faceOf(s, L, iid);
   // 封印が付いているクリーチャーは能力を持たない
-  if (s.cards[iid].zone === 'battle' && (isSealed(s, iid) || abilitiesIgnored(s, L, iid))) return EMPTY_KW;
+  if (s.cards[iid].zone === 'battle' && (sealIgnored(s, L, iid) || abilitiesIgnored(s, L, iid))) return EMPTY_KW;
   const base: Keywords = f ? f.kw : EMPTY_KW;
   const g = s.cards[iid].grants;
   const extra = s.cards[iid].zone === 'battle' ? staticKws(s, L, iid) : [];
@@ -352,6 +352,11 @@ export function moveCard(
   if (from === 'deck' && to !== 'hand' && to !== 'deck' && activeStatics(s, L).some((x) => x.spec.s === 'oppDeckToBottom' && x.owner !== c.owner)) {
     log(s, c.owner, '山札から出るかわりに山札の下へ (相手の能力)');
     return moveCard(s, L, iid, 'deck', { pos: 'bottom', silent: true });
+  }
+  // 土地はバトルゾーンに置かれたら墓地へ (313.3)。ルール・プラスは超次元ゾーンへ (314.4)
+  if (to === 'battle' && from !== 'battle' && /^(?:土地|ルール・プラス)$/.test(card?.faces[0]?.type ?? '')) {
+    log(s, c.owner, `${q(card!.faces[0].name)} はバトルゾーンに存在できない`);
+    return moveCard(s, L, iid, card!.faces[0].type === '土地' ? 'grave' : 'hyper', opts);
   }
   // 「このターン、相手はコストN以下のクリーチャーを出せない」
   {
@@ -671,6 +676,7 @@ export function moveCard(
   noteMove(s, iid, from, dest);
   if (dest === 'battle' && from !== 'battle') {
     c.enteredTurn = s.turn;
+    c.enterSeq = s.moveSeq;
     // 召喚以外で出たもの・マナゾーンのカードをタップせずに召喚したものは、マナを支払わずに出たもの
     c.enteredFree = !opts.summoned || !!opts.free;
     if (c.enteredFree && card?.faces[opts.face ?? c.face]?.isCreature) s.players[c.owner].freePlayTurn = s.turn;
@@ -716,6 +722,13 @@ export function moveCard(
     activeStatics(s, L).some((x) => x.spec.s === 'oppEntersTapped' && (x.owner !== c.owner || !!x.spec.all) && (!x.spec.sel || matchesSel(s, L, iid, { ...x.spec.sel, owner: 'any' })))
   )
     c.tapped = true;
+  if (dest === 'battle' && from !== 'battle' && /D2フィールド/.test(card?.faces[c.face]?.type ?? '')) {
+    for (const old of s.players.flatMap((x) => x.battle)) {
+      if (old === iid || !/D2フィールド/.test(faceOf(s, L, old)?.type ?? '')) continue;
+      log(s, s.cards[old].owner, `${q(nameOf(s, L, old))} は、別のD2フィールドが出たので墓地へ`);
+      moveCard(s, L, old, 'grave');
+    }
+  }
   if (dest === 'battle') {
     c.sick = true;
     if ((card?.faces[c.face]?.statics ?? []).some((x) => x.s === 'entersTapped')) c.tapped = true;
@@ -734,7 +747,7 @@ export function moveCard(
     if (uCard?.zone === 'gr') ud = 'gr';
     resetCard(uc);
     uc.zone = ud;
-    uc.wasUnderEvo = ud === 'grave' && !!card?.faces[prevFace]?.isEvolution;
+    uc.wasUnderEvo = ud === 'grave' && (!!card?.faces[prevFace]?.isEvolution || /NEO/.test(card?.faces[prevFace]?.type ?? ''));
     uc.face = 0;
     uc.faceUp = !(ud === 'shield' || ud === 'deck' || ud === 'gr');
     const ua = s.players[uc.owner][ud] as number[];
@@ -897,7 +910,7 @@ export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
 }
 
 /** 封印を1つ外して墓地に置く (なくなれば「封印がすべてなくなった時」) */
-export function removeSeal(s: GameState, L: Lookup, host: number) {
+export function removeSeal(s: GameState, L: Lookup, host: number, to?: 'deckBottom') {
   const hc = s.cards[host];
   const seal = [...hc.under].reverse().find((u) => s.cards[u].sealOf === host);
   if (seal == null) return;
@@ -905,10 +918,16 @@ export function removeSeal(s: GameState, L: Lookup, host: number) {
   const sc = s.cards[seal];
   sc.sealOf = undefined;
   sc.parent = null;
-  sc.zone = 'grave';
-  sc.faceUp = true;
-  s.players[sc.owner].grave.push(seal);
-  log(s, hc.owner, `${q(nameOf(s, L, host))} の封印を1つ外した`);
+  if (to === 'deckBottom') {
+    sc.zone = 'deck';
+    sc.faceUp = false;
+    s.players[sc.owner].deck.unshift(seal);
+  } else {
+    sc.zone = 'grave';
+    sc.faceUp = true;
+    s.players[sc.owner].grave.push(seal);
+  }
+  log(s, hc.owner, `${q(nameOf(s, L, host))} の封印を1つ外した${to === 'deckBottom' ? ' (山札の一番下へ)' : ''}`);
   fireSelf(s, L, host, hc.face, ['unsealOne']);
   if (!isSealed(s, host)) fireSelf(s, L, host, hc.face, ['unsealedAll']);
 }
@@ -1021,7 +1040,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
 function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
-  if (s.cards[iid].zone === 'battle' && (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
+  if (s.cards[iid].zone === 'battle' && (sealIgnored(s, L, iid) || abilitiesIgnored(s, L, iid)) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
   // 「相手のクリーチャーが出て、その能力がトリガーする時、かわりにその能力はトリガーしない」
   if (events.includes('enter') && f.isCreature && activeStatics(s, L).some((x) => x.owner !== s.cards[iid].owner && x.spec.s === 'oppCipNull' && staticCondOk(s, L, x))) {
     log(s, s.cards[iid].owner, `${q(f.name)} の出た時の能力はトリガーしない`);
@@ -1126,7 +1145,7 @@ function fireWatchers(s: GameState, L: Lookup, actor: number, exclude: number | 
       }
     }
     for (const iid of s.players[p].battle) {
-      if (isSealed(s, iid) || abilitiesIgnored(s, L, iid)) continue;
+      if (sealIgnored(s, L, iid) || abilitiesIgnored(s, L, iid)) continue;
       const f = faceOf(s, L, iid);
       if (!f) continue;
       for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
@@ -1601,9 +1620,9 @@ function finishEndTurn(s: GameState, L: Lookup) {
       c.endOfTurn = undefined;
       log(s, p, `B・A・D: ${q(nameOf(s, L, iid))} を破壊`);
       moveCard(s, L, iid, 'grave');
-    } else if (c.endOfTurn === 'abyss') {
+    } else if (c.endOfTurn === 'abyss' || c.endOfTurn === 'ninja') {
+      log(s, p, `${c.endOfTurn === 'ninja' ? 'ニンジャ・ストライク' : 'アビスラッシュ'}: ${q(nameOf(s, L, iid))} を山札の下に置く`);
       c.endOfTurn = undefined;
-      log(s, p, `アビスラッシュ: ${q(nameOf(s, L, iid))} を山札の下に置く`);
       moveCard(s, L, iid, 'deck', { pos: 'bottom' });
     } else if (c.endOfTurn === 'joe') {
       c.endOfTurn = undefined;
@@ -1699,6 +1718,12 @@ function advance(s: GameState, L: Lookup): boolean {
   const top = s.pending[0];
   if (top) {
     if (top.kind === 'ability') {
+      // 切札電融 モモムゲン: 多色ではない呪文の効果を無視する
+      if (top.event === 'spell' && spellEffectIgnored(s, L, top.cid, top.face)) {
+        s.pending.shift();
+        log(s, top.player, `${q(L(top.cid)?.faces[top.face]?.name ?? '')} の効果は無視される (多色ではない呪文)`);
+        return true;
+      }
       // 効果テキストを完全に解釈できた能力は自動で実行 (選択が必要なら 'choice' を積む)
       const prog = programOf(top.effect);
       if (prog.complete) {
@@ -2105,7 +2130,8 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
   if (k.cantAttack) return false;
-  if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid)) return false;
+  const neoBare = /NEO/.test(f.type) && c.enteredTurn === s.turn && !c.under.some((u) => L(s.cards[u].cid)?.faces[0]?.isCreature);
+  if ((c.sick || neoBare) && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid)) return false;
   return true;
 }
 
@@ -2249,7 +2275,7 @@ function blockStep(s: GameState, L: Lookup) {
   const manaCount = s.players[def].mana.length;
   const ninjas = s.players[def].hand.filter((h) => {
     const card = L(s.cards[h].cid);
-    return card?.faces.some((f) => f.isCreature && f.kw.ninjaStrike != null && f.kw.ninjaStrike <= manaCount);
+    return card?.faces.some((f) => f.isCreature && f.kw.ninjaStrike != null && (f.kw.ninjaStrike <= manaCount)) && !a.ninjaUsed;
   });
   // ガードマン: 自分の他のクリーチャーが攻撃される時、かわりにこのクリーチャーを攻撃させる
   const guards =
@@ -2772,6 +2798,18 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       fireWatchers(s, L, p, null, 'spellOwn', 'spellOpp');
       return null;
     }
+    case 'manaAbility': {
+      const c = s.cards[a.iid];
+      const sp = (L(c.cid)?.faces[0]?.statics ?? []).find((x) => x.s === 'manaTapDraw');
+      if (c.owner !== p || c.zone !== 'mana' || !sp || sp.s !== 'manaTapDraw') return 'マナゾーンで使える能力がありません';
+      if (s.active !== p || s.turnStep !== 'main' || s.attack || (s.players[p].attacks?.turn === s.turn && s.players[p].attacks.n > 0)) return '自分のターンの攻撃の前にだけ使えます';
+      if (c.tapped) return 'タップしているカードは使えません';
+      if (s.players[p].hand.length !== sp.hand) return `手札がちょうど${sp.hand}枚の時だけ使えます`;
+      c.tapped = true;
+      log(s, p, `${q(nameOf(s, L, a.iid))} をタップしてカードを1枚引いた`);
+      drawCards(s, p, 1);
+      return null;
+    }
     case 'tapAbility': {
       const c = s.cards[a.iid];
       const f = faceOf(s, L, a.iid);
@@ -2936,6 +2974,11 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const foreignCast = c.owner !== p && !!a.force && !!a.free && card.faces[a.face]?.isSpell;
   if ((c.owner !== p && !foreignCast) || !fromZones.includes(c.zone)) return 'このカードは使えません';
   const face = card.faces[a.face] ?? card.faces[0];
+  if (/^(?:土地|ルール・プラス|キング・セル)$|^\{/.test(face.type)) return `${face.type}は使えません`;
+  // キング・クリーチャー (812): 指定のキング・セルが手札またはマナゾーンに揃っていれば、合体させて召喚する
+  const kingParts = face.type === 'キング・クリーチャー' ? kingCellsFor(s, L, p, a.iid, face) : undefined;
+  if (face.type === 'キング・クリーチャー' && !kingParts) return '合体させるキング・セルが手札またはマナゾーンに揃っていません';
+  if (kingParts && c.zone !== 'hand' && c.zone !== 'mana' && !a.force) return 'キング・クリーチャーは手札またはマナゾーンのキング・セルから召喚します';
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
   if (dreamBlocked(s, L, p, card)) return '同じ名前のドリーム・エレメントがバトルゾーンにあるので出せません';
@@ -2990,6 +3033,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;
+    // 「このターン中、次にカードを使う時、そのコストを少なくする」はこのカードで使い切る
+    if (s.players[p].nextUse?.turn === s.turn) s.players[p].nextUse = undefined;
     if (s.mode === 'duepa') (turnStat(s, p).usedNames ??= []).push(card.name);
     if (!face.isCreature) turnStat(s, p).nonCreatureUsed = (turnStat(s, p).nonCreatureUsed ?? 0) + 1;
     // ササゲール: 破壊 / ハイパーエナジー: タップ
@@ -3070,7 +3115,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   }
   if (face.isCreature) {
     let bases: number[] = [];
-    if (face.isEvolution) {
+    if (face.isEvolution || (/NEO/.test(face.type) && face.isCreature && !!a.evo?.length)) {
       const ef = (face.statics ?? []).find((x) => x.s === 'evoFrom');
       const em0 = (face.statics ?? []).find((x) => x.s === 'evoMulti');
       // 超無限進化・Ω / 進化GV・Ω は墓地・マナゾーンからも進化元を選べる
@@ -3115,6 +3160,18 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
       else me2.manaSummon.staticUsed = (me2.manaSummon.staticUsed ?? 0) + 1;
     }
     moveCard(s, L, a.iid, 'battle', { face: card.faces.indexOf(face), summoned: true, free: !a.pay?.length });
+    // キング・セル: 残りのキング・セルを合体させる (どこでもないゾーンを経て、1体のクリーチャーになる)
+    if (kingParts?.length && c.zone === 'battle') {
+      for (const k of kingParts) {
+        if (s.cards[k].zone !== 'hand' && s.cards[k].zone !== 'mana') continue;
+        detach(s, k);
+        s.cards[k].zone = 'under';
+        s.cards[k].parent = a.iid;
+        s.cards[k].tapped = false;
+        c.under.push(k);
+      }
+      log(s, p, `キング・セルを合体させた: ${[a.iid, ...kingParts].map((k) => q(L(s.cards[k].cid)?.faces[0]?.name ?? '')).join('・')}`);
+    }
     if (!a.pay?.length) {
       // マナゾーンのカードをタップせずに召喚した
       c.enteredFree = true;
@@ -3340,8 +3397,17 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       if (rc >= 0) {
         // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す (S革命チェンジで表向きのシールドからなら、そのシールドと入れ替える)
         const fromShield = s.cards[a.iid].zone === 'shield';
+        const want = fromShield ? 'shield' : 'hand';
         if (fromShield) moveCard(s, L, at.attacker, 'shield', { faceUp: true });
         else moveCard(s, L, at.attacker, 'hand');
+        // 総合ルール 701.26b: 置換効果などで攻撃中のクリーチャーが移動しなければ、入れ替えは行わない (攻撃は続く)
+        if (s.cards[at.attacker].zone !== want) {
+          log(s, p, `革命チェンジ: ${q(oldName)} が${fromShield ? 'シールドゾーン' : '手札'}に移動しなかったので、入れ替えは行わない`);
+          const more = attackOptions(s, L);
+          if (more.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: more });
+          else queueAttackTriggers(s, L);
+          return null;
+        }
         moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc, revChange: true });
         s.cards[a.iid].sick = false;
         at.attacker = a.iid;
@@ -3375,9 +3441,14 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         if (!top.ninjas.includes(a.ninja)) return 'ニンジャ・ストライクできないカードです';
         const card = L(s.cards[a.ninja].cid)!;
         const fi = card.faces.findIndex((f) => f.isCreature && f.kw.ninjaStrike != null);
-        log(s, p, `ニンジャ・ストライク！ ${q(card.faces[Math.max(0, fi)].name)} を召喚 (ターン終了時の処理は手動で)`);
+        log(s, p, `ニンジャ・ストライク！ ${q(card.faces[Math.max(0, fi)].name)} を召喚`);
+        // 「その攻撃中に「ニンジャ・ストライク」能力を使っていなかった場合」: 1回の攻撃中に1枚だけ
+        // (使えるかは宣言した時点で確かめる: 総合ルール 112.3c)
+        s.attack!.ninjaUsed = true;
         s.pending.shift();
-        moveCard(s, L, a.ninja, 'battle', { face: Math.max(0, fi) });
+        moveCard(s, L, a.ninja, 'battle', { face: Math.max(0, fi), summoned: true, free: true });
+        // そのターンの終わりに、このクリーチャーを山札の一番下に置く
+        if (s.cards[a.ninja].zone === 'battle') s.cards[a.ninja].endOfTurn = 'ninja';
         // 出た時の能力を解決してから、もう一度ブロックの選択へ
         s.attack!.step = 'atkTrig';
         return null;
@@ -3433,6 +3504,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
             t.noAttack = true;
             log(s, p, `G・ストライク！ ${q(nameOf(s, L, a.target))} はこのターン攻撃できない`);
           }
+          fireWatchers(s, L, p, null, 'ownGStrike', null);
         } else {
           const fi = a.face ?? card.faces.findIndex((f) => f.kw.shieldTrigger);
           const face = card.faces[fi] ?? card.faces[0];

@@ -68,7 +68,7 @@ export function activeStatics(s: GameState, L: Lookup): ActiveStatic[] {
       const c = s.cards[iid];
       const f = L(c.cid)?.faces[c.face];
       // 封印が付いているカードの能力は無視 (封印が付いていれば離れない、だけは有効)
-      if (isSealed(s, iid)) {
+      if (sealIgnored(s, L, iid)) {
         for (const spec of f?.statics ?? []) if (spec.s === 'sealStay') out.push({ src: iid, owner: p, spec });
         continue;
       }
@@ -274,18 +274,55 @@ export function isSealed(s: GameState, iid: number): boolean {
   return (s.cards[iid]?.under ?? []).some((u) => s.cards[u].sealOf === iid);
 }
 
+/** 封印が付いていて能力が無視されるか (封印で無視されるのはクリーチャーなど。Artifact・フィールドは封印が付いていても能力を持つ) */
+export function sealIgnored(s: GameState, L: Lookup, iid: number): boolean {
+  if (!isSealed(s, iid)) return false;
+  const c = s.cards[iid];
+  return !/Artifact|フィールド/.test(L(c.cid)?.faces[c.face]?.type ?? '');
+}
+
 /** 効果で能力を無視されているか (「相手のクリーチャーの能力すべてを無視する」「その数字と同じコストの相手のエレメントの能力を無視し」) */
+/** バトルゾーンのカード by が、その能力で target の能力を無視させるか (他の能力に無視されているかは見ない) */
+function ignoresDirect(s: GameState, L: Lookup, by: number, target: number): boolean {
+  const bc = s.cards[by];
+  const tc = s.cards[target];
+  if (by === target || bc.zone !== 'battle' || isSealed(s, by)) return false;
+  const bst = L(bc.cid)?.faces[bc.face]?.statics ?? [];
+  const tf = L(tc.cid)?.faces[tc.face];
+  // 神聖龍 エモーショナル・ハードコア: バトルゾーンにある間、選んだ名前のクリーチャーの能力を無視する
+  if (bc.chosenName && bc.chosenName === tf?.name && bst.some((x) => x.s === 'ignoreChosenName')) return true;
+  // 切札電融 モモムゲン: 多色ではないクリーチャーの能力を無視する
+  if (tf?.isCreature && (tf.civs?.length ?? 0) < 2 && bst.some((x) => x.s === 'ignoreNonMulti')) return true;
+  return false;
+}
+
+/** バトルゾーンで、他のカードの能力を無視させている有効なカード (総合ルール 608.5) */
+function ignoringNow(s: GameState, L: Lookup, by: number, target: number): boolean {
+  if (!ignoresDirect(s, L, by, target)) return false;
+  // 互いに無視しあう時は、先にバトルゾーンに出ていたほうを優先し、もう一方は無視されたものとする
+  if (ignoresDirect(s, L, target, by) && (s.cards[target].enterSeq ?? 0) < (s.cards[by].enterSeq ?? 0)) return false;
+  // 無視させているカード自身が、(target 以外の) 他のカードに無視されていれば効かない
+  for (const pl of s.players)
+    for (const o of pl.battle) {
+      if (o === by || o === target || !ignoresDirect(s, L, o, by)) continue;
+      if (ignoresDirect(s, L, by, o) && (s.cards[by].enterSeq ?? 0) < (s.cards[o].enterSeq ?? 0)) continue;
+      return false;
+    }
+  return true;
+}
+
+/** 多色ではない呪文の効果が無視されるか (切札電融 モモムゲン) */
+export function spellEffectIgnored(s: GameState, L: Lookup, cid: string, face: number): boolean {
+  const f = L(cid)?.faces[face];
+  if (!f || (f.civs?.length ?? 0) >= 2) return false;
+  return s.players.some((pl) => pl.battle.some((b) => (faceOf0(s, L, b)?.statics ?? []).some((x) => x.s === 'ignoreNonMulti') && !isSealed(s, b) && !abilitiesIgnored(s, L, b)));
+}
+const faceOf0 = (s: GameState, L: Lookup, iid: number) => L(s.cards[iid].cid)?.faces[s.cards[iid].face];
+
 export function abilitiesIgnored(s: GameState, L: Lookup, iid: number): boolean {
   const c = s.cards[iid];
   if (!c || c.zone !== 'battle') return false;
-  // 神聖龍 エモーショナル・ハードコア: バトルゾーンにある間、選んだ名前のクリーチャーの能力を無視する
-  const nm = L(c.cid)?.faces[c.face]?.name;
-  for (const pl of s.players)
-    for (const b of pl.battle) {
-      const bc = s.cards[b];
-      if (b === iid || !bc.chosenName || bc.chosenName !== nm) continue;
-      if ((L(bc.cid)?.faces[bc.face]?.statics ?? []).some((x) => x.s === 'ignoreChosenName')) return true;
-    }
+  for (const pl of s.players) for (const b of pl.battle) if (ignoringNow(s, L, b, iid)) return true;
   if (!s.ignoreAbil?.length) return false;
   return s.ignoreAbil.some((x) => x.by !== c.owner && (x.iid == null || x.iid === iid) && (x.turn == null || x.turn === s.turn) && (x.costEq == null || (L(c.cid)?.faces[c.face]?.cost ?? -1) === x.costEq));
 }
@@ -324,8 +361,26 @@ export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: numbe
 }
 
 /** 手札以外 (墓地・マナゾーン・超次元ゾーン) から召喚・詠唱できるか (「このクリーチャーを墓地から召喚してもよい」「〇〇を自分の墓地から召喚してもよい」) */
+/** キング・クリーチャー: 合体させるほかのキング・セル (自分の手札・マナゾーン)。揃っていなければ undefined */
+export function kingCellsFor(s: GameState, L: Lookup, p: number, iid: number, face: Face): number[] | undefined {
+  const need = face.text.map((l) => l.match(/キング・セル((?:《[^》]+》)+)が揃っていれば/)).find(Boolean)?.[1].match(/《([^》]+)》/g)?.map((x) => x.slice(1, -1));
+  const c = s.cards[iid];
+  const self = L(c.cid)?.faces[0]?.name;
+  if (!need?.length || !self || !need.includes(self) || (c.zone !== 'hand' && c.zone !== 'mana')) return undefined;
+  const out: number[] = [];
+  for (const n of need) {
+    if (n === self) continue;
+    const pl = s.players[p];
+    const k = [...pl.hand, ...pl.mana].find((x) => x !== iid && !out.includes(x) && L(s.cards[x].cid)?.faces[0]?.name === n);
+    if (k == null) return undefined;
+    out.push(k);
+  }
+  return out;
+}
+
 export function canPlayFromZone(s: GameState, L: Lookup, p: number, iid: number, face: Face): boolean {
   const c = s.cards[iid];
+  if (face.type === 'キング・クリーチャー' && c.zone === 'mana' && kingCellsFor(s, L, p, iid, face)) return true;
   if ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone && condOk(s, L, { src: iid, owner: p, spec: x }, x.cond, iid))) return true;
   if (!face.isCreature || (c.zone !== 'grave' && c.zone !== 'mana')) return false;
   return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'summonFromSel' && a.spec.zone === c.zone && matchesSel(s, L, iid, a.spec.sel));
@@ -364,6 +419,8 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   let cost = base + add;
   if (reduce) cost = Math.max(Math.min(cost, Math.max(floor, 0)), cost - reduce);
   // 「このターン、次に召喚する〇〇のコストをN少なくする」
+  const nu = s.players[p].nextUse;
+  if (nu && nu.turn === s.turn) cost = Math.max(Math.min(cost, nu.floor), cost - nu.n);
   const ns = s.players[p].nextSummon;
   if (ns && ns.turn === s.turn && f.isCreature && matchesSel(s, L, iid, { ...ns.sel, zones: [c.zone as never] })) cost = Math.max(1, cost - ns.n);
   // 手札から〇〇を見せて軽減 (見せられるなら自動で見せる)

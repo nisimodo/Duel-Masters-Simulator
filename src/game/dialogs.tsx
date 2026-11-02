@@ -145,7 +145,7 @@ export function PayDialog({
     (crystal && pay.some((m) => s.cards[m].manaDown)
       ? payValue(s, pay, crystal) >= totalCost && pay.length <= totalCost && payCovers(L, s, upPay.length ? upPay : pay, f.civs as Civ[], iid)
       : pay.length === totalCost && (totalCost === 0 || payCovers(L, s, pay, f.civs as Civ[], iid)));
-  const needEvo = (f.isEvolution && f.isCreature) || isAura;
+  const needEvo = ((f.isEvolution || /NEO/.test(f.type)) && f.isCreature) || isAura;
   const verb = f.isCreature ? '召喚する' : f.isSpell ? '唱える' : '出す';
   const toggle = (m: number) => setPay(pay.includes(m) ? pay.filter((x) => x !== m) : [...pay, m]);
   return (

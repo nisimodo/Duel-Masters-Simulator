@@ -70,6 +70,12 @@ export type StaticSpec =
   | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
   /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
+  /** 多色ではない、クリーチャーの能力と呪文の効果を無視する */
+  | { s: 'ignoreNonMulti' }
+  /** エンジンが別に処理する行 (デッキの枚数の増加・キング・セルの合体) */
+  | { s: 'handled'; what: string }
+  /** 自分のターン中、攻撃の前に、手札がちょうど hand 枚なら、マナゾーンにあるこのカードをタップしてカードを1枚引いてもよい */
+  | { s: 'manaTapDraw'; hand: number }
   | { s: 'masterG' }
   /** ドラゴン・ワールド・ブレイカー: 各ブレイクの前に、自分の山札の上から1枚をシールド化する */
   | { s: 'dragonWorld' }
@@ -968,6 +974,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     if (tg) return [{ s: 'grant', target: tg, kws, when: 'always' }];
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
+  if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  if (/^自分は、?デッキの枚数を\d+枚増やしてゲームを開始する$/.test(t0)) return [{ s: 'handled', what: 'deckSize' }];
+  if (/^自分の手札またはマナゾーンに\d+種のキング・セル(?:《[^》]+》)+が揃っていれば、合体させ、コストを支払ってこのキング・クリーチャーを召喚してもよい$/.test(t0)) return [{ s: 'handled', what: 'kingCell' }];
+  if ((m = t0.match(/^自分のターン中、攻撃の前に、自分の手札がちょうど(\d+)枚なら、マナゾーンにあるこのカードをタップしてもよい。そうしたら、カードを1枚引く$/))) return [{ s: 'manaTapDraw', hand: +m[1] }];
   if (/^マスター・G・ブレイカー/.test(t0)) return [{ s: 'masterG' }];
   if (/^ドラゴン・ワールド・ブレイカー/.test(t0)) return [{ s: 'dragonWorld' }];
   if (/^自分のマナゾーンにあるカード(を|は)、?すべての文明(のカードとして扱う|を持つ)$/.test(t0)) return [{ s: 'rainbowMana' }];

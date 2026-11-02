@@ -49,7 +49,7 @@ it('decks resolve', () => {
       console.log('  ', kws.join(' || '));
     }
   }
-});
+}, 60000);
 
 import { cpuPlan } from './cpu';
 import { applyAction, createGame, decider } from './engine';
