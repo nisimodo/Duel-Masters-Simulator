@@ -23,6 +23,16 @@ export type StaticCond =
   | { c: 'startOpps'; n: number }
   /** このターン、自分が呪文をN枚以上唱えている */
   | { c: 'spellsThisTurn'; n: number }
+  /** このターンに自分が引いたカードが N 枚未満 (「N枚以上引いていなければ」) */
+  | { c: 'drewLess'; n: number }
+  /** このターンに自分の他のクリーチャーが攻撃していない */
+  | { c: 'noOtherAttacked' }
+  /** このターンに自分がクリーチャーではないカードを実行していない */
+  | { c: 'noNonCreatureUsed' }
+  /** このカードが手札にある (「手札から召喚するなら」) */
+  | { c: 'inHand' }
+  /** このクリーチャーにクロスギアが N 枚以上クロスされている */
+  | { c: 'crossAtLeast'; n: number }
   /** 自分のシールドが N 枚以下 */
   | { c: 'shieldsLE'; n: number }
   /** 自分の手札が N 枚以下 */
@@ -289,6 +299,14 @@ export type StaticSpec =
   | { s: 'summonOnlyEnter' }
   /** 「相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ」 */
   | { s: 'lureChoose' }
+  /** 「このクリーチャーの攻撃先は変更されない」 */
+  | { s: 'noRedirect' }
+  /** 「相手のカードは、マナゾーンにタップして置かれ、バトルゾーンにタップして出る」 */
+  | { s: 'oppTapInManaBattle' }
+  /** 「相手のエレメントは、実行以外の方法で出ない」 */
+  | { s: 'oppEnterOnlyPlay' }
+  /** 「このクリーチャーの召喚コストを、このターン自分が引いたカード1枚につき1少なくする」 */
+  | { s: 'costPerDraw'; n: number; floor: number }
   /** 「相手のクリーチャー (エレメント) は、相手の手札以外から出ない」 */
   | { s: 'oppEnterOnlyFromHand'; creatureOnly: boolean }
   /** 「ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない」 */
@@ -331,6 +349,11 @@ function target(phrase: string): StaticTarget | null {
 
 function parseCondPrefix(t: string): { cond?: StaticCond; rest: string } | null {
   let m: RegExpMatchArray | null;
+  if ((m = t.match(/^このターンに自分がカードを(\d+)枚以上引いていなければ、(.+)$/))) return { cond: { c: 'drewLess', n: +m[1] }, rest: m[2] };
+  if ((m = t.match(/^このターンに(?:自分の)?他のクリーチャーが攻撃していなければ、(.+)$/))) return { cond: { c: 'noOtherAttacked' }, rest: m[1] };
+  if ((m = t.match(/^このターンに自分がクリーチャーではないカードを実行していなければ、(.+)$/))) return { cond: { c: 'noNonCreatureUsed' }, rest: m[1] };
+  if ((m = t.match(/^手札から召喚するなら、(.+)$/))) return { cond: { c: 'inHand' }, rest: m[1] };
+  if ((m = t.match(/^このクリーチャーにクロスギアが(\d+)(?:つ|枚)以上クロスされていれば、(.+)$/))) return { cond: { c: 'crossAtLeast', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^(?:鬼タイム:)?自分と相手のシールドの数が合計(\d+)つ以下なら、(.+)$/))) return { cond: { c: 'totalShieldsLE', n: +m[1] }, rest: m[2] };
   if ((m = t.match(/^(?:バトルゾーンにある)?自分の他のクリーチャーが(\d+)体以下なら、(.+)$/))) return { cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: +m[1] + 1 }, rest: m[2] };
   if ((m = t.match(/^自分の(墓地|マナゾーン|手札)に(.+?)が(\d+)(?:体|枚|つ)(?:以上|でも)あれば、(.+)$/))) {
@@ -731,6 +754,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^相手のクリーチャーは、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNoAttackMe' }];
   if (/^このクリーチャーは、?召喚以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'summonOnlyEnter' }];
   if (/^相手がクリーチャーを選ぶ(?:なら|時)、可能ならこのクリーチャーを選ぶ$/.test(t0)) return [{ s: 'lureChoose' }];
+  if (/^このクリーチャーの攻撃先は、?変更されない$/.test(t0)) return [{ s: 'noRedirect' }];
+  if (/^相手のカードは、?マナゾーンにタップして置かれ、バトルゾーンにタップして出る$/.test(t0)) return [{ s: 'oppTapInManaBattle' }];
+  if (/^相手のエレメントは、?実行以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'oppEnterOnlyPlay' }];
+  if ((m = t0.match(/^このクリーチャーの召喚コストを、?このターン自分が引いたカード(\d+)枚につき(\d+)少なくする/))) return [{ s: 'costPerDraw', n: +m[2] / +m[1], floor: floorOf(full) }];
   if ((m = t0.match(/^相手の(クリーチャー|エレメント)は、?相手の手札以外から(?:バトルゾーンに)?出ない$/))) return [{ s: 'oppEnterOnlyFromHand', creatureOnly: m[1] === 'クリーチャー' }];
   if (/^ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない$/.test(t0)) return [{ s: 'noPlayerAttackUnlessHyper' }];
   // 「自分のターン中、自分の山札の上から1枚をいつでも見てもよい」(見るだけ: 画面の山札操作で見られる)
@@ -940,6 +967,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (cond && /^相手のクリーチャーは、?(?:すべて、?)?攻撃(もブロックも)?できない$/.test(t))
     return [{ s: 'oppRestrict', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, attack: true, block: /ブロック/.test(t), cond }];
   if (cond?.c === 'selfNew' && /^このクリーチャーは、?(?:タップされていない|アンタップされている|アンタップしている)クリーチャーを攻撃できる$/.test(t)) return [{ s: 'attackUntappedIf', cond }];
+  if (cond && /^このクリーチャーは、?攻撃できない$/.test(t)) return [{ s: 'grant', target: { t: 'self' }, kws: ['攻撃できない'], when: 'always', cond }];
+  if (cond && /^このクリーチャーは、?(?:バトルゾーンを)?離れない$/.test(t)) return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない'], when: 'always', cond }];
 
   // ---- パワー ----
   let when: StaticWhen = 'always';

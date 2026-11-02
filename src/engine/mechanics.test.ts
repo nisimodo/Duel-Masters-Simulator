@@ -306,6 +306,10 @@ const db = buildDB(
     cr('lureCh', 1, 1000, ['相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ。']),
     { id: 'killSp', n: 'killSp', img: '', f: [{ n: 'killSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、破壊する。'] }] },
     { id: 'dream', n: 'dream', img: '', f: [{ n: 'dream', t: 'ドリーム・クリーチャー', c: 'F', co: 1, p: '9000', r: ['テスト'], x: [] }] },
+    cr('needDraw', 1, 5000, ['このターンに自分がカードを２枚以上引いていなければ、このクリーチャーは攻撃できない。']),
+    cr('handTax', 2, 5000, ['手札から召喚するなら、このクリーチャーの召喚コストを２多くする。']),
+    cr('tapIn', 1, 5000, ['相手のカードは、マナゾーンにタップして置かれ、バトルゾーンにタップして出る。']),
+    cr('noRedir', 1, 5000, ['このクリーチャーの攻撃先は変更されない。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2907,6 +2911,35 @@ describe('named mechanics', () => {
       const m = find(s, 0, 'mana', 'dream')!;
       moveCard(s, L, m, 'battle');
       expect(s.cards[m].zone).toBe('mana');
+    });
+  });
+
+  describe('2026年の新カードの常在型能力 (3)', () => {
+    it('このターンにカードを2枚以上引いていなければ攻撃できない', () => {
+      const s = setup([{ p: 0, cid: 'needDraw', zone: 'battle' }]);
+      const c = find(s, 0, 'battle', 'needDraw')!;
+      expect(canAttackWith(s, L, c)).toBe(false);
+      drawCards(s, 0, 2);
+      expect(canAttackWith(s, L, c)).toBe(true);
+    });
+    it('手札から召喚するなら召喚コストが2多い', () => {
+      const s = setup([{ p: 0, cid: 'handTax', zone: 'hand' }]);
+      expect(costOf(s, L, 0, find(s, 0, 'hand', 'handTax')!, 0)).toBe(4);
+    });
+    it('相手のカードはタップしてマナゾーンに置かれ、タップしてバトルゾーンに出る', () => {
+      const s = setup([{ p: 0, cid: 'tapIn', zone: 'battle' }]);
+      const [a, b] = s.players[1].hand;
+      moveCard(s, L, a, 'mana');
+      moveCard(s, L, b, 'battle');
+      expect(s.cards[a].tapped).toBe(true);
+      expect(s.cards[b].tapped).toBe(true);
+    });
+    it('攻撃先は変更されない (ガードマンで攻撃先を変えられない)', () => {
+      const s = setup([{ p: 0, cid: 'noRedir', zone: 'battle' }, { p: 1, cid: 'guard', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle', tapped: true }]);
+      const r = applyAction(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'noRedir')!, player: 1, card: find(s, 1, 'battle', 'vanilla')! }, L);
+      expect(r.error).toBeNull();
+      const blk = r.state.pending.find((x) => x.kind === 'block');
+      expect(blk && blk.kind === 'block' ? blk.guards : []).toEqual([]);
     });
   });
 

@@ -150,6 +150,12 @@ function countRel(s: GameState, L: Lookup, a: ActiveStatic, sel: Sel): number {
   return n;
 }
 
+/** このターンの記録 (なければ空) */
+function turnStatLite(s: GameState, p: number) {
+  const ts = s.players[p].turnStat;
+  return ts?.turn === s.turn ? ts : { nonCreatureUsed: 0 };
+}
+
 /** 条件つきの常在型能力が今有効か */
 export function staticCondOk(s: GameState, L: Lookup, a: ActiveStatic): boolean {
   const cond = (a.spec as { cond?: StaticCond }).cond;
@@ -193,6 +199,18 @@ function condOk(s: GameState, L: Lookup, a: ActiveStatic, cond: StaticCond | und
     }
     case 'startOpps':
       return s.players.length - 1 >= cond.n;
+    case 'drewLess': {
+      const d = s.players[a.owner].draws;
+      return (d?.turn === s.turn ? d.n : 0) < cond.n;
+    }
+    case 'noOtherAttacked':
+      return !s.players[a.owner].battle.some((b) => b !== a.src && s.cards[b].attackedTurn === s.turn);
+    case 'noNonCreatureUsed':
+      return !(turnStatLite(s, a.owner).nonCreatureUsed ?? 0);
+    case 'inHand':
+      return s.cards[a.src]?.zone === 'hand';
+    case 'crossAtLeast':
+      return (s.cards[a.src]?.under ?? []).filter((u) => /クロスギア/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length >= cond.n;
   }
 }
 
@@ -350,6 +368,13 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   for (const sp of f.statics ?? []) {
     if (sp.s !== 'selfCost' || !condOk(s, L, { src: iid, owner: p, spec: sp }, sp.cond, iid)) continue;
     cost = sp.delta < 0 ? Math.max(Math.min(cost, sp.floor), cost + sp.delta) : cost + sp.delta;
+  }
+  // 「このターン自分が引いたカード1枚につき1少なくする」
+  for (const sp of f.statics ?? []) {
+    if (sp.s !== 'costPerDraw') continue;
+    const d = s.players[p].draws;
+    const n = d?.turn === s.turn ? d.n : 0;
+    if (n) cost = Math.max(Math.min(cost, sp.floor), cost - Math.floor(n * sp.n));
   }
   // シンパシー (自分の〇〇1体につき1少なく / W・シンパシーは2少なく)
   const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave'; each?: number; ofOpp?: boolean }[] = [];

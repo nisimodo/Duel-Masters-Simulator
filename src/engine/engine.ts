@@ -352,6 +352,11 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} は召喚以外の方法では出せない`);
     return from as ZoneName;
   }
+  // 「相手のエレメントは、実行以外の方法で出ない」(クリーチャーは召喚した時だけ出る)
+  if (to === 'battle' && from !== 'battle' && !opts.summoned && card?.faces[opts.face ?? c.face]?.isCreature && activeStatics(s, L).some((x) => x.spec.s === 'oppEnterOnlyPlay' && x.owner !== c.owner)) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は実行以外の方法では出せない`);
+    return from as ZoneName;
+  }
   // 「相手のクリーチャー (エレメント) は、相手の手札以外から出ない」
   if (to === 'battle' && from !== 'battle' && from !== 'hand' && activeStatics(s, L).some((x) => x.spec.s === 'oppEnterOnlyFromHand' && x.owner !== c.owner && (!x.spec.creatureOnly || !!card?.faces[opts.face ?? c.face]?.isCreature))) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は手札以外から出せない`);
@@ -624,6 +629,8 @@ export function moveCard(
   resetCard(c);
   c.summoned = to === 'battle' ? !!opts.summoned : undefined;
   if (to === 'battle' && opts.revChange) c.revChanged = true;
+  // 「相手のカードは、マナゾーンにタップして置かれ、バトルゾーンにタップして出る」
+  const oppTapIn = (dest === 'mana' || dest === 'battle') && from !== dest && activeStatics(s, L).some((x) => x.spec.s === 'oppTapInManaBattle' && x.owner !== c.owner);
   c.under = [];
   c.zone = dest;
   noteMove(s, iid, from, dest);
@@ -657,7 +664,7 @@ export function moveCard(
   c.fromBattle = from === 'battle' || undefined;
   if (dest !== 'battle' && dest !== 'hyper') c.face = 0;
   if (opts.face != null) c.face = opts.face;
-  c.tapped = !!opts.tapped;
+  c.tapped = !!opts.tapped || oppTapIn;
   c.faceUp = opts.faceUp ?? !(dest === 'shield' || dest === 'deck' || dest === 'gr');
   const arr = pl[dest] as number[];
   const pos = opts.pos ?? (dest === 'gr' ? 'bottom' : 'top');
@@ -1204,8 +1211,9 @@ function dreamBlocked(s: GameState, L: Lookup, owner: number, card: Card): boole
 /** クリーチャーがタップした: 「自分のターンに相手のクリーチャーがタップした時」(そのクリーチャーの持ち主のターン以外) */
 export function noteTapped(s: GameState, L: Lookup, iid: number) {
   const c = s.cards[iid];
-  if (c?.zone !== 'battle' || s.active === c.owner) return;
-  fireWatchers(s, L, c.owner, iid, null, 'oppTappedMyTurn', iid);
+  if (c?.zone !== 'battle') return;
+  fireWatchers(s, L, c.owner, iid, null, 'oppTapped', iid);
+  if (s.active !== c.owner) fireWatchers(s, L, c.owner, iid, null, 'oppTappedMyTurn', iid);
 }
 
 /** アルケミック・プラチナム 「自分の手札が13枚以上あれば、自分のターンに1度、水のカードを自分の手札からコストを支払わずに実行してもよい」が使えるか */
@@ -1403,6 +1411,9 @@ export function createGame(init: GameInit, L: Lookup): GameState {
       pl.shield.push(top);
     }
     drawCards(s, p, n + (zeroOwners.some((z) => z !== p) ? 1 : 0));
+    // (最初の手札は、ターン中に引いたカードには数えない)
+    pl.draws = undefined;
+    pl.drawnPending = undefined;
   });
   s.firstPlayer = init.first != null && init.first < s.players.length ? init.first : Math.floor(rand(s) * s.players.length);
   s.active = s.firstPlayer;
@@ -2040,6 +2051,7 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
+  if (k.cantAttack) return false;
   if (c.sick && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid)) return false;
   return true;
 }
@@ -2187,7 +2199,7 @@ function blockStep(s: GameState, L: Lookup) {
   // ガードマン: 自分の他のクリーチャーが攻撃される時、かわりにこのクリーチャーを攻撃させる
   const guards =
     a.targetCard != null
-      ? s.players[def].battle.filter((b) => b !== a.targetCard && !s.cards[b].tapped && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'guardman'))
+      ? s.players[def].battle.filter((b) => b !== a.targetCard && !s.cards[b].tapped && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'guardman') && !(faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'noRedirect'))
       : [];
   if (blockers.length || ninjas.length || guards.length) {
     s.pending.unshift({ kind: 'block', player: def, blockers, ninjas, guards });
@@ -2570,6 +2582,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       c.tapped = true;
       c.attackedTurn = s.turn;
       s.players[targetPlayer].attackedOnTurn = s.turn;
+      noteTapped(s, L, a.attacker);
       // 「このターン、クリーチャーが攻撃する時、〜」
       for (let k = 0; k < s.players.length; k++) {
         const at = s.players[k].onAttackThisTurn;
@@ -2897,6 +2910,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;
     if (s.mode === 'duepa') (turnStat(s, p).usedNames ??= []).push(card.name);
+    if (!face.isCreature) turnStat(s, p).nonCreatureUsed = (turnStat(s, p).nonCreatureUsed ?? 0) + 1;
     // ササゲール: 破壊 / ハイパーエナジー: タップ
     for (const b of a.sasa ?? []) {
       log(s, p, `ササゲール: ${q(nameOf(s, L, b))} を破壊`);

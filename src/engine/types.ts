@@ -124,6 +124,8 @@ export interface TurnStat {
   turn: number;
   /** 召喚したクリーチャー */
   summons: number;
+  /** このターンに実行したクリーチャーではないカードの数 */
+  nonCreatureUsed?: number;
   /** デュエパ: このターンに使ったカード・バトルゾーンに出したカードの名前 (同名は各ターン1回・1枚まで) */
   usedNames?: string[];
   enteredNames?: string[];

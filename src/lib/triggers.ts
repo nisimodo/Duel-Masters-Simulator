@@ -65,7 +65,8 @@ export type TrigEvent =
   | 'zeroBirth' // 零龍卍誕した時
   | 'ownToGrave' // カードを自分の墓地に置いた時
   | 'ownGraveToBattle' // カードを自分の墓地からバトルゾーンに出した時
-  | 'oppTappedMyTurn'; // 自分のターンに相手のクリーチャーがタップした時
+  | 'oppTappedMyTurn' // 自分のターンに相手のクリーチャーがタップした時
+  | 'oppTapped'; // 相手のクリーチャーがタップした時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -112,6 +113,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   otherOwnLeave: '自分の他のクリーチャーが離れた時',
   oppToGrave: '相手の墓地にカードが置かれた時',
   oppTappedMyTurn: '自分のターンに相手のクリーチャーがタップした時',
+  oppTapped: '相手のクリーチャーがタップした時',
   flipped: '龍解・覚醒した時',
   ownShieldAdded: 'シールドゾーンにカードが置かれた時',
   ownShieldLeft: 'シールドゾーンを離れた時',
@@ -306,6 +308,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     // (「相手の墓地に、どこからでもカードが置かれた時」「相手のカードがどこからでも墓地へ置かれた時」も)
     if (/^(?:各ターン、?はじめて、?)?(?:カードが(?:どこからでも)?相手の墓地に置かれた時|相手の墓地に、?(?:どこからでも)?カードが置かれた時|相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時)$/.test(clause)) ev.add('oppToGrave');
     if (/^自分のターン(?:中)?に、?相手のクリーチャーがタップした時$/.test(clause)) ev.add('oppTappedMyTurn');
+    else if (/^相手のクリーチャーがタップ(?:した|された)時$/.test(clause)) ev.add('oppTapped');
     // Dの揺籠 メリーボーイラウンド 「自分のターンに、1枚目のカードを引いた時」/ Dの牢閣 メメント守神宮 「いずれかのプレイヤーが自身のターンに最初のカードを引いた時」
     const firstDraw = /(?:自分の|自身の)ターンに、?(?:1|一)枚目のカードを引いた時|自身のターンに最初のカードを引いた時/.test(clause);
     if (firstDraw) {

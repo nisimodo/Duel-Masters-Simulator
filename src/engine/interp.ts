@@ -1254,6 +1254,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'redirectAttack': {
         const at = s.attack;
         if (!at || at.owner === ex.player) break;
+        // 「このクリーチャーの攻撃先は変更されない」
+        if ((L(s.cards[at.attacker].cid)?.faces[s.cards[at.attacker].face]?.statics ?? []).some((x) => x.s === 'noRedirect')) break;
         const tg = attackTargets(s, L, at.attacker);
         const self = s.cards[ex.src]?.linkedTo ?? ex.src;
         const to =
