@@ -1750,12 +1750,40 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'abyss', target: { ref: 'it' } },
       ];
   }
+  // 「このターンそれらは攻撃もブロックもできない」(読点なし)
+  if (/^このターンそれらは/.test(s)) return sentence(s.replace(/^このターンそれらは/, 'このターン、それらは'), ctx);
+  // 「コスト5以下の呪文を1枚、いずれかのプレイヤーの墓地からコストを支払わずに唱える」
+  if ((mm = s.match(/^コスト(\d+)以下の呪文を(\d+)枚、?いずれかのプレイヤーの墓地からコストを支払わずに唱える$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['grave'], kind: 'spell', costMax: +mm[1] }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true },
+    ];
+  // 表向きのG城 「このG城を墓地に置いてもよい」
+  if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
+  // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
+  if ((mm = s.match(/^このターン、このクリーチャーは「([^」]+)」を得(?:る)?$/))) return [{ op: 'grant', target: { ref: 'self' }, kws: [mm[1]], until: 'turn' }];
+  // 「このターン、こうして出したクリーチャーに「ブロッカー」と「スレイヤー」を与える」
+  if ((mm = s.match(/^このターン、こうして出したクリーチャーに((?:「[^」]+」と?)+)を与える$/))) return [{ op: 'grant', target: { ref: 'it' }, kws: [...mm[1].matchAll(/「([^」]+)」/g)].map((x) => x[1]), until: 'turn' }];
+  // 「相手の「ブロッカー」を持つクリーチャーまたはパワー3000以下のクリーチャーを1体選び、破壊する」
+  if ((mm = s.match(/^相手の、?「([^」]+)」を持つクリーチャーまたはパワー(\d+)以下のクリーチャーを(\d+)体選び、破壊する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', or: [{ owner: 'opp', zones: ['battle'], kind: 'creature', hasKw: mm[1] }, { owner: 'opp', zones: ['battle'], kind: 'creature', powerMax: +mm[2] }] }, count: { n: +mm[3], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '破壊するクリーチャーを選ぶ' },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
+  // 「相手のマナゾーンにあるカードの枚数よりコストが大きい相手のエレメントを1つ選び、持ち主の山札の下に置く」
+  if ((mm = s.match(/^相手のマナゾーンにあるカードの枚数よりコストが大きい相手のエレメントを(\d+)つ選び、持ち主の山札の(?:一番)?下に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'card', costVs: { by: 'mana', cmp: 'gt', ofOwner: true } }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '山札の下に置くエレメントを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'deckBottom' },
+    ];
+  // 「自分の手札がなければカードを1枚引く」
+  if ((mm = s.match(/^自分の手札がなければ、?カードを(\d+)枚引く$/))) return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['hand'], kind: 'card' }, cmp: '<=', n: 0 }, body: [{ op: 'draw', n: +mm[1], who: 'self' }] }];
   // 「そのエレメントを破壊する」「すべてのエレメントを破壊する」
   if (/^その(?:エレメント|カード)を破壊する$/.test(s)) return [{ op: 'destroy', target: { ref: 'it' } }];
   if (/^(?:バトルゾーンにある)?すべてのエレメントを破壊する$/.test(s))
     return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'destroy', target: { ref: 'it' } }];
   // 「次の自分のターンのはじめまで、自分のクリーチャーはすべて攻撃もブロックもされない」
-  if (/^次の自分のターンのはじめまで、自分のクリーチャーは(?:すべて)?、?攻撃もブロックもされない$/.test(s))
+  if (/^次の自分のターンのはじめまで、自分のクリーチャー(?:すべて)?は(?:すべて)?、?攻撃もブロックもされない$/.test(s))
     return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['攻撃されない', 'ブロックされない'], until: 'nextOwnTurn' }];
   // D-Jealousy-灰撫 「バトルゾーンにある自分のクリーチャー1体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱える」
   if (/^(?:バトルゾーンにある)?自分のクリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(?:る|てもよい)$/.test(s))
@@ -3749,6 +3777,25 @@ export function parseEffect(text: string): Program {
           { op: 'repeatCount', body: [{ op: 'top', n: 1, to: bm[2] ? 'manaTapped' : 'mana', who: 'self' }] },
           { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, count: { n: 99, upTo: false, fromCount: true }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に戻すマナゾーンのカードを選ぶ' },
           { op: 'move', target: { ref: 'it' }, to: 'hand' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // 「相手の墓地にある呪文を1枚、自分がコストを支払わずに唱えてもよい。そうしたら、唱えた後、相手はそれを墓地のかわりに山札の下に置く」
+  {
+    const og = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).match(/^相手の墓地にある呪文を(\d+)枚、自分がコストを支払わずに唱えてもよい。そうしたら、唱えた後、相手はそれを墓地のかわりに(?:自身の)?山札の(?:一番)?下に置く。?$/);
+    if (og)
+      return {
+        ops: [
+          {
+            op: 'optional',
+            body: [
+              { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['grave'], kind: 'spell' }, count: { n: +og[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '唱える呪文を選ぶ' },
+              { op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true, after: 'deckBottom' },
+            ],
+            prompt: '相手の墓地の呪文を唱える',
+          },
         ],
         complete: true,
         unparsed: [],

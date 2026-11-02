@@ -6,6 +6,8 @@ export function normText(s: string): string {
     .normalize('NFKC')
     .replace(/[\uFE0E\uFE0F\u200B]/g, '')
     .replace(/([A-Za-z])\([゠-ヿー]+\)/g, '$1')
+    // 新しい表記の「{xB} 〜」(スーパー・S・トリガーで与えられる能力) は「xB 〜」と同じ
+    .replace(/^\{(xB|oB)\}\s*/, '$1 ')
     .replace(/^\{[A-Z]+\}\s*/, '')
     // 古い表記の統一: 「出たとき」→「出た時」、「戻してよい」→「戻してもよい」
     .replace(/とき/g, '時')
