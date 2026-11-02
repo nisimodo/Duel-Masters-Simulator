@@ -159,14 +159,16 @@ export default function TestPlay() {
   const { favs, toggle } = useFavs();
   const [decks, setDecks] = useState<Deck[]>([]);
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
+  // 対戦の形式: デュエマ / 通常デュエパ / デュエパもどき (デュエマ用のデッキをデュエパのルールで)
+  const [mode, setMode] = useState<'duema' | 'duepa' | 'modoki'>('duema');
+  const deckType = mode === 'duepa' ? 'duepa' : 'duema';
   const options = useMemo<Option[]>(() => {
     if (!db) return [];
-    const mine = decks.filter((d) => d.type === 'duema').map((d) => ({ id: d.id, deck: d, preset: false }));
-    // (テストプレイはデュエマなので、デュエマのプリセットだけ)
-    const presets = db.presets.filter((p) => (p.mode ?? 'duema') === 'duema').map((p) => ({ id: p.id, deck: presetToDeck(db, p.id).deck, preset: true }));
+    const mine = decks.filter((d) => d.type === deckType).map((d) => ({ id: d.id, deck: d, preset: false }));
+    const presets = db.presets.filter((p) => (p.mode ?? 'duema') === deckType).map((p) => ({ id: p.id, deck: presetToDeck(db, p.id).deck, preset: true }));
     // お気に入りを先に
     return favFirst([...mine, ...presets], favs, (o) => o.id);
-  }, [db, decks, favs]);
+  }, [db, decks, favs, deckType]);
   const [slot, setSlot] = useState<0 | 1>(0);
   // 中身を見ているデッキ
   const [view, setView] = useState<Deck | null>(null);
@@ -254,7 +256,7 @@ export default function TestPlay() {
     for (let i = 0; i < count && !cancel.current; i++) {
       const g = simulateGame(
         {
-          mode: 'duema',
+          mode: mode === 'duema' ? 'duema' : 'duepa',
           seed: Math.floor(Math.random() * 2 ** 31),
           createdAt: 0,
           // 先攻は交互にする
@@ -304,6 +306,31 @@ export default function TestPlay() {
       <h2>テストプレイ</h2>
       <p className="small muted">2つのデッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます。先攻は1試合ごとに交互です。対戦はこのブラウザの中だけで行い、記録は残りません。</p>
       <div className="panel col">
+        <div className="row small">
+          <b>形式</b>
+          {(
+            [
+              ['duema', 'デュエマ'],
+              ['duepa', '通常デュエパ (60枚・パートナー)'],
+              ['modoki', 'デュエパもどき (デュエマ用のデッキ)'],
+            ] as const
+          ).map(([m, label]) => (
+            <label key={m}>
+              <input
+                type="radio"
+                disabled={running}
+                checked={mode === m}
+                onChange={() => {
+                  setMode(m);
+                  // (デッキの種類が変わる時は選び直す)
+                  if ((m === 'duepa') !== (mode === 'duepa')) setPick([null, null]);
+                }}
+              />{' '}
+              {label}
+            </label>
+          ))}
+        </div>
+        {mode !== 'duema' && <span className="small muted">デュエパのルール (手札とシールド6枚・先攻も1ターン目に引く・勝敗を直接決める効果と追加ターンは無効 など) で1対1の対戦をします。</span>}
         <div className="row" style={{ alignItems: 'stretch' }}>
           <DeckSlot db={db} label="デッキA" opt={optA} active={slot === 0} onClick={() => setSlot(0)} />
           <div className="testplay-vs">VS</div>
@@ -328,11 +355,15 @@ export default function TestPlay() {
           {slot === 0 ? 'デッキA' : 'デッキB'} を選んでいます。上の枠を押すと、選ぶ側を切り替えられます。
         </span>
         <div className="deck-pick-grid col" style={{ gap: 8 }}>
-          {(['original', 'advance'] as const).map((f) => (
-            <DeckSection key={f} title={<>マイデッキ <FormatBadge format={f} /></>}>
-              {split[f].map(tile)}
-            </DeckSection>
-          ))}
+          {deckType === 'duepa' ? (
+            <DeckSection title="マイデッキ (デュエパ)">{mine.map(tile)}</DeckSection>
+          ) : (
+            (['original', 'advance'] as const).map((f) => (
+              <DeckSection key={f} title={<>マイデッキ <FormatBadge format={f} /></>}>
+                {split[f].map(tile)}
+              </DeckSection>
+            ))
+          )}
           <DeckSection title="プリセット">{options.filter((o) => o.preset).map(tile)}</DeckSection>
         </div>
       </div>
