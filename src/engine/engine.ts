@@ -1900,7 +1900,7 @@ function advance(s: GameState, L: Lookup): boolean {
 }
 
 /** 状態の確認とゲームの流れを落ち着くまで進める */
-function settle(s: GameState, L: Lookup) {
+export function settle(s: GameState, L: Lookup) {
   for (let i = 0; i < 200; i++) {
     checkState(s, L);
     // 「ターンの残りをとばす」: 処理が終わったらターンを終える
@@ -2118,7 +2118,16 @@ function duelistLink(s: GameState, L: Lookup) {
 /** マナとして出す文明 (裏向きのマナは文明を持たない) */
 export function manaCivs(s: GameState, L: Lookup, iid: number): Civ[] {
   const c = s.cards[iid];
-  return c.zone === 'mana' && c.manaDown ? [] : cardCivs(L, c.cid);
+  if (c.zone === 'mana' && c.manaDown) return [];
+  if (c.zone === 'mana' && L(c.cid)?.twin && twinManaRainbow(s, L, c.owner)) return ALL_CIVS;
+  return cardCivs(L, c.cid);
+}
+
+/** アカシック・C 「自分のマナゾーンのツインパクトカードは、すべての文明を持つ」が有効か */
+export function twinManaRainbow(s: GameState, L: Lookup, p: number): boolean {
+  // (ほとんどの場合は持っていないので、先にバトルゾーンだけ軽く調べる)
+  if (!s.players[p].battle.some((b) => (L(s.cards[b].cid)?.faces[s.cards[b].face]?.statics ?? []).some((x) => x.s === 'manaTwinAllCivs'))) return false;
+  return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'manaTwinAllCivs');
 }
 
 /** マナゾーンのこのカードが、このカードを召喚する時だけすべての文明を持つかのようにタップできるか */
@@ -2326,7 +2335,7 @@ function queueAttackTriggers(s: GameState, L: Lookup) {
       const un = (f?.statics ?? []).find((x) => x.s === 'uraNinja');
       if (!f || !un || un.s !== 'uraNinja' || a.ninjaUsed) continue;
       if (pl.mana.length < un.n) continue;
-      if (un.civ && !pl.mana.some((m) => cardCivs(L, s.cards[m].cid).some((c) => CIV_NAME[c] === un.civ))) continue;
+      if (un.civ && !pl.mana.some((m) => manaCivs(s, L, m).some((c) => CIV_NAME[c] === un.civ))) continue;
       s.pending.push({ kind: 'ability', player: dp, src: h, cid: hc.cid, face: 0, event: 'oppAttack', text: `ウラ・ニンジャ・ストライク: ${f.name}`, effect: 'このクリーチャーをコストを支払わずに召喚してもよい。そのターンの終わりに、このクリーチャーを山札の下に置く', optional: true, auto: false });
     }
   });
@@ -2348,7 +2357,7 @@ function blockStep(s: GameState, L: Lookup) {
   a.step = 'block';
   const def = a.targetPlayer;
   const attFace = faceOf(s, L, a.attacker);
-  const stealth = (attFace?.statics ?? []).some((x) => x.s === 'stealth' && s.players[def].mana.some((m) => cardCivs(L, s.cards[m].cid).includes(x.civ)));
+  const stealth = (attFace?.statics ?? []).some((x) => x.s === 'stealth' && s.players[def].mana.some((m) => manaCivs(s, L, m).includes(x.civ)));
   const blockers = attFace && (kwOf(s, L, a.attacker).unblockable || stealth)
     ? []
     : s.players[def].battle.filter((b) => {
@@ -2542,6 +2551,22 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
         saved: [sh],
         did: false,
         name: hf.name,
+      });
+    }
+    // S・バック:ツインパクト (マジック・H・コレクター): ツインパクトカードがシールドから手札に加えられた時、それを捨てて、
+    // 手札のツインパクトカード1枚の片側をコストを支払わずに使う
+    if (card?.twin && pl.hand.some((h) => h !== sh && L(s.cards[h].cid)?.twin) && activeStatics(s, L).some((x) => x.owner === target && x.spec.s === 'sBackTwin')) {
+      const pick: import('../rules/ops').Op = { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', twinpact: true }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: 'コストを支払わずに使うツインパクトカードを選ぶ' };
+      const use: import('../rules/ops').Op = { op: 'modal', pick: 1, options: [{ label: 'クリーチャー側を召喚する', body: [{ op: 'play', target: { ref: 'it' }, mode: 'summon' }] }, { label: '呪文側を唱える', body: [{ op: 'play', target: { ref: 'it' }, mode: 'cast' }] }] };
+      runExec(s, L, {
+        player: target,
+        src: sh,
+        ops: [{ op: 'optional', body: [{ op: 'move', target: { ref: 'saved' }, to: 'grave' }, pick, use], prompt: `S・バック:ツインパクト: 《${card.name}》を捨てて、手札のツインパクトカードの片側をコストを支払わずに使う` }],
+        it: [],
+        looked: [],
+        saved: [sh],
+        did: false,
+        name: 'S・バック:ツインパクト',
       });
     }
     // サバキZ: 裁きの紋章が手札に加えられた時、それを捨ててサバキZを持つクリーチャーを召喚できる

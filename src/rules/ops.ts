@@ -124,6 +124,8 @@ export interface Sel {
   evolution?: boolean;
   nonEvolution?: boolean;
   twinpact?: boolean;
+  /** 「このクリーチャーが(バトルゾーンに)出た時」で始まる能力を持つ */
+  hasCip?: boolean;
   /** どれかに合えばよい (「ドラゴンまたはクロスギア」) */
   or?: Sel[];
 }
@@ -550,7 +552,14 @@ export type Op =
   | { op: 'addSaved' }
   /** 手札をすべて山札に加える */
   | { op: 'handToDeck' }
+  /** ミノガミ&オウ禍武斗: 保存したツインパクト呪文 (saved) をすべてコストを支払わずに唱え、それらが解決した後に持ち主がエレメント側を墓地から出す */
+  | { op: 'castSavedThenPutElements' }
+  /** (castSavedThenPutElements の続き) 誘発させたカード (it) が墓地にあれば、そのエレメント側をバトルゾーンに出す */
+  | { op: 'putElementFromGrave' }
   | { op: 'note'; text: string };
+
+/** castSavedThenPutElements が後で実行する能力の文 (カードには書かれていない、内部用) */
+export const ELEMENT_FROM_GRAVE = '〈唱えた呪文のエレメント側を墓地から出す〉';
 
 /** 解析結果 */
 export interface Program {

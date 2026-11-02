@@ -1,7 +1,7 @@
 // 効果プログラム (src/rules/ops.ts) の実行。
 // 決定的に動き (乱数はゲームの乱数)、プレイヤーの選択が必要になったら 'choice' を積んで中断する。
 import { CIV_NAME, type Card, type Face } from '../lib/cards';
-import type { Cond, Count, Dest, Op, Sel, Target } from '../rules/ops';
+import { ELEMENT_FROM_GRAVE, type Cond, type Count, type Dest, type Op, type Sel, type Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
   attachCross,
@@ -11,6 +11,7 @@ import {
   battle,
   breakShields,
   cardCivs,
+  manaCivs,
   drawCards,
   fireEvent,
   fireFlipped,
@@ -86,7 +87,8 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.evolution && !evoNow) return false;
   if (sel.nonEvolution && evoNow) return false;
   if (sel.twinpact && !card.twin) return false;
-  const civs = card.twin ? card.civs : f.civs.length ? f.civs : card.civs;
+  if (sel.hasCip && !f.triggers.some((t) => t.events.includes('enter') && !t.howEnter)) return false;
+  const civs = card.twin ? (s.cards[iid]?.zone === 'mana' ? manaCivs(s, L, iid) : card.civs) : f.civs.length ? f.civs : card.civs;
   if (sel.civs?.length) {
     if (sel.civAll ? !sel.civs.every((c) => civs.includes(c)) : !sel.civs.some((c) => civs.includes(c))) return false;
   }
@@ -98,7 +100,8 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
     // 「自身のマナゾーンにあるカードの枚数以上」はカードの持ち主のマナと比べる
     const ctl = s.players[sel.costVs.ofOwner ? s.cards[iid].owner : sel.costVs.ofOpp ? mainOpp(s, s.cards[iid].owner) : s.active];
     const lim = sel.costVs.by === 'mana' ? ctl.mana.length : sel.costVs.by === 'shield' ? ctl.shield.length : ctl.hand.length;
-    const cost = L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.cost ?? 0;
+    // (ツインパクトはバトルゾーン以外では両面のコストを持つ。どちらかの面が合えばよい)
+    const cost = f.cost ?? 0;
     if (sel.costVs.cmp === 'lt' ? !(cost < lim) : sel.costVs.cmp === 'ge' ? !(cost >= lim) : sel.costVs.cmp === 'gt' ? !(cost > lim) : !(cost <= lim)) return false;
   }
   if (sel.notPsychic && /サイキック/.test(L(s.cards[iid].cid)?.faces[s.cards[iid].face]?.type ?? '')) return false;
@@ -117,7 +120,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
     if (sel.powerRef && !(cv.num != null && power(s, L, iid) === cv.num)) return false;
   }
   if (sel.civShareMana) {
-    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
+    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => manaCivs(s, L, m)));
     if (!civs.some((x) => have.has(x))) return false;
   }
   if (sel.multicolor && civs.length < 2) return false;
@@ -126,7 +129,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
   if (sel.shieldFaceUp && !(s.cards[iid].zone === 'shield' && s.cards[iid].faceUp)) return false;
   if (sel.shieldFaceDown && !(s.cards[iid].zone === 'shield' && !s.cards[iid].faceUp)) return false;
   if (sel.civInMana) {
-    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => cardCivs(L, s.cards[m].cid)));
+    const have = new Set(s.players[s.cards[iid].owner].mana.flatMap((m) => manaCivs(s, L, m)));
     if (!civs.every((x) => have.has(x))) return false;
   }
   if (sel.mono && civs.length !== 1) return false;
@@ -400,7 +403,7 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
     case 'selfCardsGE':
       return 1 + (s.cards[ex.src]?.under.length ?? 0) >= c.n;
     case 'manaEveryCiv': {
-      const have = new Set(me.mana.flatMap((m) => (s.cards[m].manaDown ? [] : (L(s.cards[m].cid)?.civs ?? []))));
+      const have = new Set(me.mana.flatMap((m) => manaCivs(s, L, m)));
       return (['L', 'W', 'D', 'F', 'N'] as const).every((x) => have.has(x));
     }
     case 'attackUsed':
@@ -2018,6 +2021,32 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.players[o].spellLockCostEq = op.costRef ? (s.chosenValue?.num ?? -1) : undefined;
         }
         log(s, ex.player, `相手は${op.until === 'turn' ? 'このターン' : '次のターンのはじめまで'}呪文を唱えられない`);
+        break;
+      }
+      case 'castSavedThenPutElements': {
+        const ids = (ex.saved ?? []).filter((i) => s.cards[i].zone === 'mana');
+        const cast: number[] = [];
+        for (const i of ids) {
+          const fi = L(s.cards[i].cid)?.faces.findIndex((f) => f.isSpell) ?? -1;
+          if (fi < 0) continue;
+          if (!playCard(s, ex.player, { t: 'play', iid: i, face: fi, pay: [], free: true, force: true }, L)) cast.push(i);
+        }
+        // 唱えた呪文の効果 (先に積まれている) をすべて解決した後で、持ち主がエレメント側を出す
+        for (const i of cast) {
+          const c = s.cards[i];
+          const fi = L(c.cid)?.faces.findIndex((f) => !f.isSpell) ?? -1;
+          if (fi < 0) continue;
+          s.pending.push({ kind: 'ability', player: c.owner, src: ex.src, cid: s.cards[ex.src].cid, face: s.cards[ex.src].face, event: 'spell', text: `${ex.name}: 唱えた《${L(c.cid)?.faces[fi].name ?? ''}》を墓地から出す`, effect: ELEMENT_FROM_GRAVE, optional: false, auto: true, subject: i });
+        }
+        break;
+      }
+      case 'putElementFromGrave': {
+        const i = ex.it[0];
+        const card = i != null ? L(s.cards[i].cid) : undefined;
+        const fi = card ? card.faces.findIndex((f) => !f.isSpell) : -1;
+        if (!card || fi < 0 || s.cards[i].zone !== 'grave') break;
+        log(s, ex.player, `${q(card.faces[fi].name)} を墓地からバトルゾーンに出した`);
+        moveCard(s, L, i, 'battle', { face: fi });
         break;
       }
       case 'castSelfSpell': {

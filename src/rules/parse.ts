@@ -2,6 +2,7 @@
 // 文ごとに規則を当てはめ、「その」等の指示語は直前に選んだカードを指す。
 // 解釈できない文があれば complete=false になり、その能力は手動処理になる。
 import type { Cond, Count, Dest, Op, Program, Purpose, Sel, SelZone, Target } from './ops';
+import { ELEMENT_FROM_GRAVE } from './ops';
 import { parseSel } from './selector';
 import { normText, stripReminder } from './text';
 
@@ -4282,6 +4283,21 @@ export function parseEffect(text: string): Program {
         complete: true,
         unparsed: [],
       };
+  }
+  // ミノガミ&オウ禍武斗 「各プレイヤーのマナゾーンから、そのプレイヤーのマナゾーンの枚数以下のコストを持つツインパクト呪文をそれぞれ1枚まで選ぶ。
+  // 自分は選んだ呪文を、好きな順序でコストを支払わずに唱える。すべて唱えた後、その持ち主は自身の墓地からそのエレメント側を出す」
+  {
+    const nt = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10));
+    if (/^各プレイヤーのマナゾーンから、そのプレイヤーのマナゾーンの枚数以下のコストを持つツインパクト呪文をそれぞれ1枚まで選ぶ。自分は選んだ呪文を、好きな順序でコストを支払わずに唱える。すべて唱えた後、その持ち主は自身の墓地からそのエレメント側を出す。?$/.test(nt)) {
+      const sel = (owner: 'self' | 'opp'): Sel => ({ owner, zones: ['mana'], kind: 'spell', twinpact: true, costVs: { by: 'mana', cmp: 'le', ofOwner: true } });
+      const pick = (owner: 'self' | 'opp'): Op[] => [
+        { op: 'choose', target: { ref: 'sel', sel: sel(owner), count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `${owner === 'self' ? '自分' : '相手'}のマナゾーンから唱えるツインパクト呪文を1枚まで選ぶ` },
+        { op: 'saveAdd' },
+      ];
+      return { ops: [{ op: 'saveClear' }, ...pick('self'), { op: 'forEachOpp', body: pick('opp') }, { op: 'castSavedThenPutElements' }], complete: true, unparsed: [] };
+    }
+    // (上の能力の続き: 唱えた呪文がすべて解決した後に、持ち主が実行する)
+    if (nt === ELEMENT_FROM_GRAVE) return { ops: [{ op: 'putElementFromGrave' }], complete: true, unparsed: [] };
   }
   // 「我が名はツラトゥストラ！」 「X。水晶武装4:〜4枚以上あれば、かわりにY」
   {

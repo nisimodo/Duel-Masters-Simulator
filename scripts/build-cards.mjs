@@ -75,6 +75,12 @@ function readingOf(name) {
 }
 const readingsOf = (names) => [...new Set(names.map(readingOf).filter(Boolean))];
 
+// 公式のカード検索でテキストが空になっている面 (カードの表記どおりに補う)
+const FACE_FIX = {
+  // レレディ・バ・グーバ / ツインパクト・マップ
+  'dmbd08-a-003': { 1: { c: 'N', co: 1, x: ['自分の山札の上から３枚を表向きにする。その中からツインパクトカードを１枚、自分の手札に加える。残りを好きな順序で自分の山札の一番下に置く。'] } },
+};
+
 const cards = [];
 const seenNames = new Set();
 for (const c of raw) {
@@ -82,9 +88,14 @@ for (const c of raw) {
   const fullName = norm(c.faces[0].name);
   if (seenNames.has(fullName)) continue; // 念のため同名を除外
   seenNames.add(fullName);
-  const twin = c.faces.length === 2 && c.faces.every((f) => norm(f.name) === fullName) && fullName.includes(' / ');
-  const parts = twin ? fullName.split(' / ') : null;
+  // 公式の表記は「A / B」と「A/B」が混ざっている (面ごとに違うこともある)
+  const slashParts = (s) => norm(s).split(/\s*\/\s*/);
+  const twin =
+    c.faces.length === 2 && slashParts(fullName).length === 2 && c.faces.every((f) => slashParts(f.name).join('/') === slashParts(fullName).join('/'));
+  const parts = twin ? slashParts(fullName) : null;
   const faces = c.faces.map((f, i) => face(f, twin ? (parts[i] ?? fullName) : norm(f.name)));
+  // 公式のデータが空の面を補う
+  for (const [i, fx] of Object.entries(FACE_FIX[c.id] ?? {})) Object.assign(faces[+i], fx);
   const img = c.faces[0].img.replace('/wp-content/card/cardimage/', '');
   const card = { id: c.id, n: fullName, img, f: faces };
   if (twin) card.tw = 1;

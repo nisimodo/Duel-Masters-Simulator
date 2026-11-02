@@ -232,7 +232,8 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
       clause += more[1];
       effect = more[2];
     }
-    const self = /この\s*(?:D2|DG|DN|G)?(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause);
+    // (黒豆だんしゃく 「相手の、「このクリーチャーがバトルゾーンに出た時」で始まる能力を持つクリーチャーが出た時」: かぎかっこの中の「この」は自分のことではない)
+    const self = /この\s*(?:D2|DG|DN|G)?(クリーチャー|カード|タマシード|クロスギア|フィールド|城|オーラ|ドラグハート)/.test(clause.replace(/「[^」]*」/g, ''));
     const opp = /相手/.test(clause);
     const own = /自分/.test(clause);
     const ev = new Set<TrigEvent>();
@@ -319,6 +320,9 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
     if (/^他のクリーチャーが(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('anyOtherLeave');
     if (/^(?:各ターン(?:に)?(?:1|一)度、|各ターン、?はじめて、?)?自分(?:が|の)手札を(?:\d+枚)?捨てた時$/.test(clause)) ev.add('ownDiscard');
+    // 龍装艦 チェンジザ 「各ターン、コスト5以下の呪文を自分の手札からはじめて捨てた時」
+    const discardOf = clause.match(/^各ターン、?(.+?)を自分の手札からはじめて捨てた時$/);
+    if (discardOf) ev.add('ownDiscard');
     // (「相手の墓地に、どこからでもカードが置かれた時」「相手のカードがどこからでも墓地へ置かれた時」も)
     if (/^(?:各ターン、?はじめて、?)?(?:カードが(?:どこからでも)?相手の墓地に置かれた時|相手の墓地に、?(?:どこからでも)?カードが置かれた時|相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時)$/.test(clause)) ev.add('oppToGrave');
     if (/^自分のターン(?:中)?に、?相手のクリーチャーがタップした時$/.test(clause)) ev.add('oppTappedMyTurn');
@@ -354,6 +358,8 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
         clause.match(/(?:自分|相手)の(?:他の)?(.+?)(?:が|を)(?:バトルゾーンに)?(?:出(?:た|した)|召喚した|攻撃する|破壊された|(?:相手(?:の)?クリーチャーと)?バトルする|バトルに勝った|攻撃された)時/) ??
         clause.match(/相手が(.+?)を(?:バトルゾーンに)?(?:出(?:した)?|召喚した)時/);
       if (sm && !/^クリーチャー$/.test(sm[1])) subject = parseSel(sm[1]) ?? undefined;
+      const cip = clause.match(/^(自分|相手)の、?「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を持つ(他の)?クリーチャーが(?:バトルゾーンに)?出た時$/);
+      if (cip) subject = { owner: cip[1] === '自分' ? 'self' : 'opp', zones: ['battle'], kind: 'creature', hasCip: true, ...(cip[2] ? { other: true } : {}) };
     }
     // 「自分の魔導具呪文を唱えた時」: 唱えた呪文が条件に合う時だけ
     const spellOf = ev.has('spellOwn') && clause.match(/^自分の([^、]+?)呪文を唱えた時$/);
@@ -371,6 +377,10 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (lv && !/^クリーチャー$/.test(lv[1])) {
       const ls = parseSel(lv[1]);
       if (ls) subject = { ...ls, zones: ['hand', 'grave', 'mana', 'deck', 'shield', 'battle'] };
+    }
+    if (discardOf) {
+      const ds = parseSel(discardOf[1]);
+      if (ds) subject = { ...ds, zones: ['grave'] };
     }
     if (manaPut && !/^カード$/.test(manaPut[1])) {
       const ms = parseSel(manaPut[1]);
@@ -396,7 +406,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
             ? ('exec' as const)
             : freeClause
             ? ('free' as const)
-            : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
+            : /召喚以外の方法で/.test(clause) ? ('notSummon' as const) : /召喚によって(?:バトルゾーンに)?出た時|を召喚した時/.test(clause) ? ('summon' as const) : undefined;
     const turnM = clause.match(/^(自分|相手)のターン(?:中)?に?、?/);
     const turn = turnM ? (turnM[1] === '自分' ? ('own' as const) : ('opp' as const)) : undefined;
     const includeSelf = ev.has('otherOwnEnter') && !/他の/.test(clause) && /自分の[^、]+?が(?:バトルゾーンに)?出た時/.test(clause) ? true : undefined;

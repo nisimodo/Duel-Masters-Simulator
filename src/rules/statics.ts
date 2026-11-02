@@ -217,6 +217,10 @@ export type StaticSpec =
   | { s: 'sabakiZ' }
   /** S・バック: その条件のカードがシールドから手札に加えられた時、それを捨ててこのクリーチャーを出せる */
   | { s: 'sBack'; sel: Sel }
+  /** マジック・H・コレクター 「自分の手札にあるツインパクトカードに、「S・バック:ツインパクト」を与える」 */
+  | { s: 'sBackTwin' }
+  /** アカシック・C 「自分のマナゾーンのツインパクトカードは、すべての文明を持つ」 */
+  | { s: 'manaTwinAllCivs' }
   /** 自分のターン中、クリーチャーをN体、自分のマナゾーンから召喚してもよい */
   | { s: 'manaSummonTurn'; n: number; sel?: Sel; newOnly?: boolean }
   /** 攻撃の終わりにアンタップする */
@@ -523,6 +527,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^リンク解除/.test(t0)) return [{ s: 'linkRelease' }];
   if (/^ソウルシフト/.test(t0)) return [{ s: 'soulShift' }];
   if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
+  if (/^自分の手札にあるツインパクトカードに、?「S・バック[-－ー:：]ツインパクト」を与える$/.test(t0)) return [{ s: 'sBackTwin' }];
+  if (/^自分のマナゾーン(?:にある|の)ツインパクトカードは(?:すべて)?、?すべての文明を持つ$/.test(t0)) return [{ s: 'manaTwinAllCivs' }];
   if ((m = t0.match(/^S・バック[-－ー:：]([^(（]+)/))) {
     const ph = m[1].replace(/のカード$/, '');
     const sel = parseSel(/(カード|クリーチャー|呪文)$/.test(ph) ? ph : ph + 'のカード') ?? parseSel(ph + 'カード');

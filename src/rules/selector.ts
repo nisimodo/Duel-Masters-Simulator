@@ -169,7 +169,8 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     // 残りは種族 (「ドラゴン」「ジャイアントまたはコマンド」等)
     const races = p.split(/または|か|、|と|・(?=[^゠-ヿ])/).filter(Boolean);
     if (!races.every((r) => RACE_WORD.test(r) || KANJI_RACE.test(r))) return null;
-    sel.races = races.map((r) => r.replace(/[<>＜＞]/g, ''));
+    // 「アンノウン・クリーチャーまたはゼニス・クリーチャー」
+    sel.races = races.map((r) => r.replace(/[<>＜＞]/g, '').replace(/・クリーチャー$/, ''));
     if (sel.kind === 'card' && !/カード$/.test(phrase)) sel.kind = 'creature';
   }
   return sel;
