@@ -697,7 +697,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const who = op.who === 'opp' ? oppOf(s, ex) : ex.player;
         // 'gr': 自分の超GRの上 (配列の末尾が上)
         const deck = op.who === 'gr' ? s.players[who].gr : s.players[who].deck;
-        const ids = op.fromBottom ? deck.slice(0, op.n) : deck.slice(-(op.perOpp ? op.n * opps(s, ex.player).length : op.n)).reverse();
+        const n0 = op.fromCount ? (ex.count ?? 0) : op.n;
+        const ids = !n0 ? [] : op.fromBottom ? deck.slice(0, n0) : deck.slice(-(op.perOpp ? n0 * opps(s, ex.player).length : n0)).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
           // 表向きにしたカードは「それ」で参照される

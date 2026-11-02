@@ -3610,9 +3610,9 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         } else if (top.distinct) {
           const keys = picks.map((i) => {
             const cd = L(s.cards[i].cid);
-            return top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
+            return top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'name' ? (cd?.name ?? '') : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '');
           });
-          if (new Set(keys).size !== keys.length) return top.distinct === 'zone' ? 'それぞれのゾーンから1体ずつ選んでください' : top.distinct === 'cost' ? 'コストが異なるカードを選んでください' : 'カードタイプが異なるカードを選んでください';
+          if (new Set(keys).size !== keys.length) return top.distinct === 'zone' ? 'それぞれのゾーンから1体ずつ選んでください' : top.distinct === 'cost' ? 'コストが異なるカードを選んでください' : top.distinct === 'name' ? '異なる名前のカードを選んでください' : 'カードタイプが異なるカードを選んでください';
         }
         if (top.sumCostMin != null && picks.length && picks.reduce((a2, i) => a2 + (L(s.cards[i].cid)?.faces[0]?.cost ?? 0), 0) < top.sumCostMin) return `コストの合計が${top.sumCostMin}以上になるように選んでください`;
         s.pending.shift();

@@ -343,6 +343,10 @@ const db = buildDB(
     cr('jkCost', 6, 6000, ['自分の、ジョーカーズとマナゾーンにあるジョーカーズ・カードが合計２つ以上なら、このクリーチャーの召喚コストを２少なくする。']),
     cr('civCost', 5, 5000, ['このクリーチャーの召喚コストを、相手のエレメントの文明１つにつき１少なくする。ただしコストは０以下にならない。']),
     cr('graveSum', 3, 3000, ['自分のターン中、クリーチャーを１体、自分の墓地から召喚してもよい。']),
+    { id: 'jpA', n: 'jpA', img: '', f: [{ n: 'jpA', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['Jack-Pot'], x: [] }] },
+    { id: 'jpB', n: 'jpB', img: '', f: [{ n: 'jpB', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['Jack-Pot'], x: [] }] },
+    { id: 'drgJ', n: 'drgJ', img: '', f: [{ n: 'drgJ', t: 'クリーチャー', c: 'F', co: 2, p: '2000', r: ['アーマード・ドラゴン'], x: [] }] },
+    { id: 'jpSp', n: 'jpSp', img: '', f: [{ n: 'jpSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分のマナゾーンにドラゴン・クリーチャーが１体以上あれば、異なる名前のJack-Potを好きな数、自分の手札またはマナゾーンから出してもよい。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3257,6 +3261,18 @@ describe('named mechanics', () => {
       s = drain(s);
       expect(s.cards[a].zone).toBe('battle');
       expect(applyAction(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
+    });
+    it('異なる名前のJack-Potを好きな数、手札またはマナゾーンから出す', () => {
+      let s = setup([{ p: 0, cid: 'jpSp', zone: 'hand' }, { p: 0, cid: 'drgJ', zone: 'mana' }, { p: 0, cid: 'jpA', zone: 'hand' }, { p: 0, cid: 'jpA', zone: 'mana' }, { p: 0, cid: 'jpB', zone: 'mana' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'jpSp')!, face: 0, pay: [] });
+      for (let k = 0; k < 4 && s.pending[0]?.kind !== 'choice'; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      const q = s.pending[0];
+      const opts = q?.kind === 'choice' ? q.options : [];
+      const a2 = opts.filter((i) => s.cards[i].cid === 'jpA');
+      expect(applyAction(s, 0, { t: 'choose', picks: a2 }, L).error).toMatch(/異なる名前/);
+      s = act(s, 0, { t: 'choose', picks: [a2[0], opts.find((i) => s.cards[i].cid === 'jpB')!] });
+      s = drain(s);
+      expect(s.players[0].battle.length).toBe(2);
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

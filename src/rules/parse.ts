@@ -2000,6 +2000,79 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「(EXライフシールドが離れた時、)これがタップされていて、追加ターン中でなければ、このターンの後に自分のターンを追加する」
   if (/^これがタップされていて、追加ターン中でなければ、このターンの後に自分のターンを追加する$/.test(s))
     return [{ op: 'if', cond: { c: 'and', a: { c: 'selfTapped' }, b: { c: 'not', a: { c: 'inExtraTurn' } } }, body: [{ op: 'extraTurn' }] }];
+  // ---- Jack-Pot ----
+  // 「その中からJack-Potを1つ出してもよい」
+  if ((mm = s.match(/^その中から(Jack-Pot)を(\d+)つ(?:バトルゾーンに)?出(?:してもよい|す)$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'element', races: [mm[1]] }, count: { n: +mm[2], upTo: true } }, purpose: 'benefit', prompt: `${mm[1]}を出す` },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「その中から、呪文とJack-Potカードをすべて手札に加え、残りを好きな順序で山札の下に置く」
+  if ((mm = s.match(/^その中から、?呪文と(.+?)カードをすべて手札に加え、残りを好きな順序で山札の(?:一番)?下に置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', or: [{ owner: 'self', zones: ['deck'], kind: 'spell' }, { owner: 'self', zones: ['deck'], kind: 'card', races: [mm[1].replace(/・$/, '')] }] }, count: { n: 99, upTo: true } }, purpose: 'benefit', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+      { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+    ];
+  // 「自分のマナゾーンにドラゴン・クリーチャーが5体以上あれば、Jack-Potカードまたはコスト8以下の呪文を1枚、自分の手札からコストを支払わずに実行してもよい」
+  if ((mm = s.match(/^自分のマナゾーンに(.+?)・クリーチャーが(\d+)体以上あれば、(.+?)カードまたはコスト(\d+)以下の呪文を(\d+)枚、自分の手札からコストを支払わずに実行してもよい$/)))
+    return [
+      {
+        op: 'if',
+        cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'creature', races: [mm[1]] }, cmp: '>=', n: +mm[2] },
+        body: [
+          {
+            op: 'optional',
+            body: [
+              { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', or: [{ owner: 'self', zones: ['hand'], kind: 'card', races: [mm[3]] }, { owner: 'self', zones: ['hand'], kind: 'spell', costMax: +mm[4] }] }, count: { n: +mm[5], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '手札から実行するカードを選ぶ' },
+              { op: 'play', target: { ref: 'it' }, mode: 'use' },
+            ],
+            prompt: s0,
+          },
+        ],
+      },
+    ];
+  // 「自分のマナゾーンにドラゴン・クリーチャーが5体以上あり、これが追加ターンでなければ、Jack-Potカードを合計5枚、自分のマナゾーンまたは墓地から好きな順序で山札の下に置いてもよい」
+  if ((mm = s.match(/^自分のマナゾーンに(.+?)・クリーチャーが(\d+)体以上あり、これが追加ターンでなければ、(.+?)カードを合計(\d+)枚、自分のマナゾーンまたは墓地から好きな順序で山札の(?:一番)?下に置いてもよい$/))) {
+    const jsel: Sel = { owner: 'self', zones: ['mana', 'grave'], kind: 'card', races: [mm[3]] };
+    return [
+      {
+        op: 'if',
+        cond: { c: 'and', a: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'creature', races: [mm[1]] }, cmp: '>=', n: +mm[2] }, b: { c: 'and', a: { c: 'not', a: { c: 'inExtraTurn' } }, b: { c: 'count', sel: jsel, cmp: '>=', n: +mm[4] } } },
+        body: [{ op: 'optional', body: [{ op: 'choose', target: { ref: 'sel', sel: jsel, count: { n: +mm[4], upTo: false }, chooser: 'self' }, purpose: 'neutral', prompt: `山札の下に置く${mm[3]}カードを選ぶ` }, { op: 'move', target: { ref: 'it' }, to: 'deckBottom' }], prompt: s0 }],
+      },
+    ];
+  }
+  // 「自分のマナゾーンにドラゴン・クリーチャーが7体以上あれば、異なる名前のJack-Potを好きな数、自分の手札またはマナゾーンから出してもよい」
+  if ((mm = s.match(/^自分のマナゾーンに(.+?)・クリーチャーが(\d+)体以上あれば、異なる名前の(.+?)を(?:好きな数、?|99(?:枚|体|つ)まで)自分の手札またはマナゾーンから(?:バトルゾーンに)?出(?:してもよい|す)$/)))
+    return [
+      {
+        op: 'if',
+        cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'creature', races: [mm[1]] }, cmp: '>=', n: +mm[2] },
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand', 'mana'], kind: 'element', races: [mm[3]] }, count: { n: 99, upTo: true, distinct: 'name' }, chooser: 'self' }, purpose: 'benefit', prompt: `異なる名前の${mm[3]}を選ぶ` },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ],
+      },
+    ];
+  // 「その後、自分の手札からJack-Potカードを1枚表向きにしてもよい」
+  if ((mm = s.match(/^(?:その後、)?自分の手札から(.+?)カードを(\d+)枚表向きにしてもよい$/)))
+    return [{ op: 'optional', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', races: [mm[1]] }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'neutral', prompt: '表向きにするカードを選ぶ' }, { op: 'note', text: '手札から表向きにした' }], prompt: s0 }];
+  // 「そうしたら、次の自分のターンのはじめまで、こうして表向きにしたカード以下のコストの相手のクリーチャーは攻撃できない」
+  if (/^(?:そうしたら、)?次の自分のターンのはじめまで、こうして表向きにしたカード以下のコストの相手のクリーチャーは攻撃できない$/.test(s))
+    return [
+      { op: 'countSet', costOfIt: true },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLeCount: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'restrict', target: { ref: 'it' }, what: 'attackNext' },
+    ];
+  // 「その後、自分のマナゾーンにJack-Potカードが3枚以上あれば、自分の山札の上からもう1枚、タップしてマナゾーンに置く」
+  if ((mm = s.match(/^(?:その後、)?自分のマナゾーンに(.+?)カードが(\d+)枚以上あれば、自分の山札の上からもう(\d+)枚、?タップしてマナゾーンに置く$/)))
+    return [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', races: [mm[1]] }, cmp: '>=', n: +mm[2] }, body: [{ op: 'top', n: +mm[3], to: 'manaTapped', who: 'self' }] }];
+  // 「自分の山札をシャッフルし、上から自分のエレメントの数だけ見る」
+  if (/^自分の山札をシャッフルし、上から自分のエレメントの数だけ見る$/.test(s)) {
+    ctx.looked = true;
+    return [{ op: 'shuffle' }, { op: 'countSet', sel: { owner: 'self', zones: ['battle'], kind: 'element' } }, { op: 'top', n: 0, to: 'look', who: 'self', fromCount: true }];
+  }
   // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
   if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」

@@ -289,7 +289,7 @@ export type Pending =
       /** 選んだカードのコストの合計の下限 */
       sumCostMin?: number;
       /** 異なるカードタイプ・コストのカードだけを選ぶ */
-      distinct?: 'type' | 'cost' | 'zone' | 'race';
+      distinct?: 'type' | 'cost' | 'zone' | 'race' | 'name';
       exec: Exec;
     }
   | {

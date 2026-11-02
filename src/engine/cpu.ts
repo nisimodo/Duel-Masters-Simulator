@@ -912,7 +912,7 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
     let sum = 0;
     for (const i of [...top.options].sort((a, b) => ownValue(s, L, b) - ownValue(s, L, a))) {
       const cd = L(s.cards[i].cid);
-      const keys = top.distinct === 'race' ? (cd?.faces.flatMap((f) => f.races) ?? []) : [top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '')];
+      const keys = top.distinct === 'race' ? (cd?.faces.flatMap((f) => f.races) ?? []) : [top.distinct === 'zone' ? s.cards[i].zone : top.distinct === 'name' ? (cd?.name ?? '') : top.distinct === 'cost' ? String(cd?.faces[0]?.cost) : (cd?.faces.map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : f.type)).join('/') ?? '')];
       const cost = cd?.faces[0]?.cost ?? 0;
       if (keys.some((k) => seen.has(k)) || picks.length >= top.max || (top.sumCostMax != null && sum + cost > top.sumCostMax)) continue;
       for (const k of keys) seen.add(k);
