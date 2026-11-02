@@ -556,6 +556,7 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
     const v = op.kind === 'name' && answer.value ? answer.value : (ex.valueLabels ?? [])[(answer.options ?? [0])[0]];
     if (v != null) {
       s.chosenValue = op.kind === 'race' ? { race: v } : op.kind === 'civ' ? { civ: v } : op.kind === 'name' ? { name: v } : { num: +v };
+      if (op.howMany) ex.count = +v;
       // カード名は、選んだカード自身にも覚えておく (「選んだ名前を持つクリーチャー」はずっと続く)
       if (op.kind === 'name' && s.cards[ex.src]) s.cards[ex.src].chosenName = v;
       log(s, ex.player, `${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}「${v}」を選んだ`);
@@ -1000,6 +1001,17 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'ekLeave':
         if (s.cards[op.iid]?.zone === 'battle') moveCard(s, L, op.iid, op.to, { pos: op.pos, noEK: true });
         break;
+      case 'shuffleToDeckBottom': {
+        const ids = ex.it.filter((i) => s.cards[i].zone !== 'gone');
+        shuffleArr(s, ids);
+        for (const i of ids) moveCard(s, L, i, 'deck', { pos: 'bottom' });
+        log(s, ex.player, `${ids.length}枚をシャッフルして山札の一番下に置いた`);
+        break;
+      }
+      case 'lowGuard':
+        s.players[ex.player].lowGuard = { turn: s.turn, max: op.max };
+        log(s, ex.player, `次の自分のターンのはじめまで、相手のパワー${op.max}以下のクリーチャーに攻撃されない`);
+        break;
       case 'ekLose':
         s.players[ex.player].ekPending = false;
         if (!ex.did) lose(s, ex.player, op.reason, true);
@@ -1203,7 +1215,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ask(s, ex, {
           player: op.byOpp ? oppOf(s, ex) : ex.player,
           mode: 'modal',
-          prompt: `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}を1つ選ぶ`,
+          prompt: op.howMany ? `${ex.name}: ${op.howMany}` : `${ex.name}: ${op.kind === 'race' ? '種族' : op.kind === 'civ' ? '文明' : op.kind === 'name' ? 'カード名' : '数字'}を1つ選ぶ`,
           options: [],
           labels,
           min: 1,

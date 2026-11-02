@@ -803,6 +803,8 @@ function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameSt
       if (strongest) return { t: 'choose', value: strongest };
       return { t: 'choose', options: (top.labels ?? []).length ? [0] : [] };
     }
+    // 「何枚〜するか」は多いほう
+    if (op?.op === 'chooseValue' && op.howMany) return { t: 'choose', options: [(top.labels ?? ['0']).length - 1] };
     if (op?.op === 'chooseValue') {
       // 有利な効果なら自分の、不利な効果なら相手のクリーチャーで一番多い種族・文明・コスト
       const who = op.hostile ? s.players.filter((_, i) => i !== p).flatMap((pl) => pl.battle) : [...s.players[p].battle, ...s.players[p].hand];

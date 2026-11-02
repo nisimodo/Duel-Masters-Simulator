@@ -739,7 +739,8 @@ export function breakCount(s: GameState, L: Lookup, iid: number): number {
   const powered = (faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'poweredBreaker') || staticKws(s, L, iid).includes('パワード・ブレイカー') || (s.cards[iid].grants ?? []).some((g) => g.kws.includes('パワード・ブレイカー'));
   if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'noBreak')) return 0;
   if ((faceOf(s, L, iid)?.statics ?? []).some((x) => x.s === 'gBreaker')) return 99;
-  const bonus = s.cards[iid].breakBonus ?? 0;
+  // 暴命天 バラギアラ 「すべてのクリーチャーは、シールドをさらに1つブレイクする」
+  const bonus = (s.cards[iid].breakBonus ?? 0) + activeStatics(s, L).reduce((n, x) => n + (x.spec.s === 'allBreakPlus' ? x.spec.n : 0), 0);
   // (パワーがマイナスでもブレイク数は減らさない)
   return (powered ? k.breaker + Math.max(0, Math.floor(power(s, L, iid, true) / 6000)) : k.breaker) + bonus;
 }
@@ -1739,7 +1740,33 @@ export function lose(s: GameState, p: number, reason: string, noEK = false) {
       if (lr.cond && !condHolds(s, L, p, b, lr.cond)) continue;
       if (lr.pay === 'destroySelf') moveCard(s, L, b, 'grave');
       else if (lr.pay === 'deckBottomSelf') moveCard(s, L, b, 'deck', { pos: 'bottom' });
-      else {
+      else if (lr.pay === 'manaToDeck') {
+        // 無敵虹帝: マナが足りなければ使えない。多い時は (人のプレイヤーは) 置くカードを選ぶ
+        const n = lr.n ?? 8;
+        if (pl.mana.length < n) continue;
+        if (pl.mana.length > n && !pl.cpu) {
+          if (!pl.ekPending) {
+            pl.ekPending = true;
+            startExec(
+              s,
+              L,
+              p,
+              b,
+              [
+                { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, count: { n, upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: `無敵虹帝: 山札の下に置くマナゾーンのカードを${n}枚選ぶ` },
+                { op: 'shuffleToDeckBottom' },
+                { op: 'setDid', v: true },
+                { op: 'ekLose', reason },
+              ],
+              nameOf(s, L, b),
+            );
+          }
+          return;
+        }
+        const pick = [...pl.mana];
+        shuffleArr(s, pick);
+        for (const m of pick.slice(0, n)) moveCard(s, L, m, 'deck', { pos: 'bottom' });
+      } else {
         const pick = pl.battle.filter((x) => lr.sel && matchesSel(s, L, x, lr.sel)).sort((x, y) => (L(s.cards[x].cid)?.faces[0]?.cost ?? 0) - (L(s.cards[y].cid)?.faces[0]?.cost ?? 0))[0];
         if (pick == null) continue;
         moveCard(s, L, pick, 'grave');
@@ -1986,7 +2013,9 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
     (c.sick && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNewNoAttack')) ||
     activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppNoAttackMe' && staticCondOk(s, L, x)) ||
     // 「自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない」
-    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && power(s, L, iid, true) < power(s, L, x.src)) ||
+    activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'protectPlayerLowPower' && s.cards[x.src].zone === 'battle' && (x.spec.max != null ? power(s, L, iid, true) <= x.spec.max : power(s, L, iid, true) < power(s, L, x.src))) ||
+    // バラギアラ-MAX 「次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない」
+    (s.players[o].lowGuard != null && !(s.turn > s.players[o].lowGuard!.turn && s.active === o) && power(s, L, iid, true) <= s.players[o].lowGuard!.max) ||
     // (効果で一時的に得たもの)
     s.players[o].battle.some((b) => (s.cards[b].grants ?? []).some((g) => g.kws.includes('低パワーから守る')) && power(s, L, iid, true) < power(s, L, b)) ||
     attackedOnce(o);

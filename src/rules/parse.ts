@@ -1383,7 +1383,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'multPower', target: { ref: 'it' }, times: +mp2[2] },
       ];
   }
-  if (/^この(?:クリーチャー|カード)を(?:自分の)?手札から表向きにする$/.test(s)) return [{ op: 'note', text: '手札から表向きにした' }];
+  if (/^この(?:クリーチャー|カード)を(?:自分の)?手札から表向きにする$|^(?:自分の)?手札にあるこの(?:クリーチャー|カード)を表向きにする$/.test(s)) return [{ op: 'note', text: '手札から表向きにした' }];
   if (/^(?:出し、)?このクリーチャーをその上に置く$/.test(s)) return [...(/^出し/.test(s) ? [{ op: 'play', target: { ref: 'it' }, mode: 'put' } as Op] : []), { op: 'putOnTop' }];
   // 無月の門
   {
@@ -1736,6 +1736,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   if (/^次の自分のターンのはじめまで、自分と自分のクリーチャーは、?その文明を持つ呪文(?:で|によって)選ばれない$/.test(s)) return [{ op: 'spellGuard', nextOwn: true, civRef: true }];
   // 英知の防壁 「(破壊する。)その相手は、この呪文を、コストを支払わずに唱えてもよい」
   if (/^その相手は、?この呪文を、?コストを支払わずに唱え(?:る|てもよい)$/.test(s)) return [{ op: 'asPlayer', who: 'itOwner', body: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'self' }, mode: 'cast', byMe: true }], prompt: 'この呪文をコストを支払わずに唱える' }] }];
+  // バラギアラ-MAX 「次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない」
+  if ((mm = s.match(/^次の自分のターンのはじめまで、?自分は、?相手のパワー(\d+)以下のクリーチャーに攻撃されない$/))) return [{ op: 'lowGuard', max: +mm[1] }];
   // D-Jealousy-灰撫 「バトルゾーンにある自分のクリーチャー1体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱える」
   if (/^(?:バトルゾーンにある)?自分のクリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(?:る|てもよい)$/.test(s))
     return [
@@ -3714,6 +3716,21 @@ export function parseEffect(text: string): Program {
     if (dw && pre?.complete && dsel)
       return {
         ops: [...pre.ops, { op: 'if', cond: { c: 'itMatches', sel: { ...dsel, owner: 'any', zones: ['grave', 'deck', 'mana', 'hand', 'battle', 'shield'] } }, body: [{ op: 'optional', body: [{ op: 'move', target: { ref: 'self' }, to: 'grave' }, { op: 'move', target: { ref: 'it' }, to: 'battle' }], prompt: 'このドラゴニック・フィールドを墓地に置き、そのドラゴンを出す' }] }],
+        complete: true,
+        unparsed: [],
+      };
+  }
+  // バラギアラ-MAX 「自分の山札の上から3枚まで、タップしてマナゾーンに置く。その後、それと同じ枚数のカードを自分のマナゾーンから手札に戻す」
+  {
+    const bm = normText(text).replace(/\s+/g, '').replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).match(/^自分の山札の上から(\d+)枚まで、?(タップして)?(?:自分の)?マナゾーンに置く。その後、それと同じ枚数のカードを自分のマナゾーンから(?:自分の)?手札に戻す。?$/);
+    if (bm)
+      return {
+        ops: [
+          { op: 'chooseValue', kind: 'number', max: +bm[1], hostile: false, howMany: `山札の上から何枚マナゾーンに置くか選ぶ (同じ枚数をマナゾーンから手札に戻す)` },
+          { op: 'repeatCount', body: [{ op: 'top', n: 1, to: bm[2] ? 'manaTapped' : 'mana', who: 'self' }] },
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card' }, count: { n: 99, upTo: false, fromCount: true }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に戻すマナゾーンのカードを選ぶ' },
+          { op: 'move', target: { ref: 'it' }, to: 'hand' },
+        ],
         complete: true,
         unparsed: [],
       };

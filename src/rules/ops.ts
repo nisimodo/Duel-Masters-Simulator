@@ -364,7 +364,7 @@ export type Op =
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
   | { op: 'unseal'; from: 'self' | 'any'; n: number }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
-  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean }
+  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean; /** 数字: 「何枚〜するか」を選ぶ (選んだ数を count にする。CPU は多いほうを選ぶ) */ howMany?: string }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** このターンの終わりに、このクリーチャーを山札の下に置く */
@@ -428,6 +428,10 @@ export type Op =
   | { op: 'ekLeave'; iid: number; to: 'hand' | 'mana' | 'grave' | 'deck' | 'shield'; pos?: 'top' | 'bottom' }
   /** クリスターナル・Κ (負ける時) の選択が終わった: 使わなければ負ける */
   | { op: 'ekLose'; reason: string }
+  /** 選んだカード (it) をシャッフルしてから山札の一番下に置く */
+  | { op: 'shuffleToDeckBottom' }
+  /** 次の自分のターンのはじめまで、相手のパワー max 以下のクリーチャーに攻撃されない */
+  | { op: 'lowGuard'; max: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */

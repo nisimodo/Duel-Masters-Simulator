@@ -290,6 +290,10 @@ const db = buildDB(
     { id: 'fuka', n: 'fuka', img: '', f: [{ n: 'fuka', t: 'クリーチャー', c: 'F', co: 6, p: '8000', r: ['ロスト・クルセイダー'], x: ['このクリーチャーを[ff03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、自分のクリーチャーを１体手札に戻す。', 'W・ブレイカー'] }] },
     cr('shibire', 1, 1000, ['このクリーチャーが出た時、自分の手札を１枚マナゾーンに置いてもよい。']),
     cr('kingShibire', 1, 1000, ['このクリーチャーが出た時、自分の手札を好きな数、タップしてマナゾーンに置いてもよい。']),
+    cr('boumei', 1, 9000, ['T・ブレイカー', 'すべてのクリーチャーは、シールドをさらに１つブレイクする。']),
+    cr('tenchiKaku', 1, 9000, ['相手のパワー5000以下のクリーチャーは、自分を攻撃できない。']),
+    cr('baraMax', 1, 9000, ['このクリーチャーが出た時、自分の山札の上から３枚まで、タップしてマナゾーンに置く。その後、それと同じ枚数のカードを自分のマナゾーンから手札に戻す。', 'このクリーチャーがバトルに勝った時、次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない。']),
+    cr('minogami', 1, 5000, ['マッハファイター', '無敵虹帝：自分がゲームに負ける時、または相手が勝つ時、かわりに自分のマナゾーンにあるカードを８枚、シャッフルしてから山札の一番下に置く。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2692,6 +2696,57 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'choose', picks });
       expect(picks.every((i) => s.cards[i].zone === 'mana' && s.cards[i].tapped)).toBe(true);
       expect(s.players[0].mana).toHaveLength(6);
+    });
+  });
+
+  describe('バラギアラ・無敵虹帝', () => {
+    it('暴命天 バラギアラ: すべてのクリーチャーはシールドをさらに1つブレイクする', () => {
+      const s = setup([{ p: 0, cid: 'boumei', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+      expect(breakCount(s, L, find(s, 0, 'battle', 'boumei')!)).toBe(4);
+      expect(breakCount(s, L, find(s, 1, 'battle', 'vanilla')!)).toBe(2);
+    });
+    it('天地革命 バラギアラ: 相手のパワー5000以下のクリーチャーは自分を攻撃できない', () => {
+      const s = setup([{ p: 1, cid: 'tenchiKaku', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'big', zone: 'battle' }]);
+      expect(attackTargets(s, L, find(s, 0, 'battle', 'vanilla')!).players).not.toContain(1);
+      expect(attackTargets(s, L, find(s, 0, 'battle', 'big')!).players).toContain(1);
+    });
+    it('バラギアラ-MAX: 選んだ枚数だけ山札からタップしてマナへ置き、同じ枚数をマナから手札へ', () => {
+      let s = setup([{ p: 0, cid: 'baraMax', zone: 'hand' }]);
+      const deck = s.players[0].deck.length;
+      const hand = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'baraMax')!, face: 0, pay: freeMana(s, 0, 1) });
+      for (let k = 0; k < 3 && s.pending[0]?.kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
+      const q = s.pending[0];
+      expect(q?.kind === 'choice' && q.labels).toEqual(['0', '1', '2', '3']);
+      s = act(s, 0, { t: 'choose', options: [2] });
+      expect(s.players[0].deck.length).toBe(deck - 2);
+      const top = s.pending[0];
+      expect(top?.kind === 'choice' && top.min).toBe(2);
+      s = act(s, 0, { t: 'choose', picks: s.players[0].mana.slice(0, 2) });
+      expect(s.players[0].hand.length).toBe(hand - 1 + 2);
+      expect(s.players[0].mana.length).toBe(3);
+    });
+    it('バラギアラ-MAX: バトルに勝った時の「パワー6000以下に攻撃されない」を解釈できる', () => {
+      const tr = parseTriggers(['このクリーチャーがバトルに勝った時、次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない。']);
+      expect(programOf(tr[0].effect).ops).toEqual([{ op: 'lowGuard', max: 6000 }]);
+    });
+    it('始虹帝 ミノガミ (無敵虹帝): 負ける時、かわりにマナ8枚を山札の下へ (多い時は選ぶ)', () => {
+      let s = setup([{ p: 0, cid: 'minogami', zone: 'battle' }], 8);
+      const deck = s.players[0].deck.length;
+      lose(s, 0, 'テスト');
+      expect(s.players[0].lost).toBeFalsy();
+      expect(s.players[0].mana).toHaveLength(0);
+      expect(s.players[0].deck.length).toBe(deck + 8);
+      // 9枚あれば8枚を選ぶ
+      s = setup([{ p: 0, cid: 'minogami', zone: 'battle' }], 9);
+      lose(s, 0, 'テスト');
+      expect(s.players[0].lost).toBeFalsy();
+      const keep = s.players[0].mana[0];
+      s = act(s, 0, { t: 'choose', picks: s.players[0].mana.slice(1) });
+      expect(s.players[0].mana).toEqual([keep]);
+      // マナが8枚未満なら負ける
+      lose(s, 0, 'テスト');
+      expect(s.players[0].lost).toBe(true);
     });
   });
 

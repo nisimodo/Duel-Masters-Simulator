@@ -252,9 +252,11 @@ export type StaticSpec =
   /** 相手のクリーチャーが出て、その能力がトリガーする時、かわりにトリガーしない (cond: 条件) */
   | { s: 'oppCipNull'; cond?: StaticCond }
   /** 自分は、このクリーチャーよりパワーが小さいクリーチャーに攻撃されない */
-  | { s: 'protectPlayerLowPower' }
+  | { s: 'protectPlayerLowPower'; /** 「相手のパワーN以下のクリーチャーは、自分を攻撃できない」 (なければこのクリーチャーのパワーより小さい) */ max?: number }
+  /** 暴命天 バラギアラ 「すべてのクリーチャーは、シールドをさらに1つブレイクする」 */
+  | { s: 'allBreakPlus'; n: number }
   /** 自分がゲームに負ける時、かわりに〜 (from: このカードがある場所 / pay: 払うもの) */
-  | { s: 'loseReplace'; from: 'battle' | 'hand'; pay: 'destroySelf' | 'deckBottomSelf' | 'destroyOwn'; sel?: Sel; cond?: Cond; oppTurn?: boolean; once?: boolean }
+  | { s: 'loseReplace'; from: 'battle' | 'hand'; pay: 'destroySelf' | 'deckBottomSelf' | 'destroyOwn' | 'manaToDeck'; sel?: Sel; cond?: Cond; oppTurn?: boolean; once?: boolean; /** manaToDeck: 山札の下に置くマナの枚数 */ n?: number }
   /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
   | { s: 'breakToDeck4' }
   /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
@@ -631,6 +633,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     if (mc && pc?.cond) return [{ s: 'oppCipNull', cond: pc.cond }];
   }
   if (/^自分は、?このクリーチャーよりパワーが小さいクリーチャーに攻撃されない$/.test(t0)) return [{ s: 'protectPlayerLowPower' }];
+  if ((m = t0.match(/^相手のパワー(\d+)以下のクリーチャーは、?自分を攻撃できない$/))) return [{ s: 'protectPlayerLowPower', max: +m[1] }];
+  if ((m = t0.match(/^すべてのクリーチャーは、?シールドをさらに(\d+)(?:つ|枚)ブレイクする$/))) return [{ s: 'allBreakPlus', n: +m[1] }];
+  // 無敵虹帝 「自分がゲームに負ける時、または相手が勝つ時、かわりに自分のマナゾーンにあるカードを8枚、シャッフルしてから山札の一番下に置く」
+  if ((m = t0.replace(/^無敵虹帝[:：]/, '').match(/^自分がゲームに負ける時、?または相手が(?:ゲームに)?勝つ時、かわりに自分のマナゾーンにあるカードを(\d+)枚、?シャッフルしてから山札の(?:一番)?下に置く$/))) return [{ s: 'loseReplace', from: 'battle', pay: 'manaToDeck', n: +m[1] }];
   // ゲームに負ける時の置換
   if (/^自分がゲームに負ける時、?または相手が(?:ゲームに)?勝つ時、かわりにこのクリーチャーを破壊する$/.test(t0)) return [{ s: 'loseReplace', from: 'battle', pay: 'destroySelf' }];
   if ((m = t0.match(/^各ターンに(?:一|1)度、自分がゲームに負ける時、かわりに自分の(.+?)を1つ破壊してもよい$/))) {
