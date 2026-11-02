@@ -2326,7 +2326,7 @@ function blockStep(s: GameState, L: Lookup) {
         if (hasFlying(s, L, a.attacker) && !hasFlying(s, L, b)) return false;
         // 「パワーN以下のクリーチャーにブロックされない」等
         const ap = power(s, L, a.attacker, true);
-        if (power(s, L, b) < ap && activeStatics(s, L).some((x) => x.owner === a.owner && x.spec.s === 'ownUnblockableSmaller')) return false;
+        if (power(s, L, b) < ap && activeStatics(s, L).some((x) => x.owner === a.owner && x.spec.s === 'ownUnblockableSmaller' && (!x.spec.sel || matchesSel(s, L, a.attacker, x.spec.sel)))) return false;
         return !ownStatics(s, L, a.attacker).some(
           (x) => x.s === 'unblockableBy' && ((x.vsCreature && a.targetCard != null) || (x.maxPower != null && power(s, L, b) <= x.maxPower) || (x.smallerThanSelf && power(s, L, b) < ap) || (x.sel != null && matchesSel(s, L, b, x.sel))),
         );

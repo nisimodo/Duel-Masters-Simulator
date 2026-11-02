@@ -335,6 +335,7 @@ const db = buildDB(
     cr('raceBack', 3, 3000, ['自分のクリーチャーが出た時、そのクリーチャーと同じ種族を持つクリーチャーを１体、自分の墓地から手札に戻してもよい。']),
     cr('countDisc', 3, 3000, ['このクリーチャーが攻撃する時、このクリーチャーに含まれるカード１枚につき、相手の手札を１枚見ないで選び、捨てさせる。']),
     { id: 'twinCk', n: 'twinCk', img: '', f: [{ n: 'twinCk', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のパワー3000以下のクリーチャーを１体選び、破壊する。自分のマナゾーンにツインパクトカードがあれば、かわりに相手のパワー5000以下のクリーチャーを１体選び、破壊する。'] }] },
+    cr('rep2', 1, 1000, ['このクリーチャーが出た時、次の能力を２回まで使う。', '▶カードを１枚引く。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3193,6 +3194,13 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'attack', attacker: c, player: 1 });
       s = drain(s);
       expect(s.players[1].grave.length).toBe(g + 2);
+    });
+    it('次の能力を2回まで使う。▶カードを1枚引く', () => {
+      let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);
+      const h = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'rep2')!, face: 0, pay: freeMana(s, 0, 1) });
+      s = drain(s);
+      expect(s.players[0].hand.length).toBe(h - 1 + 2);
     });
     it('自分のマナゾーンにツインパクトカードがあれば、かわりにパワー5000以下を破壊', () => {
       let s = setup([{ p: 0, cid: 'twinCk', zone: 'hand' }, { p: 1, cid: 'emo', zone: 'battle' }]);

@@ -65,7 +65,7 @@ export type StaticSpec =
   | { s: 'cantAttackCreatures' }
   | { s: 'unblockableBy'; maxPower?: number; smallerThanSelf?: boolean; sel?: Sel; vsCreature?: boolean }
   /** 自分のクリーチャーは、それよりパワーが小さいクリーチャーにブロックされない */
-  | { s: 'ownUnblockableSmaller' }
+  | { s: 'ownUnblockableSmaller'; sel?: Sel }
   /** このクリーチャーは sel に攻撃されない */
   | { s: 'noAttackedBy'; sel: Sel }
   | { s: 'tapMana' }
@@ -1027,6 +1027,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^相手のターン中、相手がバトルゾーンにあるクリーチャーを選ぶ時、このクリーチャーは選ばれない$/.test(t0)) return [{ s: 'untargetable', bySpellOnly: false }];
   if (/^自分のクリーチャーは(?:すべて)?、?それよりパワーが小さいクリーチャーにブロックされない$/.test(t0)) return [{ s: 'ownUnblockableSmaller' }];
+  if ((m = t0.match(/^自分の(光|水|闇|火|自然)のクリーチャーは(?:すべて)?、?それよりパワーの?小さいクリーチャーにブロックされない$/)))
+    return [{ s: 'ownUnblockableSmaller', sel: { owner: 'self', zones: ['battle'], kind: 'creature', civs: [({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const)[m[1] as '光']] } }];
+  // 「自分の、ドラゴンと他の超化獣すべてに「スピードアタッカー」を与える」
+  if ((m = t0.match(/^自分の、(.+?)と他の(.+?)すべてに((?:「[^」]+」と?)+)を与える$/))) {
+    const kws = [...m[3].matchAll(/「([^」]+)」/g)].map((x) => x[1]);
+    return [m[1], m[2]].map((r, k) => ({ s: 'grant', target: { t: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', races: [r], ...(k === 1 ? { other: true } : {}) } }, kws, when: 'always' }) as StaticSpec);
+  }
   if (/^このクリーチャーは、?クリーチャーを攻撃する時(?:、)?ブロックされない$/.test(t0)) return [{ s: 'unblockableBy', vsCreature: true }];
   if ((m = t0.match(/^このクリーチャーは、?(.+?)に(攻撃(?:また|も)はブロック|攻撃|ブロック)されない$/)) && parseSel(m[1])) {
     const sel = parseSel(m[1])!;

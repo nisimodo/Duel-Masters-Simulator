@@ -1914,6 +1914,11 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「このクリーチャーに含まれるカード1枚につき、相手の手札を1枚見ないで選び、捨てさせる」
   if ((mm = s.match(/^このクリーチャーに含まれるカード1枚につき、相手の手札を(\d+)枚見ないで選び、捨てさせる$/)))
     return [{ op: 'countSet', cardsOfSelf: true }, { op: 'repeatCount', body: [{ op: 'discard', who: 'opp', count: { n: +mm[1], upTo: false }, how: 'random' }] }];
+  if ((mm = s.match(/^▶?相手は(?:自身|自分)の、?クリーチャーまたはシールドを(\d+)つ選び、持ち主のマナゾーンに置く$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle', 'shield'], kind: 'card', or: [{ owner: 'opp', zones: ['battle'], kind: 'creature' }, { owner: 'opp', zones: ['shield'], kind: 'card' }] }, count: { n: +mm[1], upTo: false }, chooser: 'opp' }, purpose: 'sacrifice', prompt: 'マナゾーンに置くクリーチャーまたはシールドを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'mana' },
+    ];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
@@ -4225,6 +4230,20 @@ function parseEffectRaw(text: string): Program {
   const ops: Op[] = [];
   const unparsed: string[] = [];
 
+  // 「(その後、)こうして自分が勝った回数、次の効果を使う。〜」
+  const rw = t.match(/^(.*?)(?:その後、)?こうして(?:自分が)?(?:ガチンコ・ジャッジに)?勝った回数、次の効果を使う。(.+)$/);
+  if (rw) {
+    const pre: Program = rw[1].trim() ? parseEffect(rw[1]) : { ops: [], complete: true, unparsed: [] };
+    const body = parseEffect(rw[2]);
+    return { ops: [...pre.ops, { op: 'repeatWins', body: body.ops }], complete: pre.complete && body.complete, unparsed: [...pre.unparsed, ...body.unparsed] };
+  }
+  // 「次の能力を3回まで使う。〜」
+  const rep2 = t.match(/^(.*?)次の能力を(\d+)回まで使う。(.+)$/);
+  if (rep2) {
+    const pre: Program = rep2[1].trim() ? parseEffect(rep2[1]) : { ops: [], complete: true, unparsed: [] };
+    const body = parseEffect(rep2[3]);
+    return { ops: [...pre.ops, { op: 'repeat', n: +rep2[2], body: body.ops }], complete: pre.complete && body.complete, unparsed: [...pre.unparsed, ...body.unparsed] };
+  }
   // 「次の能力をN回行う。〜」 (鬼タイムなら M 回)
   const rep = t.match(/^(.*?)次の能力を(\d+)回(?:\[鬼(\d+):(\d+)\])?行う。(.+)$/);
   if (rep) {

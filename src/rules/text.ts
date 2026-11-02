@@ -74,7 +74,7 @@ export function mergeModal(lines: string[]): string[] {
       out[out.length - 1] = prev.replace(/。?\s*$/, '。') + t.replace(/^[▶►▪■・?？️\s]+/, '').replace(/\?(\d)/g, '-$1');
       continue;
     }
-    if (/次の能力を\d+回行う。?$/.test(stripReminder(t))) rep = true;
+    if (/次の能力を\d+回行う。?$/.test(stripReminder(t)) || /次の(?:能力|効果)を(?:\d+回(?:まで)?)?使う。?$/.test(stripReminder(t))) rep = true;
     // 鬼タイム「この能力をN回のかわりにM回行う」
     const oniRep = t.replace(/\s+/g, '').match(/^鬼タイム[:：]?自分と相手のシールドの数が合計(\d+)つ以下なら、この能力を\d+回のかわりに(\d+)回行う/);
     if (oniRep && /次の能力を\d+回行う/.test(prev)) {
