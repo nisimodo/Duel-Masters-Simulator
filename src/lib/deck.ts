@@ -24,6 +24,22 @@ export interface RoomRules {
   hof: 'normal' | 'zero';
   /** アドバンス or オリジナル */
   format: 'advance' | 'original';
+  /** デュエパ: 'modoki' はデュエパもどき (デュエマ用のデッキ・パートナーなし・ハイランダーなし・手札とシールド6枚。効果の範囲などはデュエパのルール) */
+  style?: 'normal' | 'modoki';
+}
+
+/** デュエパもどきか */
+export const isModoki = (r: RoomRules) => r.mode === 'duepa' && r.style === 'modoki';
+
+/** ルームで使うデッキの決まり (デュエパもどきはデュエマ用のデッキをアドバンスとして調べる) */
+export function deckRulesOf(r: RoomRules): RoomRules {
+  return isModoki(r) ? { mode: 'duema', hof: r.hof, format: 'advance' } : r;
+}
+
+/** ルームの名前に出すルール */
+export function rulesLabel(r: RoomRules): string {
+  if (r.mode === 'duepa') return isModoki(r) ? `デュエパもどき / ${r.hof === 'zero' ? '殿堂ゼロ' : '通常ルール'}` : 'デュエパーティー';
+  return `デュエマ / ${r.hof === 'zero' ? '殿堂ゼロ' : '通常ルール'} / ${r.format === 'original' ? 'オリジナル' : 'アドバンス'}`;
 }
 
 export const DEFAULT_RULES: Record<DeckType, RoomRules> = {

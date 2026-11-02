@@ -4,6 +4,7 @@ import { CardBack, CardDetail, CardImg, isWideCard } from '../components/CardVie
 import { useApp } from '../context';
 import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
+import { isModoki } from '../lib/deck';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { preloadCardImages } from '../lib/preload';
 import { AbilityOrderDialog, ActivationDialog } from './Activation';
@@ -841,7 +842,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             <b className="grow">
               ターン{s.turn} ・ {s.players[s.active].name}
             </b>
-            <span className="badge">{room.rules.mode === 'duema' ? `デュエマ ${room.rules.hof === 'zero' ? '殿堂ゼロ' : ''}${room.rules.format === 'original' ? ' オリジナル' : ''}` : 'デュエパ'}</span>
+            <span className="badge">{room.rules.mode === 'duema' ? `デュエマ ${room.rules.hof === 'zero' ? '殿堂ゼロ' : ''}${room.rules.format === 'original' ? ' オリジナル' : ''}` : isModoki(room.rules) ? 'デュエパもどき' : 'デュエパ'}</span>
           </div>
           {me < 0 && (
             <div className="row small" style={{ gap: 6 }}>

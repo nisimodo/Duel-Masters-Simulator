@@ -85,7 +85,8 @@ function extraTurnAttacker(s: GameState, p: number, L: Lookup, iid: number): boo
   if ((f.triggers ?? []).some((t) => t.events.includes('attack') && hasOp(programOf(t.effect).ops, 'extraTurn'))) return true;
   return castsOnAttack(f) && s.players[p].hand.some((h) => L(s.cards[h].cid)?.faces.some((x) => x.isSpell && givesExtraTurn(x)));
 }
-const noExtraTurn = (s: GameState, L: Lookup) => activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn');
+// (デュエパでは追加ターンを得る効果は無効)
+const noExtraTurn = (s: GameState, L: Lookup) => s.mode === 'duepa' || activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn');
 
 /** 革命チェンジで出した時の「出た時」の効果の価値 (使えないファイナル革命は数えない) */
 function revEnterValue(s: GameState, p: number, L: Lookup, f: Face): number {

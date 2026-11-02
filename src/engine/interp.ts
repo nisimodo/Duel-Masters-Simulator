@@ -2059,6 +2059,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'extraTurn': {
+        if (s.mode === 'duepa') {
+          log(s, ex.player, 'デュエパでは、追加ターンを得る効果は無効');
+          break;
+        }
         if (activeStatics(s, L).some((x) => x.spec.s === 'noExtraTurn')) {
           log(s, ex.player, 'ターンを追加できない (能力)');
           break;

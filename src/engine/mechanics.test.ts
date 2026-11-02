@@ -1,7 +1,7 @@
 // 名前のある能力 (B・A・D・マナ爆誕・エターナル・Ω・ガードマン 等) のテスト
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { abilityPick, applyAction, autoPay, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
+import { turnStat as turnStatOf, abilityPick, applyAction, autoPay, attackTargets, battle, decider, breakCount, breakShields, drawCards, lose, canAttackWith, createGame, kwOf, moveCard, power } from './engine';
 import { matchesSel, programOf, startExec } from './interp';
 import { cpuPlan } from './cpu';
 import { parseSel } from '../rules/selector';
@@ -294,6 +294,8 @@ const db = buildDB(
     cr('tenchiKaku', 1, 9000, ['相手のパワー5000以下のクリーチャーは、自分を攻撃できない。']),
     cr('baraMax', 1, 9000, ['このクリーチャーが出た時、自分の山札の上から３枚まで、タップしてマナゾーンに置く。その後、それと同じ枚数のカードを自分のマナゾーンから手札に戻す。', 'このクリーチャーがバトルに勝った時、次の自分のターンのはじめまで、自分は相手のパワー6000以下のクリーチャーに攻撃されない。']),
     cr('minogami', 1, 5000, ['マッハファイター', '無敵虹帝：自分がゲームに負ける時、または相手が勝つ時、かわりに自分のマナゾーンにあるカードを８枚、シャッフルしてから山札の一番下に置く。']),
+    { id: 'winSp', n: 'winSp', img: '', f: [{ n: 'winSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分はゲームに勝つ。'] }] },
+    { id: 'extraSp', n: 'extraSp', img: '', f: [{ n: 'extraSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターンの後で、自分のターンをもう一度行う。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2747,6 +2749,45 @@ describe('named mechanics', () => {
       // マナが8枚未満なら負ける
       lose(s, 0, 'テスト');
       expect(s.players[0].lost).toBe(true);
+    });
+  });
+
+  describe('デュエパのルール', () => {
+    const duepa = (s: GameState) => ((s.mode = 'duepa'), s);
+    const run = (s: GameState) => {
+      for (let k = 0; k < 10 && s.pending.length; k++) s = act(s, s.pending[0].player, { t: 'resolve', use: true });
+      return s;
+    };
+    it('勝敗を直接決める効果は無効 (デュエマでは勝つ)', () => {
+      let s = duepa(setup([{ p: 0, cid: 'winSp', zone: 'hand' }]));
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'winSp')!, face: 0, pay: [] }));
+      expect(s.players[1].lost).toBeFalsy();
+      let d = setup([{ p: 0, cid: 'winSp', zone: 'hand' }]);
+      d = run(act(d, 0, { t: 'play', iid: find(d, 0, 'hand', 'winSp')!, face: 0, pay: [] }));
+      expect(d.players[1].lost).toBe(true);
+    });
+    it('ルールで負けること (山札切れ・ダイレクトアタック) は有効', () => {
+      const s = duepa(setup([]));
+      lose(s, 1, 'ダイレクトアタック');
+      expect(s.players[1].lost).toBe(true);
+    });
+    it('追加ターンを得る効果は無効', () => {
+      let s = duepa(setup([{ p: 0, cid: 'extraSp', zone: 'hand' }]));
+      s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'extraSp')!, face: 0, pay: [] }));
+      expect(s.extraTurnFor).toBeUndefined();
+    });
+    it('同じ名前のカードは各ターン1回までしか使えない', () => {
+      let s = duepa(setup([{ p: 0, cid: 'sa', zone: 'hand' }, { p: 0, cid: 'sa', zone: 'hand' }]));
+      const [a, b] = s.players[0].hand.filter((i) => s.cards[i].cid === 'sa');
+      s = run(act(s, 0, { t: 'play', iid: a, face: 0, pay: freeMana(s, 0, 1) }));
+      expect(applyAction(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 1) }, L).error).toMatch(/各ターン1回まで/);
+    });
+    it('同じ名前のカードは各ターン1枚までしかバトルゾーンに出せない (効果で出す時も)', () => {
+      const s = duepa(setup([{ p: 0, cid: 'sa', zone: 'battle' }, { p: 0, cid: 'sa', zone: 'hand' }]));
+      (turnStatOf(s, 0).enteredNames ??= []).push('sa');
+      const b = find(s, 0, 'hand', 'sa')!;
+      moveCard(s, L, b, 'battle');
+      expect(s.cards[b].zone).toBe('hand');
     });
   });
 

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context';
 import { createRoom, joinRoom, MAX_PLAYERS, playerCount, subscribeRooms, type Room } from '../data/api';
 import { FormatBadge } from '../components/DeckGrid';
-import type { DeckType, RoomRules } from '../lib/deck';
+import { isModoki, type DeckType, type RoomRules } from '../lib/deck';
 
 function ago(t: number) {
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -58,6 +58,12 @@ function RoomList({ mode, uid }: { mode: DeckType; uid: string }) {
                   <span className="badge">{r.rules.hof === 'zero' ? '殿堂ゼロ' : '通常ルール'}</span>
                 </>
               )}
+              {isModoki(r.rules) && (
+                <>
+                  <span className="badge">デュエパもどき</span>
+                  <span className="badge">{r.rules.hof === 'zero' ? '殿堂ゼロ' : '通常ルール'}</span>
+                </>
+              )}
               <span className="small muted grow">
                 対戦 {n}/{max}
                 {Object.keys(r.cpus).length ? ` (CPU${Object.keys(r.cpus).length})` : ''} ・ 観戦 {spectators} ・ {ago(r.createdAt)}
@@ -81,6 +87,7 @@ export default function RoomEntry() {
   const [pw, setPw] = useState('');
   const [hof, setHof] = useState<RoomRules['hof']>('normal');
   const [format, setFormat] = useState<RoomRules['format']>('original');
+  const [style, setStyle] = useState<'normal' | 'modoki'>('normal');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   if (!user) return null;
@@ -130,8 +137,40 @@ export default function RoomEntry() {
             </p>
           </>
         )}
-        {mode === 'duepa' && <p className="small muted">デュエパーティー公式ルール (60枚ハイランダー・パートナー・初期手札/シールド6枚) で遊びます。</p>}
-        <button className="primary" disabled={busy || !pw.trim()} onClick={() => run(() => createRoom(user.uid, user.name, pw, { mode, hof, format }))}>
+        {mode === 'duepa' && (
+          <>
+            <div className="row">
+              <b style={{ width: 90 }}>ルール</b>
+              <label>
+                <input type="radio" checked={style === 'normal'} onChange={() => setStyle('normal')} /> 通常デュエパ
+              </label>
+              <label>
+                <input type="radio" checked={style === 'modoki'} onChange={() => setStyle('modoki')} /> デュエパもどき
+              </label>
+            </div>
+            {style === 'modoki' && (
+              <div className="row">
+                <b style={{ width: 90 }}>殿堂</b>
+                <label>
+                  <input type="radio" checked={hof === 'normal'} onChange={() => setHof('normal')} /> 通常ルール
+                </label>
+                <label>
+                  <input type="radio" checked={hof === 'zero'} onChange={() => setHof('zero')} /> 殿堂ゼロ
+                </label>
+              </div>
+            )}
+            <p className="small muted">
+              {style === 'normal'
+                ? 'デュエパーティー公式ルール (60枚ハイランダー・パートナー・初期手札/シールド6枚) で遊びます。'
+                : 'デュエパもどき (非公式): デュエマ用の40枚 (+超次元・超GR) のデッキを使い、初期手札とシールドは6枚。パートナーはなく、ハイランダーでなくてもかまいません。能力の効果の範囲などはデュエパの公式ルールに従います。'}
+            </p>
+          </>
+        )}
+        <button
+          className="primary"
+          disabled={busy || !pw.trim()}
+          onClick={() => run(() => createRoom(user.uid, user.name, pw, mode === 'duepa' ? { mode, hof: style === 'modoki' ? hof : 'normal', format: 'advance', style } : { mode, hof, format }))}
+        >
           作成して入室
         </button>
       </div>

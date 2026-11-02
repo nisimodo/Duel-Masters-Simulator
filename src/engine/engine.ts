@@ -342,6 +342,11 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} は超次元ゾーンから出せない`);
     return from as ZoneName;
   }
+  // デュエパ: 同じ名前のカードは各ターン1枚までしかバトルゾーンに出せない
+  if (to === 'battle' && from !== 'battle' && s.mode === 'duepa' && card && turnStat(s, c.owner).enteredNames?.includes(card.name)) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (デュエパでは同じ名前のカードは各ターン1枚まで)`);
+    return from as ZoneName;
+  }
   // 「次の相手のターン、相手はクリーチャーをN体しか出せない」
   if (to === 'battle' && from !== 'battle' && enterLimitHit(s, c.owner, L) && card?.faces[opts.face ?? c.face]?.isCreature) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (このターンはもうクリーチャーを出せない)`);
@@ -607,6 +612,7 @@ export function moveCard(
     // 召喚以外で出たもの・マナゾーンのカードをタップせずに召喚したものは、マナを支払わずに出たもの
     c.enteredFree = !opts.summoned || !!opts.free;
     if (c.enteredFree && card?.faces[opts.face ?? c.face]?.isCreature) s.players[c.owner].freePlayTurn = s.turn;
+    if (s.mode === 'duepa' && card) (turnStat(s, c.owner).enteredNames ??= []).push(card.name);
     if (card?.faces[opts.face ?? c.face]?.isCreature) {
       const ts = turnStat(s, c.owner);
       ts.enters++;
@@ -1704,9 +1710,17 @@ function settle(s: GameState, L: Lookup) {
   checkState(s, L);
 }
 
+/** ルールで負ける理由 (デュエパでも有効)。それ以外は効果で負ける・勝つもの */
+const RULE_LOSS = /^(ダイレクトアタック|山札切れ|投了)/;
+
 export function lose(s: GameState, p: number, reason: string, noEK = false) {
   const pl = s.players[p];
   if (pl.lost || s.phase === 'over') return;
+  // デュエパ: 勝利・敗北を直接決める効果は無効
+  if (s.mode === 'duepa' && !RULE_LOSS.test(reason)) {
+    log(s, p, `デュエパでは、勝敗を直接決める効果は無効 (${reason})`);
+    return;
+  }
   if (pl.noLose && (pl.noLose.turn === s.turn || pl.noLose.until != null)) {
     log(s, p, `${pl.name} はゲームに負けない (${reason})`);
     return;
@@ -1818,7 +1832,7 @@ function checkState(s: GameState, L: Lookup) {
     if (pl.deck.length === 0) {
       // 水上第九院 シャコガイル: 最後の1枚を引いた時は、負けるかわりに勝つ
       const lastMove = [...(s.moves ?? [])].reverse().find((m) => m.owner === p && m.from === 'deck');
-      const winner = lastMove?.to === 'hand' && pl.battle.some((b) => !abilitiesIgnored(s, L, b) && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'deckOutWin'));
+      const winner = s.mode !== 'duepa' && lastMove?.to === 'hand' && pl.battle.some((b) => !abilitiesIgnored(s, L, b) && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'deckOutWin'));
       if (winner) {
         log(s, p, `${pl.name}: 山札の最後の1枚を引いたので、負けるかわりに勝つ`);
         for (const o of opponentsOf(s, p)) lose(s, o, '特殊勝利');
@@ -2788,6 +2802,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
+  if (s.mode === 'duepa' && turnStat(s, p).usedNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1回までしか使えません';
+  if (s.mode === 'duepa' && face.isCreature && turnStat(s, p).enteredNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1枚までしかバトルゾーンに出せません';
   if (s.players[p].dLock && /D2フィールド/.test(face.type)) return 'D2フィールドを展開できません';
   const epl0 = s.players[p].enterPowerLock;
   if (epl0 && s.active === p && face.isCreature && (face.power ?? 0) <= epl0.max) return `このターンはパワー${epl0.max}以下のクリーチャーを出せません`;
@@ -2833,6 +2849,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;
+    if (s.mode === 'duepa') (turnStat(s, p).usedNames ??= []).push(card.name);
     // ササゲール: 破壊 / ハイパーエナジー: タップ
     for (const b of a.sasa ?? []) {
       log(s, p, `ササゲール: ${q(nameOf(s, L, b))} を破壊`);

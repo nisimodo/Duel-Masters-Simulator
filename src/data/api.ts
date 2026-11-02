@@ -1,6 +1,6 @@
 // プロフィール・デッキ・ルームの読み書き
 import { backend } from '../backend';
-import type { Deck, DeckType, RoomRules } from '../lib/deck';
+import { deckRulesOf, type Deck, type DeckType, type RoomRules } from '../lib/deck';
 
 // Firebase のキーに使えない文字をエスケープ
 const encKey = (k: string) => k.replace(/[.#$[\]/%]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'));
@@ -252,8 +252,8 @@ export async function closeIdleRoom(key: string): Promise<boolean> {
 
 export async function createRoom(uid: string, name: string, password: string, rules: RoomRules): Promise<string> {
   if (!password.trim()) throw new Error('パスワードを入力してください');
-  if (!(await hasDeckOfType(uid, rules.mode)))
-    throw new Error(rules.mode === 'duema' ? 'デュエマ用のデッキを作成してください' : 'デュエパ用のデッキを作成してください');
+  if (!(await hasDeckOfType(uid, deckRulesOf(rules).mode)))
+    throw new Error(deckRulesOf(rules).mode === 'duema' ? 'デュエマ用のデッキを作成してください' : 'デュエパ用のデッキを作成してください');
   const key = await roomKeyFromPassword(password);
   const now = Date.now();
   const res = await backend.transaction<Record<string, unknown>>(`rooms/${key}`, (cur) => {
@@ -289,8 +289,8 @@ export async function enterRoom(uid: string, name: string, key: string) {
     // 対戦中・満員のルームには観戦で入る (観戦ならデッキは要らない)
     const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
     const role: Role = room.status === 'playing' || full ? 'spectator' : 'player';
-    if (role === 'player' && !(await hasDeckOfType(uid, room.rules.mode)))
-      throw new Error(room.rules.mode === 'duema' ? 'デュエマ用のデッキを作成してから入室してください' : 'デュエパ用のデッキを作成してから入室してください');
+    if (role === 'player' && !(await hasDeckOfType(uid, deckRulesOf(room.rules).mode)))
+      throw new Error(deckRulesOf(room.rules).mode === 'duema' ? 'デュエマ用のデッキを作成してから入室してください' : 'デュエパ用のデッキを作成してから入室してください');
     await backend.set(`rooms/${key}/members/${uid}`, { name, role, ready: false, online: true, presence: 2, joinedAt: Date.now() });
   }
   await touchRoom(key);

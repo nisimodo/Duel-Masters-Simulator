@@ -23,14 +23,10 @@ import {
 import GameView from '../game/GameView';
 import { DeckThumb } from '../components/CardView';
 import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
-import { deckFormat, expandDeck, presetToDeck, randomDeck, splitByFormat, validateDeck, type Deck, type RoomRules } from '../lib/deck';
+import { deckFormat, deckRulesOf, expandDeck, presetToDeck, randomDeck, rulesLabel, splitByFormat, validateDeck, type Deck, type RoomRules } from '../lib/deck';
 import type { CardDB } from '../lib/cards';
 import type { GameInit } from '../engine/types';
 
-function rulesLabel(room: Room) {
-  if (room.rules.mode === 'duepa') return 'デュエパーティー';
-  return `デュエマ / ${room.rules.hof === 'zero' ? '殿堂ゼロ' : '通常ルール'} / ${room.rules.format === 'original' ? 'オリジナル' : 'アドバンス'}`;
-}
 
 async function startGame(room: Room) {
   const humans = Object.entries(room.members)
@@ -150,7 +146,7 @@ function DeckFolds({
 /** 自分のデッキを選ぶ (マイデッキ・プリセット・ランダム生成) */
 function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
   const me = room.members[uid];
-  const presets = usePresetDecks(db, room.rules);
+  const presets = usePresetDecks(db, deckRulesOf(room.rules));
   const { favs, toggle } = useFavs();
   const [view, setView] = useState<Deck | null>(null);
   const pick = (d: Deck | null) => updateMember(room.key, uid, { deckId: d?.id ?? null, deck: d ? (encodeDeck(d) as unknown as Deck) : null, ready: false });
@@ -160,7 +156,7 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
       db={db}
       deck={d}
       title={kind === 'preset' ? d.name : undefined}
-      issues={validateDeck(db, d, room.rules)}
+      issues={validateDeck(db, d, deckRulesOf(room.rules))}
       okNote="このルームで使用可能"
       caution={formatCaution(db, room.rules, d)}
       selected={me?.deckId === d.id}
@@ -175,12 +171,12 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
     <Fold title="プレイヤーのデッキ" className="fold-top">
       <DeckFolds
         db={db}
-        rules={room.rules}
+        rules={deckRulesOf(room.rules)}
         mine={myDecks}
         presets={presets}
         tile={tile}
         random={
-          <button className={me?.deckId === 'random' ? 'primary' : ''} onClick={() => pick({ ...randomDeck(db, room.rules.mode, room.rules), id: 'random', name: 'ランダム生成' })}>
+          <button className={me?.deckId === 'random' ? 'primary' : ''} onClick={() => pick({ ...randomDeck(db, deckRulesOf(room.rules).mode, deckRulesOf(room.rules)), id: 'random', name: 'ランダム生成' })}>
             ランダム生成{me?.deckId === 'random' ? ' (選択中・押すと作り直す)' : ''}
           </button>
         }
@@ -193,17 +189,17 @@ function PlayerDeckPicker({ db, room, myDecks, uid }: { db: CardDB; room: Room; 
 /** CPUのデッキを選んで追加する */
 function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks: Deck[]; uid: string }) {
   const [sel, setSel] = useState('');
-  const presets = usePresetDecks(db, room.rules);
+  const presets = usePresetDecks(db, deckRulesOf(room.rules));
   const { favs, toggle } = useFavs();
   const [view, setView] = useState<Deck | null>(null);
   const full = playerCount(room) >= MAX_PLAYERS[room.rules.mode];
   const chosen = sel === 'random' ? null : (myDecks.find((d) => d.id === sel) ?? presets.find((d) => d.id === sel));
-  const ok = sel === 'random' || (!!chosen && validateDeck(db, chosen, room.rules).length === 0);
+  const ok = sel === 'random' || (!!chosen && validateDeck(db, chosen, deckRulesOf(room.rules)).length === 0);
   const add = (e: MouseEvent) => {
     // (見出しの開閉はしない)
     e.preventDefault();
     if (!ok || full) return;
-    const deck = sel === 'random' ? randomDeck(db, room.rules.mode, room.rules) : chosen!;
+    const deck = sel === 'random' ? randomDeck(db, deckRulesOf(room.rules).mode, deckRulesOf(room.rules)) : chosen!;
     addCpu(room, uid, deck).then(() => setSel(''));
   };
   const tile = (d: Deck, kind: 'mine' | 'preset') => (
@@ -212,7 +208,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
       db={db}
       deck={d}
       title={kind === 'preset' ? d.name : undefined}
-      issues={validateDeck(db, d, room.rules)}
+      issues={validateDeck(db, d, deckRulesOf(room.rules))}
       caution={formatCaution(db, room.rules, d)}
       selected={sel === d.id}
       showUpdated={kind === 'mine'}
@@ -237,7 +233,7 @@ function CpuAdder({ db, room, myDecks, uid }: { db: CardDB; room: Room; myDecks:
     >
       <DeckFolds
         db={db}
-        rules={room.rules}
+        rules={deckRulesOf(room.rules)}
         mine={myDecks}
         presets={presets}
         tile={tile}
@@ -333,7 +329,7 @@ export default function RoomPage() {
   if (room.status === 'playing' && room.gameId)
     return <GameView key={room.gameId} room={room} db={db} onBackToLobby={() => backToLobby(room)} onLeave={leave} />;
 
-  const myDecks = decks.filter((d) => d.type === room.rules.mode);
+  const myDecks = decks.filter((d) => d.type === deckRulesOf(room.rules).mode);
   // 選んだデッキ: マイデッキは最新の内容、プリセット・ランダム生成はルームに送ったもの
   const myDeck = myDecks.find((d) => d.id === me?.deckId) ?? (me?.deckId ? (me.deck ?? undefined) : undefined);
   const toggleReady = () => {
@@ -343,7 +339,7 @@ export default function RoomPage() {
   };
   const max = MAX_PLAYERS[room.rules.mode];
   const canBecomePlayer = count < max;
-  const myIssues = myDeck ? validateDeck(db, myDeck, room.rules) : [];
+  const myIssues = myDeck ? validateDeck(db, myDeck, deckRulesOf(room.rules)) : [];
 
   return (
     <div className="page col">
@@ -351,7 +347,7 @@ export default function RoomPage() {
         <h2 className="grow" style={{ margin: 0 }}>
           ルーム
         </h2>
-        <span className="badge">{rulesLabel(room)}</span>
+        <span className="badge">{rulesLabel(room.rules)}</span>
         <button onClick={leave}>退出</button>
       </div>
       {room.lastResult && (
