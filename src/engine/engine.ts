@@ -1187,6 +1187,13 @@ function enterLimitHit(s: GameState, p: number, L?: Lookup): boolean {
   return oc.length > 0 && turnStat(s, p).enters >= Math.min(...oc);
 }
 
+/** クリーチャーがタップした: 「自分のターンに相手のクリーチャーがタップした時」(そのクリーチャーの持ち主のターン以外) */
+export function noteTapped(s: GameState, L: Lookup, iid: number) {
+  const c = s.cards[iid];
+  if (c?.zone !== 'battle' || s.active === c.owner) return;
+  fireWatchers(s, L, c.owner, iid, null, 'oppTappedMyTurn', iid);
+}
+
 /** アルケミック・プラチナム 「自分の手札が13枚以上あれば、自分のターンに1度、水のカードを自分の手札からコストを支払わずに実行してもよい」が使えるか */
 export function freeFromHandOk(s: GameState, L: Lookup, p: number, iid: number): boolean {
   const c = s.cards[iid];
@@ -3280,6 +3287,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         else {
           s.cards[a.blocker].tapped = true;
           fireSelf(s, L, a.blocker, s.cards[a.blocker].face, ['tapped']);
+          noteTapped(s, L, a.blocker);
         }
         at.blocked = a.blocker;
         countAct(s, p, 'blk');

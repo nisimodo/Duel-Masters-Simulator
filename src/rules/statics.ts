@@ -287,6 +287,8 @@ export type StaticSpec =
   | { s: 'altSummon'; cost: number; then?: string }
   /** 「このクリーチャーは、召喚以外の方法で出ない」 */
   | { s: 'summonOnlyEnter' }
+  /** 「相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ」 */
+  | { s: 'lureChoose' }
   /** 「相手のクリーチャー (エレメント) は、相手の手札以外から出ない」 */
   | { s: 'oppEnterOnlyFromHand'; creatureOnly: boolean }
   /** 「ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない」 */
@@ -728,6 +730,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^相手のクリーチャーは、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNoAttackMe' }];
   if (/^このクリーチャーは、?召喚以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'summonOnlyEnter' }];
+  if (/^相手がクリーチャーを選ぶ(?:なら|時)、可能ならこのクリーチャーを選ぶ$/.test(t0)) return [{ s: 'lureChoose' }];
   if ((m = t0.match(/^相手の(クリーチャー|エレメント)は、?相手の手札以外から(?:バトルゾーンに)?出ない$/))) return [{ s: 'oppEnterOnlyFromHand', creatureOnly: m[1] === 'クリーチャー' }];
   if (/^ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない$/.test(t0)) return [{ s: 'noPlayerAttackUnlessHyper' }];
   // 「自分のターン中、自分の山札の上から1枚をいつでも見てもよい」(見るだけ: 画面の山札操作で見られる)

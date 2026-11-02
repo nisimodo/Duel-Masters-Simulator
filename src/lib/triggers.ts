@@ -64,7 +64,8 @@ export type TrigEvent =
   | 'crossWin' // これをクロス/装備/付けたクリーチャーがバトルに勝った時
   | 'zeroBirth' // 零龍卍誕した時
   | 'ownToGrave' // カードを自分の墓地に置いた時
-  | 'ownGraveToBattle'; // カードを自分の墓地からバトルゾーンに出した時
+  | 'ownGraveToBattle' // カードを自分の墓地からバトルゾーンに出した時
+  | 'oppTappedMyTurn'; // 自分のターンに相手のクリーチャーがタップした時
 
 export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   enter: '出た時',
@@ -110,6 +111,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   attackEnd: '攻撃の終わり',
   otherOwnLeave: '自分の他のクリーチャーが離れた時',
   oppToGrave: '相手の墓地にカードが置かれた時',
+  oppTappedMyTurn: '自分のターンに相手のクリーチャーがタップした時',
   flipped: '龍解・覚醒した時',
   ownShieldAdded: 'シールドゾーンにカードが置かれた時',
   ownShieldLeft: 'シールドゾーンを離れた時',
@@ -191,7 +193,9 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     const line = stripReminder(normText(raw)).trim().replace(/^(?:侵略ZERO|リベンジ・チャンス)\s*[:：\-－ー―]\s*/, '').replace(/^自分のターンが終わる時、/, '自分のターンの終わりに、').replace(/^このクリーチャーの各ブレイクの前に、/, 'このクリーチャーがシールドをブレイクする時、')
       // 古い表記: 「このクリーチャーがバトルゾーンにある間、〜たびに」
       .replace(/^このクリーチャーがバトルゾーンにある間(?:に)?、(?=.{1,80}?(?:時|たびに?|はじめに|終わりに)、)/, '')
-      .replace(/^(.{1,80}?)(?:置かれる|出る|出た)たびに?、/, (_, x) => `${x}${/置かれる/.test(_) ? '置かれた' : '出た'}時、`);
+      .replace(/^(.{1,80}?)(?:置かれる|出る|出た)たびに?、/, (_, x) => `${x}${/置かれる/.test(_) ? '置かれた' : '出た'}時、`)
+      // 「カードが自分のシールドゾーンに置かれた時」
+      .replace(/^カードが自分のシールドゾーンに置かれた時、/, '自分のシールドゾーンにカードが置かれた時、');
     if (!line || SKIP_TRIG.test(line)) continue;
     if (/^このクリーチャーを\[[a-z]*\d+\]支払って召喚してもよい/.test(line)) continue;
     // 「とどまる」「手札に加えるかわりに墓地に置く」は常在型能力として処理
@@ -300,7 +304,8 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
     // (「相手の墓地に、どこからでもカードが置かれた時」「相手のカードがどこからでも墓地へ置かれた時」も)
-    if (/^カードが(?:どこからでも)?相手の墓地に置かれた時$|^相手の墓地に、?(?:どこからでも)?カードが置かれた時$|^相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時$/.test(clause)) ev.add('oppToGrave');
+    if (/^(?:各ターン、?はじめて、?)?(?:カードが(?:どこからでも)?相手の墓地に置かれた時|相手の墓地に、?(?:どこからでも)?カードが置かれた時|相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時)$/.test(clause)) ev.add('oppToGrave');
+    if (/^自分のターン(?:中)?に、?相手のクリーチャーがタップした時$/.test(clause)) ev.add('oppTappedMyTurn');
     // Dの揺籠 メリーボーイラウンド 「自分のターンに、1枚目のカードを引いた時」/ Dの牢閣 メメント守神宮 「いずれかのプレイヤーが自身のターンに最初のカードを引いた時」
     const firstDraw = /(?:自分の|自身の)ターンに、?(?:1|一)枚目のカードを引いた時|自身のターンに最初のカードを引いた時/.test(clause);
     if (firstDraw) {

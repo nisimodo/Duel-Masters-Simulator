@@ -18,6 +18,7 @@ import {
   log,
   lose,
   moveCard,
+  noteTapped,
   detach,
   noteMove,
   removeSeal,
@@ -32,7 +33,7 @@ import {
   type Lookup,
 } from './engine';
 import type { Exec, GameState, ZoneName } from './types';
-import { activeStatics, canBeChosen, isSealed } from './statics';
+import { abilitiesIgnored, activeStatics, canBeChosen, isSealed } from './statics';
 import { spellEffectLines } from '../lib/triggers';
 import { GACHA } from '../rules/gacha';
 
@@ -704,6 +705,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           cnt = t.count;
           if (t.chooser === 'opp') chooser = oppOf(s, ex);
           if (t.chooser === 'opp' && t.sel.owner === 'opp') cands = cands.filter((i) => s.cards[i].owner === chooser);
+          // 「相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ」: 選ぶ人の相手のそのクリーチャーがいれば、それを選ぶ
+          const lures = cands.filter((i) => s.cards[i].owner !== chooser && s.cards[i].zone === 'battle' && !abilitiesIgnored(s, L, i) && (L(s.cards[i].cid)?.faces[s.cards[i].face]?.statics ?? []).some((x) => x.s === 'lureChoose'));
+          const cn = t.count;
+          if (lures.length && cn && !('all' in cn) && !cn.fromCount && lures.length >= cn.n) cands = lures;
         } else if (t.ref === 'looked') {
           // 条件のゾーンに今あるカードだけ (先に別の場所へ動かしたカードは除く)
           cands = ex.looked.filter((i) => s.cards[i].zone !== 'gone' && (!t.sel || ((t.sel.zones as string[]).includes(s.cards[i].zone) && matchesSel(s, L, i, t.sel))));
@@ -790,8 +795,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of resolveRef(s, ex, op.target) ?? []) {
           const c = s.cards[i];
           if (c.zone !== 'battle' && c.zone !== 'mana') continue;
+          const was = c.tapped;
           c.tapped = op.op === 'tap';
           log(s, ex.player, `${q(nameOf(s, L, i))} を${op.op === 'tap' ? 'タップ' : 'アンタップ'}`);
+          if (op.op === 'tap' && !was && c.zone === 'battle') noteTapped(s, L, i);
         }
         break;
       }

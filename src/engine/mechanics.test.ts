@@ -301,6 +301,10 @@ const db = buildDB(
     cr('noLeaveExDestroy', 1, 1000, ['このクリーチャーは、破壊以外の方法で離れない。']),
     cr('handOnly', 1, 1000, ['相手のクリーチャーは、相手の手札以外から出ない。']),
     { id: 'dragonGuard', n: 'dragonGuard', img: '', f: [{ n: 'dragonGuard', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['テスト'], x: ['自分のドラゴンは、呪文によって相手に選ばれない。'] }] },
+    cr('tapKill', 1, 1000, ['自分のターンに相手のクリーチャーがタップした時、そのクリーチャーを破壊する。']),
+    { id: 'tapSp', n: 'tapSp', img: '', f: [{ n: 'tapSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、タップする。'] }] },
+    cr('lureCh', 1, 1000, ['相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ。']),
+    { id: 'killSp', n: 'killSp', img: '', f: [{ n: 'killSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、破壊する。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2868,6 +2872,29 @@ describe('named mechanics', () => {
       const d = find(s, 0, 'battle', 'dragonX')!;
       expect(canBeChosen(s, L, d, 1, true)).toBe(false);
       expect(canBeChosen(s, L, d, 1, false)).toBe(true);
+    });
+  });
+
+  describe('2026年の新カードの誘発・選ぶ能力', () => {
+    it('自分のターンに相手のクリーチャーがタップした時、そのクリーチャーを破壊する', () => {
+      let s = setup([{ p: 0, cid: 'tapKill', zone: 'battle' }, { p: 0, cid: 'tapSp', zone: 'hand' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      const big = find(s, 1, 'battle', 'big')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'tapSp')!, face: 0, pay: [] });
+      for (let k = 0; k < 6 && s.pending.length; k++) {
+        const top = s.pending[0];
+        s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: top.options.slice(0, 1) } : { t: 'resolve', use: true });
+      }
+      expect(s.cards[big].zone).toBe('grave');
+    });
+    it('相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ', () => {
+      let s = setup([{ p: 0, cid: 'killSp', zone: 'hand' }, { p: 1, cid: 'lureCh', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'killSp')!, face: 0, pay: [] });
+      for (let k = 0; k < 3 && s.pending[0]?.kind === 'ability'; k++) s = act(s, 0, { t: 'resolve', use: true });
+      const lure = find(s, 1, 'battle', 'lureCh');
+      const top = s.pending[0];
+      if (top?.kind === 'choice') expect(top.options).toEqual([lure]);
+      else expect(s.cards[lure!]?.zone ?? 'grave').toBe('grave');
+      expect(find(s, 1, 'battle', 'big')).toBeDefined();
     });
   });
 
