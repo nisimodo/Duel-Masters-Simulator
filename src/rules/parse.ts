@@ -1076,6 +1076,12 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「そのクリーチャーのこのターン最初の攻撃の終わりにアンタップする」
   if (/^(?:その|この)クリーチャー(?:の|は)、?このターン最初の攻撃の終わりにアンタップする$/.test(s)) return [{ op: 'grant', target: { ref: /^この/.test(s) ? 'self' : 'it' }, kws: ['攻撃後アンタップ'], until: 'turn' }];
   let mm: RegExpMatchArray | null;
+  // ハーメルン・ハーモニー 「クリーチャーをすべて、持ち主のマナゾーンにタップして置く」
+  if (/^(?:バトルゾーンにある)?クリーチャーをすべて、?持ち主の(?:マナゾーンにタップして|タップしてマナゾーンに)置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'manaTapped' },
+    ];
   if (/^〈手札とシールドを引き直す〉$/.test(s)) return [{ op: 'cycleHand' }, { op: 'cycleShields' }];
   if (/^〈心絵〉$/.test(s)) return [{ op: 'kokoroe' }];
   if (/^〈各ターン1度〉$/.test(s)) return [{ op: 'oncePerTurn' }];

@@ -567,7 +567,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
       const bz = st.find((x) => x.s === 'buzz');
       const buzz = bz && bz.s === 'buzz' && !alt && !gz ? Math.floor((mana - cost) / bz.n) : 0;
       cost += buzz * (bz && bz.s === 'buzz' ? bz.n : 0);
-      const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost, crystalOf(f));
+      const pay = gz ? [] : autoPay(s, L, p, f.civs as Civ[], cost, crystalOf(f), h);
       if (!pay) return;
       const rv = removalValue(card, fi);
       if (f.isCreature) {

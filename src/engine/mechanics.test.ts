@@ -354,6 +354,7 @@ const db = buildDB(
     cr('useAtk', 2, 2000, ['このクリーチャーが出た時、自分のクリーチャー１体の、攻撃する時にトリガーする能力を１つ使う。']),
     cr('atkDraw', 2, 2000, ['このクリーチャーが攻撃する時、カードを２枚引く。']),
     cr('capper', 2, 2000, ['このクリーチャーが出た時、次のターン中、相手はカードを１枚までしか実行できない。']),
+    { id: 'jkChg', n: 'jkChg', img: '', f: [{ n: 'jkChg', t: '呪文', c: 'F', co: 2, p: null, r: [], x: ['カードを１枚引く。', 'ジョーカーズ・クリーチャーを召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3319,6 +3320,11 @@ describe('named mechanics', () => {
       s = act(s, 1, { t: 'play', iid: a, face: 0, pay: freeMana(s, 1, 1) });
       s = drain(s);
       expect(applyAction(s, 1, { t: 'play', iid: b, face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/1枚までしか/);
+    });
+    it('ジョーカーズ・クリーチャーを召喚する時、マナゾーンにあるこのカードをすべての文明として', () => {
+      const s = setup([{ p: 0, cid: 'jkChg', zone: 'mana' }, { p: 0, cid: 'jkW', zone: 'hand' }, { p: 0, cid: 'plainW', zone: 'hand' }], 0);
+      expect(autoPay(s, L, 0, ['W'], 1, undefined, find(s, 0, 'hand', 'jkW')!)).not.toBeNull();
+      expect(autoPay(s, L, 0, ['W'], 1, undefined, find(s, 0, 'hand', 'plainW')!)).toBeNull();
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

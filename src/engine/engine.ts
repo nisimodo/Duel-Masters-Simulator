@@ -2105,10 +2105,20 @@ export function manaCivs(s: GameState, L: Lookup, iid: number): Civ[] {
   return c.zone === 'mana' && c.manaDown ? [] : cardCivs(L, c.cid);
 }
 
+/** マナゾーンのこのカードが、このカードを召喚する時だけすべての文明を持つかのようにタップできるか */
+function rainbowSelfFor(s: GameState, L: Lookup, mana: number, forIid?: number): boolean {
+  if (forIid == null) return false;
+  const st = (L(s.cards[mana].cid)?.faces[0]?.statics ?? []).find((x) => x.s === 'rainbowSelf');
+  if (!st || st.s !== 'rainbowSelf' || s.cards[mana].manaDown) return false;
+  const c = s.cards[forIid];
+  if (st.partner) return c.zone === 'partner';
+  return !!st.sel && !!L(c.cid)?.faces.some((f) => f.isCreature) && matchesSel(s, L, forIid, { ...st.sel, zones: [c.zone as never] });
+}
+
 export function payCovers(L: Lookup, s: GameState, pay: number[], need: Civ[], forIid?: number): boolean {
   if (pay.length < need.length) return need.length === 0;
   const rainbow = pay.length > 0 && rainbowMana(s, L, s.cards[pay[0]].owner, forIid);
-  const opts = pay.map((i) => (rainbow ? ALL_CIVS : manaCivs(s, L, i)));
+  const opts = pay.map((i) => (rainbow || rainbowSelfFor(s, L, i, forIid) ? ALL_CIVS : manaCivs(s, L, i)));
   const used = new Array(pay.length).fill(false);
   const go = (k: number): boolean => {
     if (k === need.length) return true;
@@ -2149,7 +2159,7 @@ export function autoPay(s: GameState, L: Lookup, p: number, need: Civ[], cost: n
   }
   if (avail.length < cost) return null;
   const rainbow = rainbowMana(s, L, p, forIid);
-  const civsOf = (i: number) => (rainbow ? ALL_CIVS : manaCivs(s, L, i));
+  const civsOf = (i: number) => (rainbow || rainbowSelfFor(s, L, i, forIid) ? ALL_CIVS : manaCivs(s, L, i));
   // 必要文明を少ない文明のカードから優先で確保
   const chosen: number[] = [];
   const pool = [...avail].sort((a, b) => civsOf(a).length - civsOf(b).length);

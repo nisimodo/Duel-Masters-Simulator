@@ -72,6 +72,8 @@ export type StaticSpec =
   /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
   /** 多色ではない、クリーチャーの能力と呪文の効果を無視する */
   | { s: 'ignoreNonMulti' }
+  /** 〇〇を召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい */
+  | { s: 'rainbowSelf'; sel?: Sel; partner?: boolean }
   /** このクリーチャーの召喚コストを、相手のエレメントの文明1つにつき each 少なくする */
   | { s: 'costPerOppCivs'; each: number; floor: number }
   /** 鬼エンド: このクリーチャーの攻撃の終わりに、シールドが n つもないプレイヤーがいれば、アンタップする */
@@ -996,6 +998,11 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  if ((m = t0.match(/^(.+?)を召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい$/))) {
+    if (m[1] === 'パートナー') return [{ s: 'rainbowSelf', partner: true }];
+    const sel = parseSel(m[1], { zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'partner' as never] });
+    if (sel) return [{ s: 'rainbowSelf', sel: { ...sel, kind: 'creature' } }];
+  }
   // 「鬼タイム:自分と相手のシールドが合計6つ以下なら、このクリーチャーに「ササゲール4」を与える」
   if ((m = t0.match(/^鬼タイム[:：]?自分と相手のシールド(?:の数)?が合計(\d+)つ以下なら、このクリーチャーに「(ササゲール\d+)」を与える$/))) return [{ s: 'grant', target: { t: 'self' }, kws: [m[2]], when: 'always', cond: { c: 'totalShieldsLE', n: +m[1] } }];
   // 「自分の、ジョーカーズとマナゾーンにあるジョーカーズ・カードが合計5つ以上なら、〜」
