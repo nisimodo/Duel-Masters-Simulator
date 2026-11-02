@@ -6,6 +6,7 @@ import { DeckViewDialog, ViewButton } from '../components/DeckViewDialog';
 import {
   addCpu,
   encodeDeck,
+  closeIdleRoom,
   enterRoom,
   favFirst,
   leaveRoom,
@@ -13,6 +14,7 @@ import {
   MAX_PLAYERS,
   playerCount,
   removeCpu,
+  roomIdle,
   subscribeDecks,
   subscribeRoom,
   updateMember,
@@ -47,12 +49,12 @@ async function startGame(room: Room) {
   const gameId = backend.newKey('games');
   await backend.set(`games/${gameId}/init`, init);
   const old = room.gameId;
-  await backend.update(`rooms/${room.key}`, { status: 'playing', gameId, lastResult: null });
+  await backend.update(`rooms/${room.key}`, { status: 'playing', gameId, lastResult: null, activeAt: Date.now() });
   if (old) backend.remove(`games/${old}`);
 }
 
 async function backToLobby(room: Room) {
-  const updates: Record<string, unknown> = { status: 'lobby' };
+  const updates: Record<string, unknown> = { status: 'lobby', activeAt: Date.now() };
   for (const uid of Object.keys(room.members)) updates[`members/${uid}/ready`] = false;
   await backend.update(`rooms/${room.key}`, updates);
 }
@@ -277,6 +279,17 @@ export default function RoomPage() {
     };
   }, [user, key]);
   useEffect(() => (user ? subscribeDecks(user.uid, setDecks) : undefined), [user]);
+  // 30分動きがなければ、全員を退出させてルームを閉じる
+  const [idleClosed, setIdleClosed] = useState(false);
+  useEffect(() => {
+    if (!room) return;
+    const check = () => {
+      if (roomIdle(room)) closeIdleRoom(room.key).then((ok) => ok && setIdleClosed(true)).catch(() => {});
+    };
+    check();
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
+  }, [room]);
 
   const me = room && user ? room.members[user.uid] : undefined;
   const isHost = !!room && !!user && room.hostUid === user.uid;
@@ -306,7 +319,8 @@ export default function RoomPage() {
   if (room === null)
     return (
       <div className="page col">
-        <div>ルームは閉じられました。</div>
+        <div>{idleClosed ? '30分間ルーム・対戦に動きがなかったため、ルームを閉じました。' : 'ルームは閉じられました。'}</div>
+        {!idleClosed && <div className="small muted">(30分間動きがないルームは自動で閉じます)</div>}
         <Link to="/">トップへ戻る</Link>
       </div>
     );

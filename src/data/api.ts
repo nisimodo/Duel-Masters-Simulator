@@ -171,6 +171,8 @@ export interface Room {
   hostUid: string;
   status: 'lobby' | 'playing';
   createdAt: number;
+  /** 最後に動きがあった時刻 (入退室・デッキ選択・準備・対戦のアクション)。30分動きがなければ閉じる */
+  activeAt: number;
   members: Record<string, Member>;
   cpus: Record<string, CpuMember>;
   gameId: string | null;
@@ -203,6 +205,7 @@ export function decodeRoom(key: string, v: Partial<Room> | null): Room | null {
     hostUid: v.hostUid || '',
     status: v.status || 'lobby',
     createdAt: v.createdAt || 0,
+    activeAt: v.activeAt || v.createdAt || 0,
     members,
     cpus,
     gameId: v.gameId ?? null,
@@ -220,6 +223,33 @@ export async function hasDeckOfType(uid: string, type: DeckType) {
 
 const STALE_MS = 1000 * 60 * 60 * 6;
 
+/** ルーム・対戦に動きがなければ閉じるまでの時間 */
+export const IDLE_MS = 1000 * 60 * 30;
+
+/** 30分以上動きがないルームか */
+export function roomIdle(room: Pick<Room, 'activeAt' | 'createdAt'>, now = Date.now()) {
+  return now - (room.activeAt || room.createdAt) > IDLE_MS;
+}
+
+/** ルームに動きがあったことを記録する */
+export async function touchRoom(key: string) {
+  await backend.set(`rooms/${key}/activeAt`, Date.now());
+}
+
+/** 動きのないルームを閉じる: 全員を退出させてルームと対戦の記録を消す (ほかの人が先に動いていたら消さない) */
+export async function closeIdleRoom(key: string): Promise<boolean> {
+  let gameId: string | null = null;
+  const res = await backend.transaction<Partial<Room>>(`rooms/${key}`, (cur) => {
+    if (!cur) return undefined;
+    if (!roomIdle({ activeAt: cur.activeAt || 0, createdAt: cur.createdAt || 0 })) return undefined;
+    gameId = cur.gameId ?? null;
+    return null;
+  });
+  if (!res.committed) return false;
+  if (gameId) await backend.remove(`games/${gameId}`).catch(() => {});
+  return true;
+}
+
 export async function createRoom(uid: string, name: string, password: string, rules: RoomRules): Promise<string> {
   if (!password.trim()) throw new Error('パスワードを入力してください');
   if (!(await hasDeckOfType(uid, rules.mode)))
@@ -234,6 +264,7 @@ export async function createRoom(uid: string, name: string, password: string, ru
       hostUid: uid,
       status: 'lobby',
       createdAt: now,
+      activeAt: now,
       members: { [uid]: { name, role: 'player', ready: false, online: true, joinedAt: now } },
     };
   });
@@ -262,6 +293,7 @@ export async function enterRoom(uid: string, name: string, key: string) {
       throw new Error(room.rules.mode === 'duema' ? 'デュエマ用のデッキを作成してから入室してください' : 'デュエパ用のデッキを作成してから入室してください');
     await backend.set(`rooms/${key}/members/${uid}`, { name, role, ready: false, online: true, presence: 2, joinedAt: Date.now() });
   }
+  await touchRoom(key);
 }
 
 /**
@@ -296,7 +328,7 @@ export async function leaveRoom(uid: string, room: Room) {
     if (room.gameId) await backend.remove(`games/${room.gameId}`);
     return;
   }
-  const updates: Record<string, unknown> = { [`members/${uid}`]: null };
+  const updates: Record<string, unknown> = { [`members/${uid}`]: null, activeAt: Date.now() };
   if (room.hostUid === uid) {
     const next = others.find(([, m]) => m.online) ?? others[0];
     updates.hostUid = next[0];
@@ -306,25 +338,31 @@ export async function leaveRoom(uid: string, room: Room) {
 
 export async function updateMember(key: string, uid: string, values: Partial<Member>) {
   await backend.update(`rooms/${key}/members/${uid}`, values as Record<string, unknown>);
+  await touchRoom(key);
 }
 
 export async function addCpu(room: Room, by: string, deck: Deck) {
   const id = backend.newKey(`rooms/${room.key}/cpus`);
   const n = Object.keys(room.cpus).length + 1;
   await backend.set(`rooms/${room.key}/cpus/${id}`, { name: `CPU ${n}`, addedBy: by, deck: encodeDeck(deck), addedAt: Date.now() });
+  await touchRoom(room.key);
 }
 
 export async function removeCpu(room: Room, id: string) {
   await backend.remove(`rooms/${room.key}/cpus/${id}`);
+  await touchRoom(room.key);
 }
 
 /** 開いているルームの一覧 (オンラインのメンバーがいて、古すぎないもの) */
 export function subscribeRooms(cb: (rooms: Room[]) => void, onError?: (e: Error) => void) {
   return backend.subscribe<Record<string, Partial<Room>>>('rooms', (v) => {
     const now = Date.now();
-    const list = Object.entries(v || {})
+    const all = Object.entries(v || {})
       .map(([k, r]) => decodeRoom(k, r))
-      .filter((r): r is Room => !!r && Object.values(r.members).some((m) => m.online) && now - r.createdAt < STALE_MS * 4);
+      .filter((r): r is Room => !!r);
+    // 30分動きがないルームは閉じる (一覧を見た人が片付ける)
+    for (const r of all) if (roomIdle(r, now)) void closeIdleRoom(r.key).catch(() => {});
+    const list = all.filter((r) => !roomIdle(r, now) && Object.values(r.members).some((m) => m.online) && now - r.createdAt < STALE_MS * 4);
     list.sort((a, b) => b.createdAt - a.createdAt);
     cb(list);
   }, onError);

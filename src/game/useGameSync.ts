@@ -2,6 +2,7 @@
 // 各クライアントが同じ順番でエンジンに適用する (ロックステップ)。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { backend } from '../backend';
+import { touchRoom } from '../data/api';
 import type { CardDB } from '../lib/cards';
 import { applyAction, createGame, type Lookup } from '../engine/engine';
 import type { Action, ActionEnvelope, GameInit, GameState } from '../engine/types';
@@ -23,7 +24,7 @@ function normalizeAction(a: Action): Action {
   return x as unknown as Action;
 }
 
-export function useGameSync(gameId: string | null, db: CardDB) {
+export function useGameSync(gameId: string | null, db: CardDB, roomKey?: string) {
   const [init, setInit] = useState<GameInit | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export function useGameSync(gameId: string | null, db: CardDB) {
     buffer: new Map(),
   });
   const L: Lookup = useCallback((cid: string) => db.byId.get(cid), [db]);
+  const lastTouch = useRef(0);
 
   useEffect(() => {
     if (!gameId) return;
@@ -98,13 +100,20 @@ export function useGameSync(gameId: string | null, db: CardDB) {
         if (check.error) return check.error;
         const key = r.count;
         const res = await backend.transaction<ActionEnvelope>(`games/${gameId}/actions/${key}`, (cur) => (cur ? undefined : { p, a }));
-        if (res.committed) return null;
+        if (res.committed) {
+          // ルームに動きがあったことを記録する (30分動きがなければ閉じるため。書き込みは1分に1回まで)
+          if (roomKey && Date.now() - lastTouch.current > 60000) {
+            lastTouch.current = Date.now();
+            void touchRoom(roomKey).catch(() => {});
+          }
+          return null;
+        }
         // 他の人が先に書き込んだ: 最新状態が届くのを待って再試行
         await new Promise((res2) => setTimeout(res2, 150 + attempt * 100));
       }
       return '送信に失敗しました。もう一度試してください';
     },
-    [gameId, L],
+    [gameId, L, roomKey],
   );
 
   return { init, state, submit, L, error };

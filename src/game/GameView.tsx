@@ -34,7 +34,7 @@ const ZONE_JA: Record<string, string> = { grave: '墓地', hyper: '超次元ゾ�
 
 export default function GameView({ room, db, onBackToLobby, onLeave }: { room: Room; db: CardDB; onBackToLobby: () => void; onLeave: () => void }) {
   const { user } = useApp();
-  const { state: s, submit, L, error } = useGameSync(room.gameId, db);
+  const { state: s, submit, L, error } = useGameSync(room.gameId, db, room.key);
   const [hover, setHover] = useState<{ card: Card; face?: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
