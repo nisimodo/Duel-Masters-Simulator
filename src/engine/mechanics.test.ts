@@ -2824,6 +2824,20 @@ describe('named mechanics', () => {
     });
   });
 
+  describe('総合ルール 101.4g', () => {
+    it('S・トリガーの解決中に新しく待機したS・トリガーは、既に待機していたものより先に解決する', () => {
+      const s = setup([{ p: 1, cid: 'stDraw', zone: 'hand' }, { p: 1, cid: 'stDraw', zone: 'hand' }]);
+      const [a, b] = s.players[1].hand.filter((i) => s.cards[i].cid === 'stDraw');
+      for (const i of [a, b]) moveCard(s, L, i, 'shield');
+      s.pending = [];
+      breakShields(s, L, 1, [a], 0);
+      expect(s.pending.map((x) => (x.kind === 'trigger' ? x.iid : -1))).toEqual([a]);
+      // a の解決中に b がブレイクされた
+      breakShields(s, L, 1, [b], 0);
+      expect(s.pending.map((x) => (x.kind === 'trigger' ? x.iid : -1))).toEqual([b, a]);
+    });
+  });
+
   describe('実行できないS・トリガー', () => {
     it('「相手はコスト1のカードを実行できない」間は、CPUはS・トリガーを使わずに進める', () => {
       let s = setup([{ p: 1, cid: 'superS', zone: 'hand' }]);

@@ -2244,6 +2244,9 @@ function battleInner(s: GameState, L: Lookup, att: number, def: number) {
 export function breakShields(s: GameState, L: Lookup, target: number, shields: number[], by: number | null, breaker: number | null = null) {
   const pl = s.players[target];
   if (breaker != null && s.attack) s.attack.broke = true;
+  // 総合ルール 101.4g: S・トリガーなどの解決中にブレイクされて新しく待機したものは、既に待機していたものより先に解決する
+  const waiting = s.pending.findIndex((x) => x.kind === 'trigger');
+  const pendingBefore = s.pending.length;
   for (const sh of shields) {
     if (s.cards[sh].zone !== 'shield') continue;
     // シールド・セイバー: かわりにこのクリーチャーを破壊
@@ -2310,6 +2313,11 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig || granted.includes('S・トリガー')) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (!x.spec.civ || cardCivs(L, s.cards[sh].cid).includes(x.spec.civ)) && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
     const strike = !!(card?.faces.some((f) => f.kw.gStrike) || granted.includes('G・ストライク')) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });
+  }
+  if (waiting >= 0) {
+    const added = s.pending.splice(pendingBefore);
+    s.pending.splice(waiting, 0, ...added.filter((x) => x.kind === 'trigger'));
+    s.pending.push(...added.filter((x) => x.kind !== 'trigger'));
   }
   log(s, by, `${pl.name} のシールドを${shields.length}枚ブレイク`);
   if (pl.broken?.turn !== s.turn) pl.broken = { turn: s.turn, n: 0 };
