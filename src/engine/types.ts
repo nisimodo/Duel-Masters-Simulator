@@ -211,6 +211,8 @@ export interface PlayerState {
   dLock?: { until: number };
   /** 「次の相手のターン中、相手はパワーN以下のクリーチャーを出せない」 */
   enterPowerLock?: { until: number; max: number };
+  /** このターン、コスト max 以下のクリーチャーを出せない */
+  enterCostLock?: { turn: number; max: number };
   /** バラギアラ-MAX: 次の自分のターンのはじめまで、パワー max 以下のクリーチャーに攻撃されない (turn はかけたターン) */
   lowGuard?: { turn: number; max: number };
   /** クリスターナル・Κ で負けないかを選んでいる */

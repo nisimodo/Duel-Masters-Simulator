@@ -33,6 +33,8 @@ export interface Keywords {
   /** 攻撃されない (与えられた能力) */
   noAttacked?: boolean;
   revChange: CondSpec | null;
+  /** S革命チェンジ: 表向きでシールドゾーンにあっても入れ替えられる */
+  revChangeShield: boolean;
   invasion: CondSpec | null;
   /** 進化元の条件 (進化－自分の◯◯1体の上に置く) */
   evoCond: CondSpec | null;
@@ -109,11 +111,12 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
   const paM = heads.map((l) => l.match(/^パワーアタッカー\+(\d+)/)).find(Boolean);
 
   let revChange: CondSpec | null = null;
-  const rcLine = lines.find((l) => /^革命チェンジ/.test(l));
+  const rcLine = lines.find((l) => /^S?革命チェンジ/.test(l));
   if (rcLine) {
-    const m = rcLine.match(/^革命チェンジ[:：]?(.+?)(\(|$)/);
+    const m = rcLine.match(/^S?革命チェンジ[:：]?(.+?)(\(|$)/);
     revChange = parseCond(m ? m[1] : '');
   }
+  const revChangeShield = !!rcLine && /^S革命チェンジ/.test(rcLine);
   let invasion: CondSpec | null = null;
   const invLine = lines.find((l) => /^(S級)?侵略(\[.+?\])?[-ー－]/.test(l) || /^(S級)?侵略ZERO/.test(l));
   if (invLine) {
@@ -149,6 +152,7 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
     cantAttackPlayer: head(/^このクリーチャーは、?(相手)?プレイヤーを攻撃(することが)?できない/),
     unblockable: head(/^このクリーチャーは、?(相手に)?ブロックされない/),
     revChange,
+    revChangeShield,
     invasion,
     evoCond,
     ninjaStrike: nsM ? Number(nsM[1]) : null,

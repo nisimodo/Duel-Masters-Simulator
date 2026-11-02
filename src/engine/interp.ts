@@ -137,6 +137,7 @@ function faceMatches(card: Card, f: Face, sel: Sel, s: GameState, L: Lookup, iid
     if (![f.name, card.name, ...card.faces.map((x) => x.name)].some((x) => x.replace(/\s+/g, '') === want)) return false;
   }
   if (sel.costMin != null && f.cost < sel.costMin) return false;
+  if (sel.costParity && (sel.costParity === 'odd') !== ((f.cost ?? 0) % 2 === 1)) return false;
   if (sel.costMax != null && f.cost > sel.costMax) return false;
   const c = s.cards[iid];
   // 常在型能力の評価中は、無限ループを避けるため常在型能力を含まないパワーで判定
@@ -167,7 +168,7 @@ export function matchesSel(s: GameState, L: Lookup, iid: number, sel: Sel, noSta
   if (!card) return false;
   if (sel.leftThisTurn && c.leftBattleTurn !== s.turn) return false;
   if (sel.or) return sel.or.some((x) => matchesSel(s, L, iid, x, noStatic));
-  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.shieldFaceDown && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null) return true;
+  if (sel.kind === 'card' && !sel.twinpact && !sel.civs && !sel.races && !sel.racesNot && !sel.name && !sel.nameRef && !sel.hasKwNot && sel.costMin == null && sel.costMax == null && !sel.colorless && !sel.notColorless && !sel.notPsychic && !sel.costVs && !sel.notCreature && !sel.civShareMana && !sel.raceRef && !sel.civRef && !sel.costRef && !sel.powerRef && !sel.multicolor && !sel.monocolor && !sel.civInMana && sel.faceDown == null && !sel.shieldFaceUp && !sel.shieldFaceDown && !sel.nonEvolution && !sel.evolution && !sel.hasKw && !sel.nameHas && !sel.nameNot && sel.powerMin == null && sel.powerMax == null && sel.tapped == null && !sel.costParity) return true;
   const faces = c.zone === 'battle' ? [card.faces[c.face] ?? card.faces[0]] : card.faces;
   return faces.some((f) => faceMatches(card, f, sel, s, L, iid, noStatic));
 }
@@ -1035,6 +1036,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `${ids.length}枚をシャッフルして山札の一番下に置いた`);
         break;
       }
+      case 'enterCostLockTurn':
+        for (const o of opps(s, ex.player)) s.players[o].enterCostLock = { turn: s.turn, max: op.max };
+        log(s, ex.player, `このターン、相手はコスト${op.max}以下のクリーチャーを出せない`);
+        break;
       case 'lowGuard':
         s.players[ex.player].lowGuard = { turn: s.turn, max: op.max };
         log(s, ex.player, `次の自分のターンのはじめまで、相手のパワー${op.max}以下のクリーチャーに攻撃されない`);

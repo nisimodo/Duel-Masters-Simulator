@@ -353,6 +353,15 @@ export function moveCard(
     log(s, c.owner, '山札から出るかわりに山札の下へ (相手の能力)');
     return moveCard(s, L, iid, 'deck', { pos: 'bottom', silent: true });
   }
+  // 「このターン、相手はコストN以下のクリーチャーを出せない」
+  {
+    const ecl = s.players[c.owner].enterCostLock;
+    const f0 = card?.faces[opts.face ?? c.face];
+    if (to === 'battle' && from !== 'battle' && ecl && ecl.turn === s.turn && f0?.isCreature && (f0.cost ?? 0) <= ecl.max) {
+      log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (このターン、コスト${ecl.max}以下のクリーチャーは出せない)`);
+      return from as ZoneName;
+    }
+  }
   // 「エレメントが手札以外から出る時、かわりに持ち主の手札に戻す」
   if (to === 'battle' && from !== 'battle' && from !== 'hand' && activeStatics(s, L).some((x) => x.spec.s === 'nonHandEnterToHand')) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は手札以外から出るかわりに手札へ`);
@@ -2153,7 +2162,9 @@ function attackOptions(s: GameState, L: Lookup): number[] {
   if (!att || !attFace) return [];
   // 「パワー8000以上の」は攻撃中の今のパワーで見る
   const attPower = power(s, L, a.attacker, true);
-  return s.players[owner].hand.filter((h) => {
+  // (S革命チェンジは表向きでシールドゾーンにあるものも)
+  const shieldRc = s.players[owner].shield.filter((i) => s.cards[i].faceUp && L(s.cards[i].cid)?.faces.some((f) => f.kw.revChangeShield));
+  return [...s.players[owner].hand, ...shieldRc].filter((h) => {
     const card = L(s.cards[h].cid);
     // この攻撃中に入れ替えで手札に戻ったカードは、もう一度は使わない (無限ループ防止)
     if (!card || (a.usedOpts ?? []).includes(h)) return false;
@@ -2898,6 +2909,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
   if (dreamBlocked(s, L, p, card)) return '同じ名前のドリーム・エレメントがバトルゾーンにあるので出せません';
+  {
+    const ecl = s.players[p].enterCostLock;
+    if (ecl && ecl.turn === s.turn && face.isCreature && (face.cost ?? 0) <= ecl.max) return `このターンはコスト${ecl.max}以下のクリーチャーを出せません`;
+  }
   if (s.mode === 'duepa' && turnStat(s, p).usedNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1回までしか使えません';
   if (s.mode === 'duepa' && face.isCreature && turnStat(s, p).enteredNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1枚までしかバトルゾーンに出せません';
   if (s.players[p].dLock && /D2フィールド/.test(face.type)) return 'D2フィールドを展開できません';
@@ -3293,8 +3308,10 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       const oldName = nameOf(s, L, at.attacker);
       at.usedOpts = [...(at.usedOpts ?? []), at.attacker, a.iid];
       if (rc >= 0) {
-        // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す
-        moveCard(s, L, at.attacker, 'hand');
+        // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す (S革命チェンジで表向きのシールドからなら、そのシールドと入れ替える)
+        const fromShield = s.cards[a.iid].zone === 'shield';
+        if (fromShield) moveCard(s, L, at.attacker, 'shield', { faceUp: true });
+        else moveCard(s, L, at.attacker, 'hand');
         moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc, revChange: true });
         s.cards[a.iid].sick = false;
         at.attacker = a.iid;

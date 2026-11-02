@@ -316,6 +316,9 @@ const db = buildDB(
     cr('elemCost', 8, 5000, ['このクリーチャーの召喚コストを、自分のエレメント１つにつき１少なくする。ただしコストは０以下にならない。']),
     cr('breakCap', 1, 5000, ['相手のクリーチャーは、１度につき最大２つしかシールドをブレイクできない。']),
     cr('deckGuard', 1, 5000, ['相手の山札から、手札以外のゾーンにカードが置かれる時、かわりにそのカードを持ち主の山札の下に置く。']),
+    { id: 'oddEven', n: 'oddEven', img: '', f: [{ n: 'oddEven', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['奇数または偶数を選ぶ。次の自分のターンのはじめまで、選んだ側のコストの相手のクリーチャーは攻撃もブロックもできない。'] }] },
+    { id: 'costLockSp', n: 'costLockSp', img: '', f: [{ n: 'costLockSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターン、相手はコスト５以下のクリーチャーを出せない。'] }] },
+    cr('srev', 7, 9000, ['S革命チェンジ：火のクリーチャー（自分の指定のクリーチャーが攻撃する時、そのクリーチャーと、手札または表向きでシールドゾーンにあるこのクリーチャーを入れ替えてもよい）']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2993,6 +2996,43 @@ describe('named mechanics', () => {
       moveCard(s, L, top, 'grave');
       expect(s.cards[top].zone).toBe('deck');
       expect(s.players[1].deck[0]).toBe(top);
+    });
+  });
+
+  describe('2026年の新カードの能力 (選ぶ・出せない・S革命チェンジ)', () => {
+    const run = (s: GameState, pick: (top: GameState['pending'][number]) => Action) => {
+      for (let k = 0; k < 8 && s.pending.length; k++) s = act(s, s.pending[0].player, pick(s.pending[0]));
+      return s;
+    };
+    it('奇数または偶数を選ぶ: 選んだ側のコストの相手のクリーチャーは攻撃もブロックもできない', () => {
+      let s = setup([{ p: 0, cid: 'oddEven', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'big', zone: 'battle' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'oddEven')!, face: 0, pay: [] });
+      s = run(s, (top) => (top.kind === 'choice' ? { t: 'choose', options: [0] } : { t: 'resolve', use: true }));
+      const v = find(s, 1, 'battle', 'vanilla')!;
+      const b = find(s, 1, 'battle', 'big')!;
+      expect(s.cards[v].restrict?.attack).toBeTruthy();
+      expect(s.cards[b].restrict?.attack).toBeFalsy();
+    });
+    it('このターン、相手はコスト5以下のクリーチャーを出せない', () => {
+      let s = setup([{ p: 0, cid: 'costLockSp', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'mana' }]);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'costLockSp')!, face: 0, pay: [] });
+      s = run(s, () => ({ t: 'resolve', use: true }));
+      const v = find(s, 1, 'mana', 'vanilla')!;
+      moveCard(s, L, v, 'battle');
+      expect(s.cards[v].zone).toBe('mana');
+    });
+    it('S革命チェンジ: 表向きでシールドゾーンにあるこのクリーチャーと入れ替える', () => {
+      let s = setup([{ p: 0, cid: 'srev', zone: 'hand' }, { p: 0, cid: 'sa', zone: 'battle' }]);
+      const r = find(s, 0, 'hand', 'srev')!;
+      moveCard(s, L, r, 'shield', { faceUp: true });
+      const a = find(s, 0, 'battle', 'sa')!;
+      s = act(s, 0, { t: 'attack', attacker: a, player: 1 });
+      const top = s.pending[0];
+      expect(top?.kind === 'attackOpt' && top.options).toContain(r);
+      s = act(s, 0, { t: 'attackOpt', iid: r });
+      expect(s.cards[r].zone).toBe('battle');
+      expect(s.cards[a].zone).toBe('shield');
+      expect(s.cards[a].faceUp).toBe(true);
     });
   });
 

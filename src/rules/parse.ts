@@ -1784,6 +1784,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: '封印を付けるクリーチャーを選ぶ' },
       { op: 'seal', target: { ref: 'it' }, n: +mm[2] },
     ];
+  // 「このターン、相手はコスト5以下のクリーチャーを出せない」
+  if ((mm = s.match(/^(?:この|その)ターン、相手はコスト(\d+)以下のクリーチャーを(?:バトルゾーンに)?出せない$/))) return [{ op: 'enterCostLockTurn', max: +mm[1] }];
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
@@ -3826,6 +3828,14 @@ export function parseEffect(text: string): Program {
         complete: true,
         unparsed: [],
       };
+  }
+  // 「奇数または偶数を選ぶ。次の自分のターンのはじめまで、選んだ側のコストの相手のクリーチャーは攻撃もブロックもできない」
+  {
+    const oe = normText(text).replace(/\s+/g, '').match(/^奇数または偶数を選ぶ。次の自分のターンのはじめまで、選んだ側のコストの相手のクリーチャーは(?:すべて、?)?攻撃もブロックもできない。?$/);
+    if (oe) {
+      const body = (p: 'odd' | 'even'): Op[] => [{ op: 'restrict', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costParity: p }, count: { all: true }, chooser: 'self' }, what: 'attackBlock' }];
+      return { ops: [{ op: 'modal', pick: 1, options: [{ label: '奇数 (コストが奇数の相手のクリーチャー)', body: body('odd') }, { label: '偶数 (コストが偶数の相手のクリーチャー)', body: body('even') }] }], complete: true, unparsed: [] };
+    }
   }
   // セブンス・タワー (メタモーフ) 「自分の山札の上から1枚目を自分のマナゾーンに置く。自分の山札の上から1枚目のかわりに、上から3枚を自分のマナゾーンに置く」
   {

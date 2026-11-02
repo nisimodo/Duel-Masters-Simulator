@@ -804,18 +804,23 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^自分のターン中、自分の山札の上から\d+枚をいつでも見てもよい$/.test(t0)) return [{ s: 'note' }];
   if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'oppMustBlock' }];
-  if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
+  if ((m = t0.match(/^(進化GV|超無限進化|進化V)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {
     const words = m[3].replace(/のいずれか$/, '');
     const list = words.split('、');
     let sel: Sel | null;
     if (list.length > 1) sel = { owner: 'self', zones: ['battle'], kind: 'creature', races: list };
     else sel = parseSel('自分の' + (m[2] ?? '') + words);
-    if (sel) return [{ s: 'evoMulti', min: +m[4], exact: m[1] === '進化GV' && !m[5], sel }];
+    if (sel) return [{ s: 'evoMulti', min: +m[4], exact: (m[1] === '進化GV' || m[1] === '進化V') && !m[5], sel }];
   }
   if (/^封印が付いていれば、この(タマシード|クリーチャー|カード|フィールド)は(バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'sealStay' }];
   if ((m = t0.match(/^NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[1] }];
   if ((m = t0.match(/^(タマシード|クリーチャー)から進化するなら、このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'neoDiscount', n: +m[2], from: m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ウラ・ニンジャ・ストライク(\d+)(?:\((光|水|闇|火|自然)\))?/))) return [{ s: 'uraNinja', n: +m[1], civ: m[2] }];
+  // 新しい表記 「マナ進化:自分のマナゾーンにある、火または自然のクリーチャー1体の上に重ねつつ出す」
+  if ((m = t0.match(/^(マナ|手札)進化[-ー―:：]自分の(?:マナゾーン|手札)にある、?(.+?)(\d+)体の上に重ねつつ(?:バトルゾーンに)?出す$/))) {
+    const sel = parseSel(m[2]);
+    return sel ? [{ s: 'evoFrom', zone: m[1] === 'マナ' ? 'mana' : 'hand', sel, n: +m[3] }] : null;
+  }
   if ((m = t0.match(/^(マナ|手札)進化[-ー―:：](.+?)を(\d+)体自分の(?:マナゾーン|手札)から選び、このクリーチャーをその上に重ねつつバトルゾーンに出す$/))) {
     const sel = parseSel(m[2]);
     return sel ? [{ s: 'evoFrom', zone: m[1] === 'マナ' ? 'mana' : 'hand', sel, n: +m[3] }] : null;

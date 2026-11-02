@@ -89,6 +89,8 @@ export interface Sel {
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
+  /** コストが奇数 / 偶数 */
+  costParity?: 'odd' | 'even';
   /** 先に選んで保存したカード (saved) ではない (「他の〜」) */
   notSaved?: boolean;
   /** 能力を誘発させたカード (「召喚したクリーチャー」) と同じ名前 */
@@ -434,6 +436,8 @@ export type Op =
   | { op: 'abyss'; target: Target }
   /** 次の自分のターンのはじめまで、相手のパワー max 以下のクリーチャーに攻撃されない */
   | { op: 'lowGuard'; max: number }
+  /** このターン、相手はコスト max 以下のクリーチャーを出せない */
+  | { op: 'enterCostLockTurn'; max: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */
