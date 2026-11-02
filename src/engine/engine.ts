@@ -342,6 +342,11 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} は超次元ゾーンから出せない`);
     return from as ZoneName;
   }
+  // ドリームレア (総合ルール 815.2): 自分のドリーム・エレメントがある間、同じ名前のものは出せない
+  if (to === 'battle' && from !== 'battle' && card && dreamBlocked(s, L, c.owner, card)) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (同じ名前のドリーム・エレメントがバトルゾーンにある)`);
+    return from as ZoneName;
+  }
   // 「このクリーチャーは、召喚以外の方法で出ない」
   if (to === 'battle' && from !== 'battle' && !opts.summoned && (card?.faces[opts.face ?? c.face]?.statics ?? []).some((x) => x.s === 'summonOnlyEnter')) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は召喚以外の方法では出せない`);
@@ -1185,6 +1190,15 @@ function enterLimitHit(s: GameState, p: number, L?: Lookup): boolean {
   // ワダエビノミコト 「各ターン、相手はクリーチャーを2体までしか出せない」
   const oc = L ? activeStatics(s, L).flatMap((x) => (x.spec.s === 'oppEnterCap' && x.owner !== p ? [x.spec.n] : [])) : [];
   return oc.length > 0 && turnStat(s, p).enters >= Math.min(...oc);
+}
+
+/** ドリームレア: 持ち主のバトルゾーンに同じ名前のドリーム・エレメントがあれば、出せない (召喚もできない) */
+function dreamBlocked(s: GameState, L: Lookup, owner: number, card: Card): boolean {
+  if (!card.faces.some((f) => f.type.includes('ドリーム'))) return false;
+  return s.players[owner].battle.some((b) => {
+    const bc = L(s.cards[b].cid);
+    return !!bc && bc.name === card.name && bc.faces.some((f) => f.type.includes('ドリーム'));
+  });
 }
 
 /** クリーチャーがタップした: 「自分のターンに相手のクリーチャーがタップした時」(そのクリーチャーの持ち主のターン以外) */
@@ -2834,6 +2848,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   const face = card.faces[a.face] ?? card.faces[0];
   if (face.isCreature && !a.pay?.length && s.players[p].freeEnterLock) return 'マナゾーンのカードをタップせずにクリーチャーを出せません';
   if (face.isCreature && enterLimitHit(s, p, L)) return 'このターンはもうクリーチャーを出せません';
+  if (dreamBlocked(s, L, p, card)) return '同じ名前のドリーム・エレメントがバトルゾーンにあるので出せません';
   if (s.mode === 'duepa' && turnStat(s, p).usedNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1回までしか使えません';
   if (s.mode === 'duepa' && face.isCreature && turnStat(s, p).enteredNames?.includes(card.name)) return 'デュエパでは、同じ名前のカードは各ターン1枚までしかバトルゾーンに出せません';
   if (s.players[p].dLock && /D2フィールド/.test(face.type)) return 'D2フィールドを展開できません';

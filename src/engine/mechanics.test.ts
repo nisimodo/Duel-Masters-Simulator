@@ -305,6 +305,7 @@ const db = buildDB(
     { id: 'tapSp', n: 'tapSp', img: '', f: [{ n: 'tapSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、タップする。'] }] },
     cr('lureCh', 1, 1000, ['相手がクリーチャーを選ぶなら、可能ならこのクリーチャーを選ぶ。']),
     { id: 'killSp', n: 'killSp', img: '', f: [{ n: 'killSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のクリーチャーを１体選び、破壊する。'] }] },
+    { id: 'dream', n: 'dream', img: '', f: [{ n: 'dream', t: 'ドリーム・クリーチャー', c: 'F', co: 1, p: '9000', r: ['テスト'], x: [] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2895,6 +2896,17 @@ describe('named mechanics', () => {
       if (top?.kind === 'choice') expect(top.options).toEqual([lure]);
       else expect(s.cards[lure!]?.zone ?? 'grave').toBe('grave');
       expect(find(s, 1, 'battle', 'big')).toBeDefined();
+    });
+  });
+
+  describe('総合ルール 815.2 ドリームレア', () => {
+    it('自分のドリーム・エレメントがある間、同じ名前のものは召喚も効果で出すこともできない', () => {
+      const s = setup([{ p: 0, cid: 'dream', zone: 'battle' }, { p: 0, cid: 'dream', zone: 'hand' }, { p: 0, cid: 'dream', zone: 'mana' }]);
+      const h = find(s, 0, 'hand', 'dream')!;
+      expect(applyAction(s, 0, { t: 'play', iid: h, face: 0, pay: freeMana(s, 0, 1, find(s, 0, 'mana', 'dream')) }, L).error).toMatch(/ドリーム/);
+      const m = find(s, 0, 'mana', 'dream')!;
+      moveCard(s, L, m, 'battle');
+      expect(s.cards[m].zone).toBe('mana');
     });
   });
 
