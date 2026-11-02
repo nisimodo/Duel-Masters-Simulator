@@ -5,7 +5,7 @@ import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
 import { faceNameMatches } from '../lib/search';
-import { autoPay, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
+import { autoPay, sasageruOf, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
 import type { Action, GameState, Pending } from '../engine/types';
 
 export function Modal({ children, onClose, title }: { children: React.ReactNode; onClose?: () => void; title?: string }) {
@@ -106,7 +106,7 @@ export function PayDialog({
   // 水晶ソウル: 裏向きのマナはN枚分
   const crystal = crystalOf(f);
   const [pay, setPay] = useState<number[]>(() => autoPay(s, L, me, f.civs as Civ[], costNow({ sasa: [], he: [], gzero: false }) ?? f.cost, crystal, iid) ?? []);
-  const sasaCands = s.players[me].battle.filter((b) => b !== iid && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'));
+  const sasaCands = s.players[me].battle.filter((b) => b !== iid && sasageruOf(s, L, b) > 0);
   const heCands = s.players[me].battle.filter((b) => b !== iid && faceOf(s, L, b)?.isCreature && !s.cards[b].tapped);
   const refreshPay = (opts: { sasa: number[]; he: number[]; gzero: boolean; alt?: typeof alt; taps?: number[] }) => {
     const c = costNow(opts);

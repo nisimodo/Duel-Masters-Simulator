@@ -265,6 +265,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
     }
+    case 'formerUnderHas':
+      return (s.cards[ex.src]?.formerUnder ?? []).some((u) => L(s.cards[u].cid)?.faces.some((f) => f.isCreature && f.cost === c.cost));
     case 'itSameNameSaved': {
       const a = ex.it[0];
       const b = (ex.saved ?? [])[0];
@@ -1113,6 +1115,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, `シールド・プラス: 山札の上から${op.n}枚をシールドの下に置いた`);
         break;
       }
+      case 'oppExecCap':
+        for (const o of opps(s, ex.player)) s.players[o].execCap = { turn: s.turn + 1, n: op.n };
+        log(s, ex.player, `次のターン中、相手はカードを${op.n}枚までしか実行できない`);
+        break;
       case 'saveAppend':
         ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
         break;
@@ -1752,9 +1758,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of ex.it) {
           const c = s.cards[i];
           const f = L(c.cid)?.faces[c.face];
-          const spec = f?.triggers.find((t) => t.events.includes('enter') && !(op.exclude && t.effect.replace(/^▶/, '').startsWith(op.exclude)));
+          const ev = op.event ?? 'enter';
+          const spec = f?.triggers.find((t) => t.events.includes(ev) && !(op.exclude && t.effect.replace(/^▶/, '').startsWith(op.exclude)));
           if (!spec) continue;
-          s.pending.push({ kind: 'ability', player: ex.player, src: i, cid: c.cid, face: c.face, event: 'enter', text: spec.text, effect: spec.effect, optional: spec.optional, auto: false });
+          s.pending.push({ kind: 'ability', player: ex.player, src: i, cid: c.cid, face: c.face, event: ev, text: spec.text, effect: spec.effect, optional: spec.optional, auto: false });
           log(s, ex.player, `${q(nameOf(s, L, i))} の出た時の能力を使う`);
         }
         break;
@@ -1779,6 +1786,12 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           s.pending.push({ kind: 'ability', player: ex.player, src: iid, cid: c.cid, face: c.face, event: 'spell', text: `${op.key} ${eff}`, effect: eff, optional: false, auto: false });
           log(s, ex.player, `${q(nameOf(s, L, iid))} の ${op.key} 能力を使う`);
         };
+        if (op.pickOne) {
+          const cands = s.players[ex.player].battle.filter((b) => L(s.cards[b].cid)?.faces[s.cards[b].face]?.marked?.[op.key]);
+          cands.sort((a, b) => (b === root ? 1 : 0) - (a === root ? 1 : 0) || power(s, L, b) - power(s, L, a));
+          if (cands.length) push(cands[0]);
+          break;
+        }
         // 「表向きにしたX1体につき、次の能力を1回」
         const times = op.perLooked ? ex.looked.filter((i) => matchesSel(s, L, i, { ...op.perLooked!, zones: [s.cards[i].zone as never] })).length : 1;
         for (let k = 0; k < times; k++) push(root);

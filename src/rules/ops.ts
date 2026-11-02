@@ -166,6 +166,7 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'ownStrongest' }
+  | { c: 'formerUnderHas'; cost: number } // 離れる前、このクリーチャーの下にコストNのクリーチャーがあった
   | { c: 'itSameNameSaved' } // そのカードが、保存したカード (手札に戻したクリーチャー) と同じ名前
   | { c: 'lookedSameCostCreatures' } // 表向きにしたカードがすべて同じコストのクリーチャー
   | { c: 'linkedWith'; names: string[] } // このクリーチャーがその名前のカードとリンクしている
@@ -316,7 +317,7 @@ export type Op =
   /** キーワード能力を一時的に与える */
   | { op: 'grant'; target: Target; kws: string[]; until: 'turn' | 'nextOwnTurn' | 'perm' }
   /** 記号つきの能力を使う (others: 自分の他のクリーチャーN体の同じ能力も) */
-  | { op: 'useMarked'; key: string; others?: number; perLooked?: Sel; byCiv?: boolean }
+  | { op: 'useMarked'; key: string; others?: number; perLooked?: Sel; byCiv?: boolean; /** 自分のクリーチャー (このクリーチャーも含む) の中から1体の能力を使う */ pickOne?: boolean }
   /** ドギラゴン・ガチャ / ドキンダム・ガチャを回して、その能力を使う */
   | { op: 'gacha'; kind: 'dogiragon' | 'dokindam'; times: number }
   /** このターン、次に召喚する〇〇のコストをN少なくする */
@@ -324,7 +325,7 @@ export type Op =
   /** このターン、クリーチャーをN体マナゾーンから召喚できる */
   | { op: 'manaSummon'; n: number }
   /** it の「出た時」の能力を使う (prefix で始まる能力は除く) */
-  | { op: 'useEnterOf'; exclude?: string }
+  | { op: 'useEnterOf'; exclude?: string; /** 「攻撃する時」の能力 */ event?: 'attack' }
   /** 相手は各ターンN度しか攻撃もブロックもできない (次の自分のターンのはじめまで) */
   | { op: 'actLimit'; n: number }
   /** 次の相手のターン、相手はクリーチャーをN体しか出せない */
@@ -461,6 +462,8 @@ export type Op =
   | { op: 'hyperAll' }
   /** 選んだカードを保存したカードに加える (くり返しの中で選んだものをまとめる) */
   | { op: 'saveAppend' }
+  /** 次のターン中、相手はカードを n 枚までしか実行できない */
+  | { op: 'oppExecCap'; n: number }
   /** 山札の上から n 枚を裏向きで、そのシールド (it) の下に置く (シールド・プラス) */
   | { op: 'deckTopUnderIt'; n: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */

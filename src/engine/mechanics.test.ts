@@ -350,6 +350,10 @@ const db = buildDB(
     cr('jt2', 5, 5000, ['このクリーチャーが攻撃する時、Jトルネードを２回までする。そのJトルネードされたクリーチャーのコストの合計以下のコストを持つ呪文を１枚、自分の手札または墓地からコストを支払わずに唱えてもよい。']),
     { id: 'sp2draw', n: 'sp2draw', img: '', f: [{ n: 'sp2draw', t: '呪文', c: 'F', co: 2, p: null, r: [], x: ['カードを１枚引く。'] }] },
     cr('leaveBuff', 3, 3000, ['他のクリーチャーが離れた時、そのターン、このクリーチャーのパワーを+2000する。']),
+    cr('kzP', 3, 3000, ['キズナ（このクリーチャーが出た時、自分のクリーチャーの[P]能力を１つ使う）', '[P]カードを１枚引く。']),
+    cr('useAtk', 2, 2000, ['このクリーチャーが出た時、自分のクリーチャー１体の、攻撃する時にトリガーする能力を１つ使う。']),
+    cr('atkDraw', 2, 2000, ['このクリーチャーが攻撃する時、カードを２枚引く。']),
+    cr('capper', 2, 2000, ['このクリーチャーが出た時、次のターン中、相手はカードを１枚までしか実行できない。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3291,6 +3295,30 @@ describe('named mechanics', () => {
       moveCard(s, L, find(s, 1, 'battle', 'vanilla')!, 'grave');
       s = drain(act(s, 0, { t: 'note', m: '' }));
       expect(power(s, L, b)).toBe(5000);
+    });
+    it('キズナ: 自分のクリーチャーの[P]能力を1つ使う', () => {
+      let s = setup([{ p: 0, cid: 'kzP', zone: 'hand' }]);
+      const h = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'kzP')!, face: 0, pay: freeMana(s, 0, 3) });
+      s = drain(s);
+      expect(s.players[0].hand.length).toBe(h - 1 + 1);
+    });
+    it('自分のクリーチャー1体の、攻撃する時にトリガーする能力を1つ使う', () => {
+      let s = setup([{ p: 0, cid: 'useAtk', zone: 'hand' }, { p: 0, cid: 'atkDraw', zone: 'battle' }]);
+      const h = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'useAtk')!, face: 0, pay: freeMana(s, 0, 2) });
+      s = drain(s);
+      expect(s.players[0].hand.length).toBe(h - 1 + 2);
+    });
+    it('次のターン中、相手はカードを1枚までしか実行できない', () => {
+      let s = setup([{ p: 0, cid: 'capper', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'hand' }], 4);
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'capper')!, face: 0, pay: freeMana(s, 0, 2) });
+      s = drain(s);
+      s = drain(act(s, 0, { t: 'endTurn' }));
+      const [a, b] = s.players[1].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      s = act(s, 1, { t: 'play', iid: a, face: 0, pay: freeMana(s, 1, 1) });
+      s = drain(s);
+      expect(applyAction(s, 1, { t: 'play', iid: b, face: 0, pay: freeMana(s, 1, 1) }, L).error).toMatch(/1枚までしか/);
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

@@ -2113,6 +2113,40 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'play', target: { ref: 'it' }, mode: 'put' },
       { op: 'seal', target: { ref: 'it' }, n: +mm[3] },
     ];
+  // キズナ 「自分のクリーチャーの[P]能力を1つ使う」
+  if (/^自分のクリーチャーの\[P\]能力を1つ使う$/.test(s)) return [{ op: 'useMarked', key: 'P', pickOne: true }];
+  // 「自分のクリーチャー1体の、攻撃する時にトリガーする能力を1つ使う」
+  if (/^自分のクリーチャー1体の、攻撃する時にトリガーする能力を1つ使う$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '「攻撃する時」の能力を使うクリーチャーを選ぶ' },
+      { op: 'useEnterOf', event: 'attack' },
+    ];
+  // 「そうしたら、その選んだクリーチャーの、出た時にトリガーする能力を、自分が1つ使ってもよい」
+  if (/^(?:そうしたら、)?その選んだクリーチャーの、出た時にトリガーする能力を、自分が1つ使ってもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'useEnterOf' }], prompt: s0 }];
+  // 「次の自分のターンのはじめまで、そのクリーチャーのパワーを+4000し、相手のクリーチャーが攻撃するなら、可能ならそのクリーチャーを攻撃する」
+  if ((mm = s.match(/^次の自分のターンのはじめまで、そのクリーチャーのパワーを\+(\d+)し、相手のクリーチャーが攻撃するなら、可能ならそのクリーチャーを攻撃する$/)))
+    return [{ op: 'grant', target: { ref: 'it' }, kws: [`パワー+${mm[1]}`, '挑発'], until: 'nextOwnTurn' }];
+  // 「その下にコスト9のクリーチャーがあれば、自分の山札の上から9枚を見る」
+  if ((mm = s.match(/^その下にコスト(\d+)のクリーチャーがあれば、(.+)$/))) {
+    const body = sentence(mm[2], ctx);
+    if (body) return [{ op: 'if', cond: { c: 'formerUnderHas', cost: +mm[1] }, body }];
+  }
+  // 「そうしたら、次のターン中、相手はカードを1枚までしか実行できない」
+  if ((mm = s.match(/^(?:そうしたら、)?次のターン中、相手はカードを(\d+)枚までしか実行できない$/))) return [{ op: 'oppExecCap', n: +mm[1] }];
+  // 「このターン、自分のエレメント1つに「ササゲール2」を与える」
+  if ((mm = s.match(/^このターン、自分のエレメント(\d+)つに「(ササゲール\d+)」を与える$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'element' }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: `「${mm[2]}」を与えるエレメントを選ぶ` },
+      { op: 'grant', target: { ref: 'it' }, kws: [mm[2]], until: 'turn' },
+    ];
+  // 「その中のツインパクトカード1枚につき、それを手札に加えるかマナゾーンに置く」
+  if (/^その中のツインパクトカード1枚につき、それを手札に加えるかマナゾーンに置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', twinpact: true }, count: { n: 99, upTo: true } }, purpose: 'benefit', prompt: '手札に加えるツインパクトカードを選ぶ (残りのツインパクトカードはマナゾーンへ)' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', twinpact: true }, count: { all: true } }, purpose: 'neutral', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'mana' },
+    ];
   // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
   if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」
@@ -4336,6 +4370,27 @@ export function parseEffect(text: string): Program {
         complete: true,
         unparsed: [],
       };
+    const tap3 = nt.match(/^自分のマナゾーンのカードを(\d+)枚タップしてもよい。タップしたカードがすべて光のカードであれば、そのターンの終わりにこのクリーチャーをアンタップする。すべて火のカードであれば、このクリーチャーはそのターン、タップされていないクリーチャーを攻撃できる。すべて自然のカードであれば、そのターン、このクリーチャーのパワーは\+(\d+)される。?$/);
+    if (tap3) {
+      const all = (civ: 'L' | 'F' | 'N'): Cond => ({ c: 'itMatches', sel: { owner: 'self', zones: ['mana'], kind: 'card', civs: [civ] } });
+      return {
+        ops: [
+          {
+            op: 'optional',
+            body: [
+              { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'card', tapped: false }, count: { n: +tap3[1], upTo: false }, chooser: 'self' }, purpose: 'neutral', prompt: 'タップするマナを選ぶ' },
+              { op: 'tap', target: { ref: 'it' } },
+              { op: 'if', cond: all('L'), body: [{ op: 'atTurnEnd', body: [{ op: 'untap', target: { ref: 'self' } }] }] },
+              { op: 'if', cond: all('F'), body: [{ op: 'grant', target: { ref: 'self' }, kws: ['アンタップ攻撃'], until: 'turn' }] },
+              { op: 'if', cond: all('N'), body: [{ op: 'power', target: { ref: 'self' }, delta: +tap3[2], until: 'turn' }] },
+            ],
+            prompt: `マナゾーンのカードを${tap3[1]}枚タップする`,
+          },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+    }
     const numRev = nt.match(/^(\d+)以上の数字を1つ選ぶ。自分の山札の上から(\d+)枚を表向きにし、その中から、?その選んだ数字と同じコストのカードを(\d+)枚手札に加える。残りを好きな順序で山札の(?:一番)?下に置く。?$/);
     if (numRev)
       return {

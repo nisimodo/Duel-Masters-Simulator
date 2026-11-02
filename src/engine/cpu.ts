@@ -31,6 +31,7 @@ import {
   untappedMana,
   abilityPick,
   type Lookup,
+  sasageruOf,
 } from './engine';
 import { matchesCond } from './cond';
 import { activeStatics, canPlayFromZone, costOf } from './statics';
@@ -510,7 +511,7 @@ function playCandidates(s: GameState, p: number, L: Lookup): PlayCand[] {
           // ササゲール: ササゲールを持つ、コストの異なる弱いクリーチャーを破壊する
           const seen = new Set<number>();
           const pick = me.battle
-            .filter((b) => b !== h && (faceOf(s, L, b)?.statics ?? []).some((x) => x.s === 'sasageru'))
+            .filter((b) => b !== h && sasageruOf(s, L, b) > 0)
             .sort((a, b) => threatOf(s, L, a) - threatOf(s, L, b))
             .filter((b) => {
               const c0 = faceOf(s, L, b)?.cost ?? -1;

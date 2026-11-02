@@ -256,6 +256,11 @@ export function splitAbilities(lines: string[]): {
       inTap = true;
       continue;
     }
+    // 「[P]〜」: キズナで使う能力
+    if (/^\s*\[P\]/.test(raw.normalize('NFKC'))) {
+      (marked['P'] ??= []).push(t.replace(/^\s*\[P\]\s*/, '').replace(/。$/, ''));
+      continue;
+    }
     // バズレンダの {OL} 能力
     if (/^\s*\{OL\}/.test(raw.normalize('NFKC'))) {
       (marked['OL'] ??= []).push(t.replace(/。$/, ''));

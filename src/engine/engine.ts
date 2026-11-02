@@ -835,6 +835,15 @@ export function moveCard(
   return dest;
 }
 
+/** ササゲールの数 (持っている能力・与えられた能力) */
+export function sasageruOf(s: GameState, L: Lookup, iid: number): number {
+  const own = (faceOf(s, L, iid)?.statics ?? []).find((x) => x.s === 'sasageru');
+  if (own && own.s === 'sasageru') return own.n;
+  const kws = [...(s.cards[iid].grants ?? []).flatMap((g) => g.kws), ...staticKws(s, L, iid)];
+  const m = kws.map((k) => k.match(/^ササゲール(\d+)$/)).find(Boolean);
+  return m ? +m[1] : 0;
+}
+
 /** ブレイクするシールドの数 (パワード・ブレイカー: パワー6000ごとにさらに1つ) */
 export function breakCount(s: GameState, L: Lookup, iid: number): number {
   const k = kwOf(s, L, iid);
@@ -3012,11 +3021,11 @@ export function playCost(s: GameState, L: Lookup, p: number, a: Extract<Action, 
     for (const b of a.sasa) {
       const bc = s.cards[b];
       const bf = faceOf(s, L, b);
-      const ss = bf?.statics?.find((x) => x.s === 'sasageru');
-      if (!bf || bc.owner !== p || bc.zone !== 'battle' || !ss || ss.s !== 'sasageru') return 'ササゲールを持つ自分のクリーチャーを選んでください';
+      const sn = sasageruOf(s, L, b);
+      if (!bf || bc.owner !== p || bc.zone !== 'battle' || !sn) return 'ササゲールを持つ自分のクリーチャーを選んでください';
       if (costs.has(bf.cost)) return 'ササゲールはコストが異なるクリーチャーを選んでください';
       costs.add(bf.cost);
-      red += ss.n;
+      red += sn;
     }
     cost = Math.max(Math.min(cost, 1), cost - red);
   }
@@ -3065,6 +3074,12 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
   // DG-パルテノン 「すべてのプレイヤーは、各ターン、呪文を3枚までしか唱えられない」
   const spellCap = face.isSpell ? capOf(s, L, 'spellCap') : undefined;
   if (spellCap != null && (s.players[p].spellsCast?.turn === s.turn ? s.players[p].spellsCast!.n : 0) >= spellCap) return `このターンは呪文を${spellCap}枚までしか唱えられません`;
+  // 「次のターン中、相手はカードを1枚までしか実行できない」
+  {
+    const cap = s.players[p].execCap;
+    const used = s.players[p].execCount?.turn === s.turn ? s.players[p].execCount!.n : 0;
+    if (cap && cap.turn === s.turn && used >= cap.n && !a.force) return `このターンはカードを${cap.n}枚までしか実行できません`;
+  }
   // 「相手はその数字と同じコストのカードを実行できない」(効果で使う時も)
   if (s.players[p].execLock && (face.cost ?? 0) === s.players[p].execLock.cost) return `効果により、コスト${face.cost}のカードは実行できません`;
   const fromOk =
@@ -3104,6 +3119,8 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     }
     void me;
     for (const m of a.pay) s.cards[m].tapped = true;
+    // 実行したカードの数
+    s.players[p].execCount = { turn: s.turn, n: (s.players[p].execCount?.turn === s.turn ? s.players[p].execCount!.n : 0) + 1 };
     // 「このターン中、次にカードを使う時、そのコストを少なくする」はこのカードで使い切る
     if (s.players[p].nextUse?.turn === s.turn) s.players[p].nextUse = undefined;
     if (s.mode === 'duepa') (turnStat(s, p).usedNames ??= []).push(card.name);
