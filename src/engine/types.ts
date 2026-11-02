@@ -186,6 +186,8 @@ export interface PlayerState {
   charged: boolean;
   /** このターン、次に召喚するクリーチャーのコスト軽減 */
   nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number; grants?: string[] };
+  /** このターンに墓地から召喚した数 */
+  graveSummons?: { turn: number; n: number };
   /** FORBIDDEN STAR: このターンに外した封印の数 */
   sealLockUsed?: { turn: number; n: number };
   /** このターン中、次にカードを使う時のコストの軽減 */

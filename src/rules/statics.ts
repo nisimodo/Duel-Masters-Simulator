@@ -72,6 +72,10 @@ export type StaticSpec =
   /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
   /** 多色ではない、クリーチャーの能力と呪文の効果を無視する */
   | { s: 'ignoreNonMulti' }
+  /** このクリーチャーの召喚コストを、相手のエレメントの文明1つにつき each 少なくする */
+  | { s: 'costPerOppCivs'; each: number; floor: number }
+  /** 鬼エンド: このクリーチャーの攻撃の終わりに、シールドが n つもないプレイヤーがいれば、アンタップする */
+  | { s: 'untapAfterAttackIf'; shieldsLess: number }
   /** FORBIDDEN STAR: 自分の封印は、各ターン perTurn つだけ、civs のコスト minCost 以上のコマンドを召喚して出すことによってのみ外せる */
   | { s: 'sealLock'; civs: Civ[]; minCost: number; perTurn: number }
   /** 自分は sel のクリーチャーでしか攻撃できない */
@@ -90,8 +94,8 @@ export type StaticSpec =
   | { s: 'rainbowMana'; /** このカードを実行する時だけ */ sel?: Sel; /** このゾーンから実行する時だけ */ zone?: 'hyper' }
   | { s: 'summonFrom'; zone: 'mana' | 'grave' | 'hyper'; cond?: StaticCond }
   /** 自分の〇〇を墓地・マナゾーンから召喚してもよい (バトルゾーンにある間) */
-  | { s: 'summonFromSel'; sel: Sel; zone: 'mana' | 'grave' }
-  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave'; each?: number; ofOpp?: boolean }
+  | { s: 'summonFromSel'; sel: Sel; zone: 'mana' | 'grave'; /** 各ターン、この数まで (自分のターン中) */ perTurn?: number }
+  | { s: 'sympathy'; sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave' | 'shield'; each?: number; ofOpp?: boolean }
   /** 出たターンに攻撃できないクリーチャー (全員) */
   | { s: 'newNoAttackSel'; sel: Sel }
   /** 召喚する時、手札をN枚捨てれば召喚コストをD少なくする */
@@ -811,6 +815,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const bt = ba && target(ba[1]);
     if (bt) return [{ s: 'grant', target: bt, kws: ['ブロッカー', 'ターンの終わりにアンタップ'], when: 'always' }];
   }
+  if ((m = t0.match(/^この呪文を唱えるコストを、?自分のコスト(\d+)以下のエレメント1つにつき(\d+)少なくする/)))
+    return [{ s: 'sympathy', sel: { owner: 'self', zones: ['battle'], kind: 'card', costMax: +m[1] }, floor: floorOf(full), zone: 'battle', each: +m[2] }];
   // 「このクリーチャーの召喚コストを、自分のエレメント1つにつき1少なくする」「クリーチャー1体につき1少なくする」
   if ((m = t0.match(/^このクリーチャーの召喚コストを、?(自分の)?(エレメント|クリーチャー)(\d+)(?:つ|体)につき(\d+)少なくする/)) && m[3] === '1')
     return [{ s: 'sympathy', sel: { owner: m[1] ? 'self' : 'any', zones: ['battle'], kind: m[2] === 'エレメント' ? 'card' : 'creature' }, floor: floorOf(full), zone: 'battle', each: +m[4] }];
@@ -922,6 +928,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const z = /手札/.test(m[1]) ? 'hand' : /マナ/.test(m[1]) ? 'mana' : /山札の(?:一番)?上/.test(m[1]) ? 'deckTop' : /山札/.test(m[1]) ? 'deckBottom' : 'shield';
     return [{ s: 'destroyTo', zone: z }];
   }
+  if ((m = t0.match(/^(W・)?シンパシー[:：]自分のシールドゾーンにある表向きのカード$/)))
+    return [{ s: 'sympathy', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, floor: floorOf(full), zone: 'shield', each: m[1] ? 2 : undefined }];
   if ((m = t0.match(/^(W・)?シンパシー[:：](.+)$/))) {
     const sel = parseSel(m[2]);
     return sel ? [{ s: 'sympathy', sel: { ...sel, owner: 'self' }, floor: floorOf(full), each: m[1] ? 2 : undefined }] : null;
@@ -984,6 +992,40 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  // 「自分の、ジョーカーズとマナゾーンにあるジョーカーズ・カードが合計5つ以上なら、〜」
+  if ((m = t0.match(/^自分の、(.+?)とマナゾーンにある\1・カードが合計(\d+)つ以上(なら|なければ)、(.+)$/))) {
+    const sel: Sel = { owner: 'self', zones: ['battle', 'mana'], kind: 'card', races: [m[1]] };
+    const cond: StaticCond = m[3] === 'なら' ? { c: 'countAtLeast', sel, n: +m[2] } : { c: 'countLess', sel, n: +m[2] };
+    const body = m[4];
+    let mm: RegExpMatchArray | null;
+    if ((mm = body.match(/^このクリーチャーの召喚コストを(\d+)少なくする$/))) return [{ s: 'selfCost', delta: -mm[1], cond, floor: floorOf(full) }];
+    if (/^このクリーチャーは攻撃できない$/.test(body)) return [{ s: 'grant', target: { t: 'self' }, kws: ['攻撃できない'], when: 'always', cond }];
+    if ((mm = body.match(/^このクリーチャーのパワーを\+(\d+)し、((?:「[^」]+」と?)+)を与える$/)))
+      return [
+        { s: 'power', target: { t: 'self' }, delta: +mm[1], when: 'always', cond },
+        { s: 'grant', target: { t: 'self' }, kws: [...mm[2].matchAll(/「([^」]+)」/g)].map((x) => x[1]), when: 'always', cond },
+      ];
+  }
+  // 「各ターンに1度、自分の(火のロスト・クルセイダー・)クリーチャーの召喚コストを1少なくしてもよい」
+  if ((m = t0.match(/^各ターンに1度、自分の(.*?)クリーチャーの召喚コストを(\d+)少なくしてもよい(?:[、。]?ただし.*)?$/))) {
+    const sel = parseSel((m[1] ? m[1].replace(/・$/, '') + '・' : '') + 'クリーチャー', { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] }) ?? parseSel(m[1] + 'クリーチャー', { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });
+    if (sel) return [{ s: 'cost', side: 'self', sel: { ...sel, kind: 'creature' }, action: 'summon', delta: -m[2], floor: floorOf(full), nth: 1 }];
+  }
+  // 「自分の「ガードマン」を持つクリーチャーすべてに「スピードアタッカー」と「パワード・ブレイカー」を与え、それらが持つ攻撃できない能力を無視する」
+  if ((m = t0.match(/^自分の「([^」]+)」を持つクリーチャーすべてに((?:「[^」]+」と?)+)を与え、それらが持つ攻撃できない能力を無視する$/)))
+    return [{ s: 'grant', target: { t: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', hasKw: m[1] } }, kws: [...[...m[2].matchAll(/「([^」]+)」/g)].map((x) => x[1]), '攻撃できない能力を無視'], when: 'always' }];
+  // 「このクリーチャーの召喚コストを、相手のエレメントの文明1つにつき1少なくする」
+  if ((m = t0.match(/^このクリーチャーの召喚コストを、?相手のエレメントの文明(\d+)つにつき(\d+)少なくする/)) && m[1] === '1') return [{ s: 'costPerOppCivs', each: +m[2], floor: floorOf(full) }];
+  // 「W・シンパシー:自分のシールドゾーンにある表向きのカード」
+  if ((m = t0.match(/^(W・)?シンパシー[:：]自分のシールドゾーンにある表向きのカード$/)))
+    return [{ s: 'sympathy', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, floor: floorOf(full), zone: 'shield', each: m[1] ? 2 : undefined }];
+  // 鬼エンド
+  if ((m = t0.match(/^鬼エンド[:：]?このクリーチャーの攻撃の終わりに、シールドが(\d+)つもないプレイヤーがいれば、このクリーチャーをアンタップする$/))) return [{ s: 'untapAfterAttackIf', shieldsLess: +m[1] }];
+  // 「自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい」「自分のターンに1度、ディスペクター・クリーチャーを自分の墓地から召喚してもよい」
+  if ((m = t0.match(/^自分のターン(?:中|に(\d+)度)、(.*?)クリーチャーを(?:(\d+)体、)?自分の墓地から召喚してもよい$/))) {
+    const sel = m[2] ? parseSel(m[2].replace(/・$/, '') + '・クリーチャー') : ({ owner: 'self', zones: ['grave'], kind: 'creature' } as Sel);
+    if (sel) return [{ s: 'summonFromSel', sel: { ...sel, owner: 'self', zones: ['grave'], kind: 'creature' }, zone: 'grave', perTurn: +(m[1] ?? m[3] ?? 99) }];
+  }
   if ((m = t0.match(/^(?:バトルゾーンにある)?自分の封印は、各ターン(\d+)つだけ、(.+?)のコスト(\d+)以上のコマンドを召喚(?:または「侵略ZERO」を使って)?(?:バトルゾーンに)?出すことによってのみ、外すことができる$/))) {
     const civs = m[2].split(/または|、/).map((x) => ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as Record<string, Civ>)[x]).filter(Boolean);
     return [{ s: 'sealLock', civs, minCost: +m[3], perTurn: +m[1] }];

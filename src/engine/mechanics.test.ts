@@ -340,6 +340,9 @@ const db = buildDB(
     { id: 'eleWipe', n: 'eleWipe', img: '', f: [{ n: 'eleWipe', t: 'タマシード', c: 'F', co: 0, p: null, r: [], x: ['このタマシードが出た時、エレメントが６つ以上あれば、他の進化ではないエレメントをすべて破壊する。'] }] },
     cr('fb2', 1, 1000, ['このクリーチャーが出た時、自分の山札の上からテスト・クリーチャーが２体出るまで表向きにし、その２体を出す。その後、山札をシャッフルする。']),
     cr('atkHelper', 1, 1000, ['自分のクリーチャーが攻撃する時、カードを１枚引いてもよい。その後、攻撃しているクリーチャーよりコストが小さいクリーチャーを１体、自分の手札から出してもよい。']),
+    cr('jkCost', 6, 6000, ['自分の、ジョーカーズとマナゾーンにあるジョーカーズ・カードが合計２つ以上なら、このクリーチャーの召喚コストを２少なくする。']),
+    cr('civCost', 5, 5000, ['このクリーチャーの召喚コストを、相手のエレメントの文明１つにつき１少なくする。ただしコストは０以下にならない。']),
+    cr('graveSum', 3, 3000, ['自分のターン中、クリーチャーを１体、自分の墓地から召喚してもよい。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3229,6 +3232,31 @@ describe('named mechanics', () => {
       s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'big')!, player: 1 });
       s = drain(s);
       expect(s.cards[v].zone).toBe('battle');
+    });
+    it('ジョーカーズとマナゾーンのジョーカーズ・カードが合計2つ以上なら、召喚コストを2少なくする', () => {
+      const s = setup([{ p: 0, cid: 'jkCost', zone: 'hand' }, { p: 0, cid: 'jkW', zone: 'battle' }]);
+      const j = find(s, 0, 'hand', 'jkCost')!;
+      expect(costOf(s, L, 0, j, 0)).toBe(6);
+      const w = s.players[0].deck.find((i) => s.cards[i].cid === 'jkW');
+      expect(w).toBeUndefined();
+      const jw = find(s, 0, 'battle', 'jkW')!;
+      moveCard(s, L, jw, 'mana');
+      const s2 = setup([{ p: 0, cid: 'jkCost', zone: 'hand' }, { p: 0, cid: 'jkW', zone: 'battle' }, { p: 0, cid: 'jkW', zone: 'mana' }]);
+      expect(costOf(s2, L, 0, find(s2, 0, 'hand', 'jkCost')!, 0)).toBe(4);
+    });
+    it('相手のエレメントの文明1つにつき召喚コストを1少なくする', () => {
+      const s = setup([{ p: 0, cid: 'civCost', zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }, { p: 1, cid: 'plainW', zone: 'battle' }]);
+      expect(costOf(s, L, 0, find(s, 0, 'hand', 'civCost')!, 0)).toBe(3);
+    });
+    it('自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい', () => {
+      let s = setup([{ p: 0, cid: 'graveSum', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }], 4);
+      const [a, b] = s.players[0].hand.filter((i) => s.cards[i].cid === 'vanilla');
+      moveCard(s, L, a, 'grave');
+      moveCard(s, L, b, 'grave');
+      s = act(s, 0, { t: 'play', iid: a, face: 0, pay: freeMana(s, 0, 1) });
+      s = drain(s);
+      expect(s.cards[a].zone).toBe('battle');
+      expect(applyAction(s, 0, { t: 'play', iid: b, face: 0, pay: freeMana(s, 0, 1) }, L).error).toBeTruthy();
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);

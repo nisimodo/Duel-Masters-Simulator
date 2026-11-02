@@ -1835,7 +1835,7 @@ function advance(s: GameState, L: Lookup): boolean {
         for (const o of opponentsOf(s, a.owner)) lose(s, o, '特殊勝利');
         return true;
       }
-      if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack') || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
+      if (ac?.zone === 'battle' && ((faceOf(s, L, a.attacker)?.statics ?? []).some((x) => x.s === 'untapAfterAttack' || (x.s === 'untapAfterAttackIf' && s.players.some((pl) => !pl.lost && pl.shield.length < x.shieldsLess))) || (ac.grants ?? []).some((g) => g.kws.includes('攻撃後アンタップ')))) {
         ac.tapped = false;
         ac.grants = ac.grants?.map((g) => ({ ...g, kws: g.kws.filter((k) => k !== '攻撃後アンタップ') }));
         log(s, a.owner, `${q(nameOf(s, L, a.attacker))} をアンタップ`);
@@ -2182,7 +2182,8 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (c.sick && activeStatics(s, L).some((x) => x.owner !== c.owner && x.spec.s === 'oppNewNoAttackAll')) return false;
   if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
-  if (k.cantAttack) return false;
+  const ignoreCant = staticKws(s, L, iid).includes('攻撃できない能力を無視');
+  if (k.cantAttack && !ignoreCant) return false;
   // FORBIDDEN STAR 「自分は、コマンド、イニシャルズ、あるいは名前に《禁断》とあるクリーチャーでしか攻撃できない」
   for (const x of activeStatics(s, L)) {
     if (x.owner !== c.owner || x.spec.s !== 'attackOnly') continue;
@@ -3220,6 +3221,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
     // 「そのクリーチャーが出た時、このターン、そのクリーチャーに「〜」を与える」
     const nsGrants = !a.free && me2.nextSummon?.turn === s.turn ? me2.nextSummon.grants : undefined;
     if (!a.free && me2.nextSummon?.turn === s.turn) me2.nextSummon = undefined;
+    if (c.zone === 'grave' && face.isCreature) {
+      const gs = me2.graveSummons;
+      me2.graveSummons = { turn: s.turn, n: gs?.turn === s.turn ? gs.n + 1 : 1 };
+    }
     if (c.zone === 'mana' && a.alt !== 'mana' && manaSummonLeft(s, L, p, a.iid) > 0) {
       if (me2.manaSummon?.turn !== s.turn) me2.manaSummon = { turn: s.turn, left: 0 };
       if (me2.manaSummon.left > 0) me2.manaSummon.left--;

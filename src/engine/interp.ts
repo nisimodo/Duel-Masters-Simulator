@@ -265,6 +265,25 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
     }
+    case 'itSameNameSaved': {
+      const a = ex.it[0];
+      const b = (ex.saved ?? [])[0];
+      if (a == null || b == null) return false;
+      const na = L(s.cards[a].cid)?.faces.map((f) => f.name) ?? [];
+      return (L(s.cards[b].cid)?.faces ?? []).some((f) => na.includes(f.name));
+    }
+    case 'lookedSameCostCreatures': {
+      const ls = ex.looked.filter((i) => s.cards[i].zone !== 'gone');
+      if (!ls.length) return false;
+      const fs = ls.map((i) => L(s.cards[i].cid)?.faces[0]);
+      return fs.every((f) => f?.isCreature) && new Set(ls.map((i) => maxCost(L, s.cards[i].cid))).size === 1;
+    }
+    case 'linkedWith': {
+      const me0 = s.cards[ex.src];
+      if (!me0 || me0.zone !== 'battle') return false;
+      const names = me0.under.filter((u) => s.cards[u].linkedTo === ex.src).map((u) => L(s.cards[u].cid)?.faces[s.cards[u].face]?.name ?? '');
+      return c.names.every((n) => names.some((x) => x.includes(n)) || (L(me0.cid)?.faces[me0.face]?.name ?? '').includes(n));
+    }
     case 'wonBattleTurn': {
       const ts = s.players[ex.player].turnStat;
       return ts?.turn === s.turn && (ts.battleWins ?? 0) > 0;
@@ -600,7 +619,7 @@ export function resumeExec(s: GameState, L: Lookup, ex: Exec, answer: { picks?: 
 }
 
 /** 種族・文明・数字の選択肢 (種族はバトルゾーンと手札にあるものを多い順に) */
-export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number' | 'name', max?: number, exclude?: string, creature?: boolean): string[] {
+export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'number' | 'name', max?: number, exclude?: string, creature?: boolean, min = 0): string[] {
   // カード名: 表向きで見えている (バトルゾーン・墓地・表向きのマナ・表向きのシールド・見せた) カードの名前。
   // それ以外の名前は、画面の検索で全カードから選ぶ
   if (kind === 'name') {
@@ -613,7 +632,7 @@ export function valueLabels(s: GameState, L: Lookup, kind: 'race' | 'civ' | 'num
     return [...names].slice(0, 120);
   }
   if (kind === 'civ') return ['光', '水', '闇', '火', '自然'].filter((c) => !exclude?.includes(c));
-  if (kind === 'number') return Array.from({ length: (max ?? 12) + 1 }, (_, i) => String(i));
+  if (kind === 'number') return Array.from({ length: Math.max(0, (max ?? 12) + 1 - min) }, (_, i) => String(i + min));
   const count = new Map<string, number>();
   for (const pl of s.players)
     for (const i of [...pl.battle, ...pl.hand, ...pl.grave])
@@ -1078,6 +1097,21 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.ops.unshift(...programOf(trigs[k].effect).ops);
         continue;
       }
+      case 'deckTopUnderIt': {
+        const sh = ex.it.find((i) => s.cards[i].zone === 'shield');
+        if (sh == null) break;
+        const deck = s.players[ex.player].deck;
+        for (let k = 0; k < op.n && deck.length; k++) {
+          const top = deck.pop()!;
+          const tc = s.cards[top];
+          tc.zone = 'under';
+          tc.parent = sh;
+          tc.faceUp = false;
+          s.cards[sh].under.push(top);
+        }
+        log(s, ex.player, `シールド・プラス: 山札の上から${op.n}枚をシールドの下に置いた`);
+        break;
+      }
       case 'hyperAll': {
         for (const b of s.players[ex.player].battle) {
           const bc = s.cards[b];
@@ -1304,7 +1338,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'chooseValue': {
-        const labels = valueLabels(s, L, op.kind, op.max, op.exclude, op.creature);
+        const labels = valueLabels(s, L, op.kind, op.max, op.exclude, op.creature, op.min);
         // (カード名は検索でも選べるので、見えている名前がなくても聞く)
         if (!labels.length && op.kind !== 'name') break;
         ex.valueLabels = labels;

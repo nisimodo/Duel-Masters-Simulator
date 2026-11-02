@@ -1981,6 +1981,148 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         prompt: s0,
       },
     ];
+  // 「このクリーチャーはその相手のシールドを3つブレイクしてもよい」
+  if ((mm = s.match(/^このクリーチャーは(?:その)?相手のシールドを(\d+)つブレイクしてもよい$/))) return [{ op: 'optional', body: [{ op: 'breakShield', n: +mm[1] }], prompt: s0 }];
+  // 「そのクリーチャーは自分の他のシールドを1つブレイクしてもよい」
+  if ((mm = s.match(/^そのクリーチャーは自分の(?:他の)?シールドを(\d+)つブレイクしてもよい$/))) return [{ op: 'optional', body: [{ op: 'breakShield', n: +mm[1], own: true }], prompt: s0 }];
+  // シールド・プラス 「自分の山札の上から1枚を裏向きで自分のシールド1つの下に置いてもよい」
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚を裏向きで自分のシールド1つの下に置(?:いてもよい|く)$/)))
+    return [
+      {
+        op: 'optional',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card' }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '下に置くシールドを選ぶ' },
+          { op: 'deckTopUnderIt', n: +mm[1] },
+        ],
+        prompt: 'シールド・プラス',
+      },
+    ];
+  // 「(EXライフシールドが離れた時、)これがタップされていて、追加ターン中でなければ、このターンの後に自分のターンを追加する」
+  if (/^これがタップされていて、追加ターン中でなければ、このターンの後に自分のターンを追加する$/.test(s))
+    return [{ op: 'if', cond: { c: 'and', a: { c: 'selfTapped' }, b: { c: 'not', a: { c: 'inExtraTurn' } } }, body: [{ op: 'extraTurn' }] }];
+  // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
+  if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
+  // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」
+  if ((mm = s.match(/^(?:バトルゾーンにある)?相手の多色ではない、?コスト(\d+)以下のクリーチャーを(\d+)体破壊するか、?(?:バトルゾーンにある)?相手の多色ではない、?コスト(\d+)以下のクロスギアを(\d+)枚選んで持ち主の墓地に置く$/)))
+    return [
+      {
+        op: 'modal',
+        pick: 1,
+        options: [
+          { label: 'クリーチャーを破壊する', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costMax: +mm[1], monocolor: true }, count: { n: +mm[2], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '破壊するクリーチャーを選ぶ' }, { op: 'destroy', target: { ref: 'it' } }] },
+          { label: 'クロスギアを墓地に置く', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'crossgear', costMax: +mm[3], monocolor: true }, count: { n: +mm[4], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '墓地に置くクロスギアを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }] },
+        ],
+      },
+    ];
+  // 「自分の他のクリーチャーを1体墓地から手札に戻すか、自分の山札からコスト3以下のクリーチャーを1体選んで〜」
+  if ((mm = s.match(/^自分の他のクリーチャーを(\d+)体墓地から手札に戻すか、(.+)$/))) {
+    const b = parseEffect(mm[2]);
+    if (b.complete)
+      return [
+        {
+          op: 'modal',
+          pick: 1,
+          options: [
+            { label: '墓地のクリーチャーを手札に戻す', body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'creature', other: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '手札に戻すクリーチャーを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'hand' }] },
+            { label: mm[2].slice(0, 40), body: b.ops },
+          ],
+        },
+      ];
+  }
+  // 「(手札を1枚捨ててもよい。そうしたら、)その捨てたカードよりコストが小さい相手のエレメントを1つ選び、破壊する」
+  if ((mm = s.match(/^(?:そうしたら、)?その捨てたカードよりコストが小さい相手のエレメントを(\d+)つ選び、破壊する$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'element', costLtIt: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: s0 },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
+  // 「6以上の数字を1つ選ぶ」
+  if ((mm = s.match(/^(\d+)以上の数字を(?:1|ひとつ)つ選ぶ$/))) return [{ op: 'chooseValue', kind: 'number', min: +mm[1], max: 15, hostile: false }];
+  // 「自分の山札の上から3枚を表向きにし、その中から、その選んだ数字と同じコストのカードを1枚手札に加える」
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚を表向きにし、その中から、?その選んだ数字と同じコストのカードを(\d+)枚手札に加える$/)))
+    return [
+      { op: 'top', n: +mm[1], to: 'reveal', who: 'self' },
+      { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', costRef: true }, count: { n: +mm[2], upTo: false } }, purpose: 'benefit', prompt: '選んだ数字と同じコストのカードを手札に加える' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 「それが呪文なら、自分が墓地からコストを支払わずに唱えてもよい」
+  if (/^それが呪文なら、自分が(?:その呪文を)?墓地からコストを支払わずに唱えてもよい$/.test(s))
+    return [{ op: 'if', cond: { c: 'itMatches', sel: { owner: 'any', zones: ['grave'], kind: 'spell' } }, body: [{ op: 'optional', body: [{ op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true }], prompt: 'その呪文を墓地から唱える' }] }];
+  // 「その中から、エレメントを最大1つ出し、1枚をシールド化し、残りをマナゾーンに置く」
+  if ((mm = s.match(/^その中から、?エレメントを最大(\d+)つ出し、(\d+)枚をシールド化し、残りをマナゾーンに置く$/))) {
+    const deckSel: Sel = { owner: 'any', zones: ['deck'], kind: 'card' };
+    return [
+      { op: 'choose', target: { ref: 'looked', sel: { ...deckSel, kind: 'element' }, count: { n: +mm[1], upTo: true } }, purpose: 'benefit', prompt: '出すエレメントを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+      { op: 'choose', target: { ref: 'looked', sel: deckSel, count: { n: +mm[2], upTo: false } }, purpose: 'benefit', prompt: 'シールド化するカードを選ぶ' },
+      { op: 'move', target: { ref: 'it' }, to: 'shield' },
+      { op: 'choose', target: { ref: 'looked', sel: deckSel, count: { all: true } }, purpose: 'neutral', prompt: '残り' },
+      { op: 'move', target: { ref: 'it' }, to: 'mana' },
+    ];
+  }
+  // 「相手は残りを好きな順序で山札の下に置き、自分は選んだ呪文をコストを支払わずに唱える」
+  if (/^相手は残りを好きな順序で(?:自身の)?山札の(?:一番)?下に置き、自分は選んだ呪文をコストを支払わずに唱える$/.test(s))
+    return [{ op: 'move', target: { ref: 'rest' }, to: 'deckBottom' }, { op: 'play', target: { ref: 'it' }, mode: 'cast', byMe: true }];
+  // 「その後、このクリーチャーが《龍神ヘヴィ》と《龍神メタル》とリンクしていれば、相手のクリーチャーをすべて破壊する」
+  if ((mm = s.match(/^(?:その後、)?このクリーチャーが((?:《[^》]+》と)+)リンクしていれば、相手のクリーチャーをすべて破壊する$/)))
+    return [
+      {
+        op: 'if',
+        cond: { c: 'linkedWith', names: [...mm[1].matchAll(/《([^》]+)》/g)].map((x) => x[1]) },
+        body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'destroy', target: { ref: 'it' } }],
+      },
+    ];
+  // 「その選んだクリーチャーよりコストが小さいゴッドを1つ、自分の墓地から出してもよい」
+  if ((mm = s.match(/^その選んだクリーチャーよりコストが小さいゴッドを(\d+)つ、?自分の墓地から(?:バトルゾーンに)?出してもよい$/)))
+    return [
+      {
+        op: 'optional',
+        body: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'creature', races: ['ゴッド'], costLtIt: true }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '墓地から出すゴッドを選ぶ' },
+          { op: 'play', target: { ref: 'it' }, mode: 'put' },
+        ],
+        prompt: s0,
+      },
+    ];
+  // 「コスト5以下の、タマシードとデモニオを最大1つずつ、自分のマナゾーンまたは墓地から出す」
+  if ((mm = s.match(/^コスト(\d+)以下の、?タマシードとデモニオを最大(\d+)つずつ、?自分のマナゾーンまたは墓地から(?:バトルゾーンに)?出す$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana', 'grave'], kind: 'tamaseed', costMax: +mm[1] }, count: { n: +mm[2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '出すタマシードを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana', 'grave'], kind: 'creature', races: ['デモニオ'], costMax: +mm[1] }, count: { n: +mm[2], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '出すデモニオを選ぶ' },
+      { op: 'play', target: { ref: 'it' }, mode: 'put' },
+    ];
+  // 「自分のシールドゾーンにあるカードを1枚表向きにしてもよい」
+  if ((mm = s.match(/^自分のシールドゾーンにあるカードを(\d+)枚表向きに(?:してもよい|する)$/)))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceDown: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '表向きにするシールドを選ぶ' },
+      { op: 'faceUp', target: { ref: 'it' } },
+    ];
+  // 「各プレイヤーはバトルゾーンと墓地にある自身のカードをすべて超次元ゾーンに置く」
+  if (/^各プレイヤーはバトルゾーンと墓地にある(?:自身|自分)のカードをすべて超次元ゾーンに置く$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle', 'grave'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'neutral', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'hyper' },
+    ];
+  // 「こうして火または自然のカードを表向きにしたら、クリーチャーを1体選び、持ち主の手札に戻してもよい」
+  if ((mm = s.match(/^こうして(光|水|闇|火|自然)または(光|水|闇|火|自然)のカードを表向きにしたら、クリーチャーを(\d+)体選び、持ち主の手札に戻してもよい$/))) {
+    const C = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const;
+    return [
+      {
+        op: 'if',
+        cond: { c: 'itMatches', sel: { owner: 'any', zones: ['hand'], kind: 'card', civs: [C[mm[1] as '光'], C[mm[2] as '光']] } },
+        body: [
+          {
+            op: 'optional',
+            body: [
+              { op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'creature' }, count: { n: +mm[3], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '手札に戻すクリーチャーを選ぶ' },
+              { op: 'move', target: { ref: 'it' }, to: 'hand' },
+            ],
+            prompt: 'クリーチャーを手札に戻す',
+          },
+        ],
+      },
+    ];
+  }
   // 表向きのG城 「このG城を墓地に置いてもよい」
   if (/^このG城を墓地に置く$/.test(s)) return [{ op: 'move', target: { ref: 'self' }, to: 'grave' }];
   // 「その攻撃の終わりまで、このクリーチャーは「W・ブレイカー」を得てもよい」(このターンとして扱う)
@@ -4051,6 +4193,54 @@ export function parseEffect(text: string): Program {
         { op: 'destroy', target: { ref: 'it' } },
       ];
       return { ops: [{ op: 'if', cond: { c: 'count', sel: { owner: 'self', zones: ['mana'], kind: 'card', twinpact: true }, cmp: '>=', n: 1 }, body: body(+kw[3], +kw[4]), else: body(+kw[1], +kw[2]) }], complete: true, unparsed: [] };
+    }
+  }
+  // 「次のうちのいずれかを行ってもよい。A。または、B。または、C」
+  {
+    const nt = normText(text).replace(/\s+/g, '');
+    const anyOf = nt.match(/^(.*?)次のうちのいずれかを行ってもよい。(.+)$/);
+    if (anyOf) {
+      const parts = anyOf[2].split(/。?または、/).map((x) => x.replace(/。$/, ''));
+      const pre: Program = anyOf[1].trim() ? parseEffect(anyOf[1]) : { ops: [], complete: true, unparsed: [] };
+      const opts = parts.map((x) => ({ x, p: parseEffect(x) }));
+      if (parts.length >= 2 && opts.every((o) => o.p.complete) && pre.complete)
+        return { ops: [...pre.ops, { op: 'modal', pick: 1, optional: true, options: opts.map((o) => ({ label: o.x.slice(0, 40), body: o.p.ops })) }], complete: true, unparsed: [] };
+    }
+    const bd = nt.match(/^(?:バトルゾーンにある)?相手のクリーチャーを(\d+)体選び、持ち主の手札に戻す。その後、相手の手札を(\d+)枚見ないで選び、捨てさせる。その捨てたカードが手札に戻(?:した|された)クリーチャーと同じ名前(?:のカードであれば|なら)、相手のシールドを(\d+)(?:つ|枚)選び、持ち主の墓地に置く。?$/);
+    if (bd)
+      return {
+        ops: [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature' }, count: { n: +bd[1], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '手札に戻すクリーチャーを選ぶ' },
+          { op: 'save' },
+          { op: 'move', target: { ref: 'it' }, to: 'hand' },
+          { op: 'discard', who: 'opp', count: { n: +bd[2], upTo: false }, how: 'random' },
+          {
+            op: 'if',
+            cond: { c: 'itSameNameSaved' },
+            body: [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['shield'], kind: 'card' }, count: { n: +bd[3], upTo: false }, chooser: 'self' }, purpose: 'hostile', prompt: '墓地に置くシールドを選ぶ' }, { op: 'move', target: { ref: 'it' }, to: 'grave' }],
+          },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+    const numRev = nt.match(/^(\d+)以上の数字を1つ選ぶ。自分の山札の上から(\d+)枚を表向きにし、その中から、?その選んだ数字と同じコストのカードを(\d+)枚手札に加える。残りを好きな順序で山札の(?:一番)?下に置く。?$/);
+    if (numRev)
+      return {
+        ops: [
+          { op: 'chooseValue', kind: 'number', min: +numRev[1], max: 15, hostile: false },
+          { op: 'top', n: +numRev[2], to: 'reveal', who: 'self' },
+          { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', costRef: true }, count: { n: +numRev[3], upTo: false } }, purpose: 'benefit', prompt: '選んだ数字と同じコストのカードを手札に加える' },
+          { op: 'move', target: { ref: 'it' }, to: 'hand' },
+          { op: 'move', target: { ref: 'rest' }, to: 'deckBottom' },
+        ],
+        complete: true,
+        unparsed: [],
+      };
+    // 「山札の上から3枚を表向きにする。それがすべて同じコストのクリーチャーなら出す。そうでなければ、好きな順序で山札の下に置く」
+    const same = nt.match(/^(.*?)それがすべて同じコストのクリーチャーなら(?:バトルゾーンに)?出す。そうでなければ、好きな順序で山札の(?:一番)?下に置く。?$/);
+    if (same) {
+      const pre = parseEffect(same[1]);
+      if (pre.complete) return { ops: [...pre.ops, { op: 'if', cond: { c: 'lookedSameCostCreatures' }, body: [{ op: 'play', target: { ref: 'looked' }, mode: 'put' }], else: [{ op: 'move', target: { ref: 'looked' }, to: 'deckBottom' }] }], complete: true, unparsed: [] };
     }
   }
   // セブンス・タワー (メタモーフ) 「自分の山札の上から1枚目を自分のマナゾーンに置く。自分の山札の上から1枚目のかわりに、上から3枚を自分のマナゾーンに置く」

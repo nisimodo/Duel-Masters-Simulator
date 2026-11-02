@@ -383,7 +383,14 @@ export function canPlayFromZone(s: GameState, L: Lookup, p: number, iid: number,
   if (face.type === 'キング・クリーチャー' && c.zone === 'mana' && kingCellsFor(s, L, p, iid, face)) return true;
   if ((face.statics ?? []).some((x) => x.s === 'summonFrom' && x.zone === c.zone && condOk(s, L, { src: iid, owner: p, spec: x }, x.cond, iid))) return true;
   if (!face.isCreature || (c.zone !== 'grave' && c.zone !== 'mana')) return false;
-  return activeStatics(s, L).some((a) => a.owner === p && a.spec.s === 'summonFromSel' && a.spec.zone === c.zone && matchesSel(s, L, iid, a.spec.sel));
+  return activeStatics(s, L).some((a) => {
+    const sp = a.spec;
+    if (a.owner !== p || sp.s !== 'summonFromSel' || sp.zone !== c.zone || !matchesSel(s, L, iid, sp.sel)) return false;
+    if (sp.perTurn == null) return true;
+    // 「自分のターン中、N体」: 自分のターンだけ、このターンに墓地から召喚した数が N 未満
+    const used = s.players[p].graveSummons?.turn === s.turn ? s.players[p].graveSummons!.n : 0;
+    return s.active === p && used < sp.perTurn;
+  });
 }
 
 /** カードを使うコスト (常在型能力による増減を含む。召喚時に選ぶ軽減は含まない) */
@@ -441,8 +448,14 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
     const n = d?.turn === s.turn ? d.n : 0;
     if (n) cost = Math.max(Math.min(cost, sp.floor), cost - Math.floor(n * sp.n));
   }
+  // 「相手のエレメントの文明1つにつき1少なくする」
+  for (const sp of f.statics ?? []) {
+    if (sp.s !== 'costPerOppCivs') continue;
+    const civs = new Set(s.players.filter((_, o) => o !== p).flatMap((pl) => pl.battle.flatMap((b) => cardCivs0(L, s.cards[b].cid))));
+    if (civs.size) cost = Math.max(Math.min(cost, sp.floor), cost - civs.size * sp.each);
+  }
   // シンパシー (自分の〇〇1体につき1少なく / W・シンパシーは2少なく)
-  const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave'; each?: number; ofOpp?: boolean }[] = [];
+  const syms: { sel: Sel; floor: number; zone?: 'battle' | 'mana' | 'grave' | 'shield'; each?: number; ofOpp?: boolean }[] = [];
   for (const sp of f.statics ?? []) if (sp.s === 'sympathy') syms.push(sp);
   // 他のカードから与えられたシンパシー (「自分の手札にある〇〇すべてに「シンパシー:〜」を与える」)
   if (c.zone === 'hand')
@@ -462,6 +475,8 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
   }
   return Math.max(0, cost);
 }
+
+const cardCivs0 = (L: Lookup, cid: string) => L(cid)?.civs ?? [];
 
 /** そのプレイヤーのマナが全文明を持つか */
 export function rainbowMana(s: GameState, L: Lookup, p: number, forIid?: number): boolean {

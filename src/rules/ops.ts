@@ -166,6 +166,9 @@ export type Cond =
   | { c: 'distinctCosts' } // 表向きにしたカードがすべて異なるコスト
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'ownStrongest' }
+  | { c: 'itSameNameSaved' } // そのカードが、保存したカード (手札に戻したクリーチャー) と同じ名前
+  | { c: 'lookedSameCostCreatures' } // 表向きにしたカードがすべて同じコストのクリーチャー
+  | { c: 'linkedWith'; names: string[] } // このクリーチャーがその名前のカードとリンクしている
   | { c: 'wonBattleTurn' } // このターン、自分のクリーチャーがバトルに勝っている // バトルゾーンでパワーが一番大きいクリーチャーが自分のクリーチャー
   | { c: 'selfTapped' }
   /** このクリーチャーがこのターンに攻撃した */
@@ -378,7 +381,7 @@ export type Op =
   /** 封印を外して墓地に置く (self: このカードから / any: 自分のカードのどれかから) */
   | { op: 'unseal'; from: 'self' | 'any'; n: number; /** 外した封印を置く場所 (ふつうは墓地) */ to?: 'deckBottom' }
   /** 種族・文明・数字を1つ選ぶ (hostile: 相手に不利な効果に使う) */
-  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean; /** 数字: 「何枚〜するか」を選ぶ (選んだ数を count にする。CPU は多いほうを選ぶ) */ howMany?: string }
+  | { op: 'chooseValue'; kind: 'race' | 'civ' | 'number' | 'name'; max?: number; /** 数字: N以上 */ min?: number; exclude?: string; hostile: boolean; byOpp?: boolean; /** カード名: クリーチャーの名前だけ */ creature?: boolean; /** 数字: 「何枚〜するか」を選ぶ (選んだ数を count にする。CPU は多いほうを選ぶ) */ howMany?: string }
   /** 攻撃中の相手クリーチャーの攻撃先を変える (self: このクリーチャー / creature: 自分のクリーチャーのどれか) */
   | { op: 'redirectAttack'; to: 'self' | 'creature' }
   /** このターンの終わりに、このクリーチャーを山札の下に置く */
@@ -456,6 +459,8 @@ export type Op =
   | { op: 'onDestroyedDraw'; n: number }
   /** 次の自分のターンのはじめまで、自分のクリーチャーすべてのハイパーモードを解放する */
   | { op: 'hyperAll' }
+  /** 山札の上から n 枚を裏向きで、そのシールド (it) の下に置く (シールド・プラス) */
+  | { op: 'deckTopUnderIt'; n: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */
