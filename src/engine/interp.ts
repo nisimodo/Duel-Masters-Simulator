@@ -1046,8 +1046,22 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       }
       case 'cornerUsed': {
         const c = s.cards[ex.src];
-        if (c) c.corners = (c.corners ?? [0, 1, 2, 3]).filter((x) => x !== op.k);
-        break;
+        if (!c) break;
+        c.corners = (c.corners ?? [0, 1, 2, 3]).filter((x) => x !== op.k);
+        const trigs = (faceOf(s, L, ex.src)?.triggers ?? []).filter((t) => t.events.includes('unsealOne'));
+        if (trigs.length !== 4) break;
+        // 封印が残っていれば、まだ使っていない3種類の能力からランダムに1つ。最後の封印なら禁断爆発
+        const fx = c.cornerFx ?? [0, 1, 2];
+        let k = 3;
+        if (c.under.some((u) => s.cards[u].sealOf === ex.src) && fx.length) {
+          k = fx[Math.floor(rand(s) * fx.length)];
+          c.cornerFx = fx.filter((x) => x !== k);
+        }
+        const POS = ['左上', '右上', '左下', '右下'];
+        log(s, ex.player, `${POS[op.k]}の封印を外した → ${trigs[k].effect.replace(/。$/, '')}`);
+        ex.ops.shift();
+        ex.ops.unshift(...programOf(trigs[k].effect).ops);
+        continue;
       }
       case 'nextUseCost':
         s.players[ex.player].nextUse = { turn: s.turn, n: op.n, floor: op.floor };

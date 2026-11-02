@@ -236,14 +236,15 @@ describe('総合ルールの変更点', () => {
     const [c1, c2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'cmdF');
     s = act(s, 0, { t: 'play', iid: c1, face: 0, pay: s.players[0].mana.slice(0, 5) });
     s = drain(s, (x) => x.pending[0]?.kind === 'choice');
-    // 外す封印の位置を選ぶ (4か所)。右上を選ぶと、その能力 (スレイヤー) だけを使う
+    // 外す封印の位置は4か所から選べる。右下を選んでも、最初の3つは3種類の能力のどれかをランダムに使う
     const q0 = s.pending[0];
     expect(q0?.kind === 'choice' && q0.mode === 'modal' && q0.labels?.length).toBe(4);
-    s = act(s, 0, { t: 'choose', options: [1] });
+    s = act(s, 0, { t: 'choose', options: [3] });
     s = drain(s);
     expect(s.cards[f].under.length).toBe(3);
-    expect(s.cards[f].corners).toEqual([0, 1, 3]);
-    expect(s.log.some((l) => l.m.includes('スレイヤー'))).toBe(true);
+    expect(s.cards[f].corners).toEqual([0, 1, 2]);
+    expect(s.cards[f].cornerFx?.length).toBe(2);
+    expect(L(s.cards[f].cid)!.faces[s.cards[f].face].name).toBe('FORBIDDEN STAR ～世界最後の日～');
     s = act(s, 0, { t: 'play', iid: c2, face: 0, pay: s.players[0].mana.filter((m) => !s.cards[m].tapped).slice(0, 5) });
     s = drain(s);
     expect(s.cards[f].under.length).toBe(3);
@@ -252,6 +253,9 @@ describe('総合ルールの変更点', () => {
       removeSeal(s, L, f);
       s = drain(act(s, 0, { t: 'note', m: '' }));
     }
+    // 3種類の能力を1回ずつ使い、最後の封印で禁断爆発
+    expect(s.cards[f].cornerFx).toEqual([]);
+    expect(['破壊', 'スレイヤー', 'パワーアタッカー'].every((w) => s.log.some((l) => l.m.includes('の封印を外した →') && l.m.includes(w)))).toBe(true);
     expect(L(s.cards[f].cid)!.faces[s.cards[f].face].name).toBe('終焉の禁断 ドルマゲドンX');
     expect(s.cards[f].cores).toBe(4);
     // 離れる時、かわりに禁断コアを2枚下に置き、シールドを1つ墓地に (2回まで)
