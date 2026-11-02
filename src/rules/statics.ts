@@ -258,7 +258,7 @@ export type StaticSpec =
   /** シールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く */
   | { s: 'breakToGrave'; cond?: StaticCond }
   /** 真実の名 ボルメテウス・ゼロ・ドラゴン 「相手はそのシールドを手札に加えるかわりに自身の山札の一番下に置く」 */
-  | { s: 'breakToDeckBottom' }
+  | { s: 'breakToDeckBottom'; /** その後、各プレイヤーはこうして置かれたシールドの数、カードを引く */ drawEach?: boolean }
   /** 「異形」の頂天 クリス=ゼ=ブブ 「クリーチャーは、パワーではなくコストの大きさを比べてバトルする」 */
   | { s: 'battleByCost' }
   /** 神聖龍 エモーショナル・ハードコア 「選んだ名前を持つクリーチャーの能力をすべて無視する」 */
@@ -670,6 +670,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     if (lk) return [{ s: 'breakToGrave', cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['mana'], kind: 'card', faceDown: true }, n: +lk[1] } }];
   }
   if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、相手は(?:その(?:シールド)?|それ)を(?:自身の)?手札に加えるかわりに、?(?:自身の|持ち主の)?山札の(?:一番)?下に置く$/.test(t0)) return [{ s: 'breakToDeckBottom' }];
+  if (/^このクリーチャーが(?:相手の)?シールドをブレイクする時、(?:相手は)?その(?:シールド)?を手札に加えるかわりに、?(?:自身の|持ち主の)?山札の(?:一番)?下に置く。その後、各プレイヤーはこうして置かれたシールドの数、カードを引く$/.test(t0)) return [{ s: 'breakToDeckBottom', drawEach: true }];
   if (/^クリーチャーは、?パワーではなくコストの大きさを比べてバトルする$/.test(t0)) return [{ s: 'battleByCost' }];
   if (/^選んだ名前を持つクリーチャーの能力をすべて無視する$/.test(t0)) return [{ s: 'ignoreChosenName' }];
   if (/^相手は各ターンに(?:一|1)度しか、?自分または自分のクリーチャーを攻撃できない$/.test(t0)) return [{ s: 'oppAttackOnce' }];
@@ -762,7 +763,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^ビビッドロー\[[a-z]*(\d+)\]/))) return [{ s: 'vivid', cost: +m[1] }];
   if ((m = t0.match(/^このクリーチャーを\[[a-z]*(\d+)\]支払って召喚してもよい(?:。そうしたら、このクリーチャーが(?:バトルゾーンに)?出た時、(.+))?$/))) return [{ s: 'altSummon', cost: +m[1], then: m[2] }];
   // 「この呪文を[ll5]支払って唱えてもよい」
-  if ((m = t0.match(/^この呪文を\[[a-z]*(\d+)\]支払って唱えてもよい$/))) return [{ s: 'altSummon', cost: +m[1] }];
+  if ((m = t0.match(/^この呪文を\[[a-z]*(\d+)\]支払って唱えてもよい(?:。そうしたら、(.+))?$/))) return [{ s: 'altSummon', cost: +m[1], then: m[2] }];
   // 離れない・破壊されない・すべてのバトルに勝つ (条件つき・ほかのクリーチャーにも)
   if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?(?:バトルゾーンを)?離れない$/))) return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
   if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?破壊されず、すべてのバトルに勝つ$/))) return [{ s: 'grant', target: { t: 'self' }, kws: ['破壊されない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];

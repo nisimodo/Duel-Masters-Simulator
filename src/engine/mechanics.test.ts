@@ -330,6 +330,11 @@ const db = buildDB(
     cr('dragonW', 7, 12000, ['ドラゴン・ワールド・ブレイカー（このクリーチャーは相手のシールドをすべてブレイクする。各ブレイクの前に、自分の山札の上から１枚をシールド化するか、表向きにしてから自分のシールド１つの上に置く）']),
     cr('nonDark', 3, 3000, ['このクリーチャーが出た時、相手は自身の手札を表向きにし、その中から闇ではないカードをすべて捨てる。']),
     cr('shufLow', 3, 5000, ['このクリーチャーが出た時、相手はこのクリーチャーよりパワーが小さい自身のクリーチャーをすべて、シャッフルして山札の下に置く。']),
+    { id: 'altSp', n: 'altSp', img: '', f: [{ n: 'altSp', t: '呪文', c: 'F', co: 6, p: null, r: [], x: ['カードを１枚引く。', 'この呪文を[ff01]支払って唱えてもよい。そうしたら、自分の手札を１枚捨てる。'] }] },
+    cr('slayDraw', 1, 1000, ['このクリーチャーが出た時、このターン、自分のクリーチャー１体に「スレイヤー」を与える。このターン、そのクリーチャーが破壊された時、自分はカードを２枚引く。']),
+    cr('raceBack', 3, 3000, ['自分のクリーチャーが出た時、そのクリーチャーと同じ種族を持つクリーチャーを１体、自分の墓地から手札に戻してもよい。']),
+    cr('countDisc', 3, 3000, ['このクリーチャーが攻撃する時、このクリーチャーに含まれるカード１枚につき、相手の手札を１枚見ないで選び、捨てさせる。']),
+    { id: 'twinCk', n: 'twinCk', img: '', f: [{ n: 'twinCk', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['相手のパワー3000以下のクリーチャーを１体選び、破壊する。自分のマナゾーンにツインパクトカードがあれば、かわりに相手のパワー5000以下のクリーチャーを１体選び、破壊する。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3140,6 +3145,62 @@ describe('named mechanics', () => {
       expect(s.cards[v].zone).toBe('deck');
       expect(s.players[1].deck[0]).toBe(v);
       expect(s.cards[b].zone).toBe('battle');
+    });
+  });
+
+  describe('2026年の新カードの能力 (代替コスト・破壊された時・同じ種族など)', () => {
+    const drain = (s: GameState) => {
+      for (let k = 0; k < 20 && s.pending.length; k++) {
+        const top = s.pending[0];
+        const a: Action = top.kind === 'choice' ? { t: 'choose', yes: true, picks: top.options?.slice(0, Math.max(1, top.min ?? 0)) ?? [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : { t: 'resolve', use: true };
+        s = act(s, top.player, a);
+      }
+      return s;
+    };
+    it('この呪文を[ff01]支払って唱えてもよい。そうしたら、手札を1枚捨てる', () => {
+      let s = setup([{ p: 0, cid: 'altSp', zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }], 3);
+      const h = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'altSp')!, face: 0, pay: freeMana(s, 0, 1), alt: 'altSummon' });
+      s = drain(s);
+      // 1枚唱えて、1枚引いて、1枚捨てる
+      expect(s.players[0].hand.length).toBe(h - 1);
+    });
+    it('このターン、そのクリーチャーが破壊された時、カードを2枚引く', () => {
+      let s = setup([{ p: 0, cid: 'slayDraw', zone: 'hand' }], 3);
+      const sd = find(s, 0, 'hand', 'slayDraw')!;
+      s = act(s, 0, { t: 'play', iid: sd, face: 0, pay: freeMana(s, 0, 1) });
+      s = drain(s);
+      const h = s.players[0].hand.length;
+      moveCard(s, L, sd, 'grave');
+      expect(s.players[0].hand.length).toBe(h + 2);
+    });
+    it('そのクリーチャーと同じ種族を持つクリーチャーを墓地から手札に戻す', () => {
+      let s = setup([{ p: 0, cid: 'raceBack', zone: 'battle' }, { p: 0, cid: 'vanilla', zone: 'hand' }, { p: 0, cid: 'big', zone: 'hand' }], 3);
+      const b = find(s, 0, 'hand', 'big')!;
+      moveCard(s, L, b, 'grave');
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'vanilla')!, face: 0, pay: freeMana(s, 0, 1) });
+      s = drain(s);
+      expect(s.cards[b].zone).toBe('hand');
+    });
+    it('このクリーチャーに含まれるカード1枚につき、相手の手札を1枚捨てさせる', () => {
+      let s = setup([{ p: 0, cid: 'countDisc', zone: 'battle' }]);
+      const c = find(s, 0, 'battle', 'countDisc')!;
+      const u = s.players[0].deck.pop()!;
+      s.cards[u].zone = 'under';
+      s.cards[u].parent = c;
+      s.cards[c].under.push(u);
+      const g = s.players[1].grave.length;
+      s = act(s, 0, { t: 'attack', attacker: c, player: 1 });
+      s = drain(s);
+      expect(s.players[1].grave.length).toBe(g + 2);
+    });
+    it('自分のマナゾーンにツインパクトカードがあれば、かわりにパワー5000以下を破壊', () => {
+      let s = setup([{ p: 0, cid: 'twinCk', zone: 'hand' }, { p: 1, cid: 'emo', zone: 'battle' }]);
+      const e = find(s, 1, 'battle', 'emo')!;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'twinCk')!, face: 0, pay: [] });
+      s = drain(s);
+      // ツインパクトがないので、パワー5000は破壊されない
+      expect(s.cards[e].zone).toBe('battle');
     });
   });
 

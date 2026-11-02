@@ -93,6 +93,8 @@ export interface CardInst {
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
   endOfTurn?: 'joe' | 'bad' | 'abyss' | 'ninja';
+  /** このターン、このクリーチャーが破壊された時、player はカードを n 枚引く */
+  onDestroyedDraw?: { turn: number; player: number; n: number };
   /** 最終禁断フィールド: まだ封印が残っている位置 (0 左上・1 右上・2 左下・3 右下) */
   corners?: number[];
   /** 最終禁断フィールド: まだ使っていない封印の能力 (テキストの順の番号。禁断爆発は除く) */

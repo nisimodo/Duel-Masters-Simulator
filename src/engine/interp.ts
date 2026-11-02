@@ -205,6 +205,11 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.battling && !(s.battleNow && (s.battleNow.att === iid || s.battleNow.def === iid))) continue;
         if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
         if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
+        if (sel.raceOfIt) {
+          const ref = ex.subject ?? ex.it[0];
+          const rr = ref != null ? (faceOf(s, L, ref)?.races ?? L(s.cards[ref].cid)?.faces[0]?.races ?? []) : [];
+          if (!(L(s.cards[iid].cid)?.faces.some((f) => f.races.some((r) => rr.includes(r))) ?? false)) continue;
+        }
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false, ex.src)) continue;
@@ -1063,6 +1068,9 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         ex.ops.unshift(...programOf(trigs[k].effect).ops);
         continue;
       }
+      case 'onDestroyedDraw':
+        for (const i of ex.it) if (s.cards[i]?.zone === 'battle') s.cards[i].onDestroyedDraw = { turn: s.turn, player: ex.player, n: op.n };
+        break;
       case 'nextUseCost':
         s.players[ex.player].nextUse = { turn: s.turn, n: op.n, floor: op.floor };
         log(s, ex.player, `このターン中、次にカードを使う時、そのコストを${op.n}少なくする`);
@@ -1484,6 +1492,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           // 「そのクリーチャーに付いているオーラ」
           const host = op.aurasOf === 'it' ? ex.it[0] : (s.cards[ex.src]?.parent ?? undefined);
           ex.count = host != null ? s.cards[host].under.filter((u) => /オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length : 0;
+        } else if (op.cardsOfSelf) {
+          ex.count = s.cards[ex.src]?.zone === 'battle' ? 1 + s.cards[ex.src].under.length : 0;
+        } else if (op.costOfIt) {
+          ex.count = ex.it.length ? maxCost(L, s.cards[ex.it[0]].cid) : 0;
         } else if (op.cardsOfIt) {
           // 「そのクリーチャーに含まれるカード」: 下に重なったカードも数える
           const i = ex.it[0];
@@ -1784,8 +1796,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, 'このターン、相手のクリーチャーは可能であればクリーチャーを攻撃する');
         break;
       case 'hasteOthers':
-        s.players[ex.player].hasteOthers = { turn: s.turn, except: ex.src };
-        log(s, ex.player, 'このターン、自分の他のクリーチャーは相手プレイヤーを攻撃できる');
+        s.players[ex.player].hasteOthers = { turn: s.turn, except: op.all ? -1 : ex.src };
+        log(s, ex.player, `このターン、自分の${op.all ? '' : '他の'}クリーチャーは相手プレイヤーを攻撃できる`);
         break;
       case 'freezeWhile': {
         for (const i of ex.it) if (s.cards[i]?.zone === 'battle') s.cards[i].frozenBy = ex.src;

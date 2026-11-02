@@ -89,6 +89,8 @@ export interface Sel {
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
+  /** 「そのクリーチャーと同じ種族を持つ」(誘発させたクリーチャー・選んだクリーチャー) */
+  raceOfIt?: boolean;
   /** コストが奇数 / 偶数 */
   costParity?: 'odd' | 'even';
   /** 先に選んで保存したカード (saved) ではない (「他の〜」) */
@@ -326,7 +328,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
+  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; /** このクリーチャーに含まれるカード */ cardsOfSelf?: boolean; /** そのカードのコスト */ costOfIt?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -422,7 +424,7 @@ export type Op =
   /** この攻撃中に使ったものとして記録する (「その攻撃中に「逆転撃」を使っていなければ」) */
   | { op: 'markAttack'; key: string }
   /** そのターン、自分の他のクリーチャーが相手プレイヤーを攻撃できない効果をすべて無効にする */
-  | { op: 'hasteOthers' }
+  | { op: 'hasteOthers'; /** このクリーチャーも含む */ all?: boolean }
   /** そのターン、相手のクリーチャーが攻撃する時、可能であればクリーチャーを攻撃する */
   | { op: 'oppMustAttackCreature' }
   /** (内部) 「それ」を指定のカードにする */
@@ -443,6 +445,8 @@ export type Op =
   | { op: 'enterCostLockTurn'; max: number }
   /** このターン中、次にカードを使う時、そのコストを n 少なくする (最低 floor) */
   | { op: 'nextUseCost'; n: number; floor: number }
+  /** このターン、そのクリーチャーが破壊された時、自分はカードを n 枚引く */
+  | { op: 'onDestroyedDraw'; n: number }
   /** 「こうして出したクリーチャー」: いまバトルゾーンにある「それ」を覚えておく */
   | { op: 'keep' }
   /** このターン、選んだクリーチャーのパワーを2倍にする */

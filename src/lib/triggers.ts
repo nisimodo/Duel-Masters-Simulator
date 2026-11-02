@@ -420,7 +420,7 @@ export function spellEffectLines(lines: string[]): string[] {
 
 /** 「〜あれば、この呪文に「S・トリガー」を与える」「〜あれば、この呪文をコストを支払わずに唱えてもよい」 (常在型として処理する) */
 function isCastStatic(l: string) {
-  if (/^この呪文を\s*\[[a-z]*\d+\]\s*支払って唱えてもよい。?$/.test(normText(l).trim())) return true;
+  if (/^この呪文を\s*\[[a-z]*\d+\]\s*支払って唱えてもよい。?(?:そうしたら、.+)?$/.test(normText(l).trim())) return true;
   if (!/「S・トリガー」を与える。?$|この呪文を(?:自分の手札から)?コストを支払わずに唱えてもよい。?$|この呪文(?:を唱える|の)コストを\d+少なくする/.test(l)) return false;
   return !!parseStaticLine(l)?.some((x) => (x.s === 'grant' && x.kws.includes('S・トリガー')) || x.s === 'selfCost' || x.s === 'sympathy');
 }

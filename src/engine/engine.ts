@@ -707,6 +707,13 @@ export function moveCard(
     c.formerUnder = [...under];
     for (const u of under) s.cards[u].leftBattleTurn = s.turn;
   }
+  // 「このターン、そのクリーチャーが破壊された時、自分はカードを引く」
+  if (from === 'battle' && dest === 'grave' && c.onDestroyedDraw?.turn === s.turn) {
+    const od = c.onDestroyedDraw;
+    c.onDestroyedDraw = undefined;
+    log(s, od.player, `${q(card?.faces[prevFace]?.name ?? '')} が破壊されたので、カードを${od.n}枚引く`);
+    drawCards(s, od.player, od.n);
+  }
   if (dest === 'grave' && from !== 'grave') {
     turnStat(s, c.owner).toGrave++;
     c.graveTurn = s.turn;
@@ -2432,6 +2439,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
   const pendingBefore = s.pending.length;
   const bst = breaker != null ? (faceOf(s, L, breaker)?.statics ?? []) : [];
   const bOwner = breaker != null ? s.cards[breaker].owner : -1;
+  let toBottom = 0;
   for (const sh of shields) {
     if (s.cards[sh].zone !== 'shield') continue;
     // ドラゴン・ワールド・ブレイカー: 各ブレイクの前に、自分の山札の上から1枚をシールド化する
@@ -2470,6 +2478,7 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToDeckBottom')) {
       moveCard(s, L, sh, 'deck', { pos: 'bottom' });
       log(s, target, 'ブレイクされたシールドは山札の下へ');
+      toBottom++;
       continue;
     }
     if (breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToGrave' && (!x.cond || staticCondOk(s, L, { src: breaker, owner: s.cards[breaker].owner, spec: x })))) {
@@ -2529,6 +2538,9 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
   pl.broken.n += shields.length;
   if (breaker != null && s.cards[breaker].zone === 'battle') fireSelf(s, L, breaker, s.cards[breaker].face, ['breakShield']);
   fireWatchers(s, L, target, null, 'ownShieldBroken', null);
+  // 「その後、各プレイヤーはこうして置かれたシールドの数、カードを引く」
+  if (toBottom && breaker != null && (faceOf(s, L, breaker)?.statics ?? []).some((x) => x.s === 'breakToDeckBottom' && x.drawEach))
+    for (let p = 0; p < s.players.length; p++) if (!s.players[p].lost) drawCards(s, p, toBottom);
   if (breaker != null && by !== target && s.tempTriggers?.some((t) => t.event === 'oppShieldBroken')) for (let k = 0; k < shields.length; k++) fireWatchers(s, L, target, null, null, 'oppShieldBroken');
 }
 
@@ -3321,6 +3333,10 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         auto: lines.length === 1 && isAutoEffect(lines[0], false),
       });
     }
+    // 「この呪文を[ll04]支払って唱えてもよい。そうしたら、〜」
+    const altSp = a.alt === 'altSummon' ? (face.statics ?? []).find((x) => x.s === 'altSummon') : undefined;
+    if (altSp && altSp.s === 'altSummon' && altSp.then)
+      s.pending.push({ kind: 'ability', player: p, src: a.iid, cid: c.cid, face: fi, event: 'spell', text: altSp.then, effect: altSp.then, optional: false, auto: false });
     const kwLine = (re: RegExp) => face.text.some((l) => re.test(normText(l)));
     // ナイト・マジック: 自分のナイトがいれば、もう一度使ってもよい
     if (lines.length && kwLine(/^ナイト・マジック/) && s.players[p].battle.some((b) => (faceOf(s, L, b)?.races ?? []).some((r) => r.includes('ナイト')))) {
