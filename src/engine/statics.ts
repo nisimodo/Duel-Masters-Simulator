@@ -299,6 +299,9 @@ export function canBeChosen(s: GameState, L: Lookup, iid: number, chooser: numbe
   }
   if (c.justDive != null) return false;
   if ((c.grants ?? []).some((g) => g.kws.includes('選ばれない'))) return false;
+  // 「自分のドラゴンは、呪文によって相手に選ばれない」などで得ている
+  const sk = staticKws(s, L, iid);
+  if (sk.includes('選ばれない') || (bySpell && sk.includes('呪文で選ばれない'))) return false;
   return !ownStatics(s, L, iid).some((x) => x.s === 'untargetable' && (!x.bySpellOnly || bySpell) && (!x.cond || staticCondOk(s, L, { src: iid, owner: c.owner, spec: x })));
 }
 

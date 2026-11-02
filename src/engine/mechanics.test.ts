@@ -5,7 +5,7 @@ import { turnStat as turnStatOf, abilityPick, applyAction, autoPay, attackTarget
 import { matchesSel, programOf, startExec } from './interp';
 import { cpuPlan, deckPlan } from './cpu';
 import { parseSel } from '../rules/selector';
-import { abilitiesIgnored, costOf } from './statics';
+import { abilitiesIgnored, canBeChosen, costOf } from './statics';
 import { parseTriggers, spellEffectLines } from '../lib/triggers';
 import type { Action, GameState } from './types';
 
@@ -297,6 +297,10 @@ const db = buildDB(
     { id: 'winSp', n: 'winSp', img: '', f: [{ n: 'winSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分はゲームに勝つ。'] }] },
     { id: 'extraSp', n: 'extraSp', img: '', f: [{ n: 'extraSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['このターンの後で、自分のターンをもう一度行う。'] }] },
     { id: 'mayDraw', n: 'mayDraw', img: '', f: [{ n: 'mayDraw', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['カードを２枚まで引いてもよい。'] }] },
+    cr('onlySummon', 1, 1000, ['このクリーチャーは、召喚以外の方法で出ない。']),
+    cr('noLeaveExDestroy', 1, 1000, ['このクリーチャーは、破壊以外の方法で離れない。']),
+    cr('handOnly', 1, 1000, ['相手のクリーチャーは、相手の手札以外から出ない。']),
+    { id: 'dragonGuard', n: 'dragonGuard', img: '', f: [{ n: 'dragonGuard', t: 'クリーチャー', c: 'F', co: 1, p: '1000', r: ['テスト'], x: ['自分のドラゴンは、呪文によって相手に選ばれない。'] }] },
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -2835,6 +2839,35 @@ describe('named mechanics', () => {
       // a の解決中に b がブレイクされた
       breakShields(s, L, 1, [b], 0);
       expect(s.pending.map((x) => (x.kind === 'trigger' ? x.iid : -1))).toEqual([b, a]);
+    });
+  });
+
+  describe('2026年の新カードの常在型能力', () => {
+    it('召喚以外の方法で出ない', () => {
+      const s = setup([{ p: 0, cid: 'onlySummon', zone: 'hand' }]);
+      const c = find(s, 0, 'hand', 'onlySummon')!;
+      moveCard(s, L, c, 'battle');
+      expect(s.cards[c].zone).toBe('hand');
+    });
+    it('破壊以外の方法で離れない (手札には戻らないが、破壊はされる)', () => {
+      const s = setup([{ p: 0, cid: 'noLeaveExDestroy', zone: 'battle' }]);
+      const c = find(s, 0, 'battle', 'noLeaveExDestroy')!;
+      moveCard(s, L, c, 'hand');
+      expect(s.cards[c].zone).toBe('battle');
+      moveCard(s, L, c, 'grave');
+      expect(s.cards[c].zone).toBe('grave');
+    });
+    it('相手のクリーチャーは相手の手札以外から出ない', () => {
+      const s = setup([{ p: 0, cid: 'handOnly', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'mana' }]);
+      const v = find(s, 1, 'mana', 'vanilla')!;
+      moveCard(s, L, v, 'battle');
+      expect(s.cards[v].zone).toBe('mana');
+    });
+    it('自分のドラゴンは、呪文によって相手に選ばれない', () => {
+      const s = setup([{ p: 0, cid: 'dragonGuard', zone: 'battle' }, { p: 0, cid: 'dragonX', zone: 'battle' }]);
+      const d = find(s, 0, 'battle', 'dragonX')!;
+      expect(canBeChosen(s, L, d, 1, true)).toBe(false);
+      expect(canBeChosen(s, L, d, 1, false)).toBe(true);
     });
   });
 

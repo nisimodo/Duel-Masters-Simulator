@@ -285,6 +285,12 @@ export type StaticSpec =
   | { s: 'vivid'; cost: number }
   /** 水蜃 フカフチノカミ 「このクリーチャーを[ww03]支払って召喚してもよい。そうしたら、このクリーチャーが出た時、〜」: then はそうした時の効果 */
   | { s: 'altSummon'; cost: number; then?: string }
+  /** 「このクリーチャーは、召喚以外の方法で出ない」 */
+  | { s: 'summonOnlyEnter' }
+  /** 「相手のクリーチャー (エレメント) は、相手の手札以外から出ない」 */
+  | { s: 'oppEnterOnlyFromHand'; creatureOnly: boolean }
+  /** 「ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない」 */
+  | { s: 'noPlayerAttackUnlessHyper' }
   /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
   | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel; /** 進化元を選べるゾーン (なければバトルゾーン) */ zones?: ('battle' | 'grave' | 'mana')[]; /** 各ゾーンから1体ずつ (進化GV・Ω) */ oneEach?: boolean }
   /** 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」 */
@@ -700,6 +706,32 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if ((m = full.replace(/\s+/g, '').match(/^バズレンダ\[[a-z]*(\d+)\]/))) return [{ s: 'buzz', n: +m[1] }];
   if ((m = full.replace(/\s+/g, '').match(/^ビビッドロー\[[a-z]*(\d+)\]/))) return [{ s: 'vivid', cost: +m[1] }];
   if ((m = t0.match(/^このクリーチャーを\[[a-z]*(\d+)\]支払って召喚してもよい(?:。そうしたら、このクリーチャーが(?:バトルゾーンに)?出た時、(.+))?$/))) return [{ s: 'altSummon', cost: +m[1], then: m[2] }];
+  // 「この呪文を[ll5]支払って唱えてもよい」
+  if ((m = t0.match(/^この呪文を\[[a-z]*(\d+)\]支払って唱えてもよい$/))) return [{ s: 'altSummon', cost: +m[1] }];
+  // 離れない・破壊されない・すべてのバトルに勝つ (条件つき・ほかのクリーチャーにも)
+  if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?(?:バトルゾーンを)?離れない$/))) return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
+  if ((m = t0.match(/^このクリーチャーは、?パワーが(\d+)以下の間、?破壊されず、すべてのバトルに勝つ$/))) return [{ s: 'grant', target: { t: 'self' }, kws: ['破壊されない', 'すべてのバトルに勝つ'], when: 'always', cond: { c: 'powerAtMost', n: +m[1] } }];
+  if (/^自分のクリーチャーがこのクリーチャーだけ(?:なら|であれば)、このクリーチャーは(?:バトルゾーンを)?離れない$/.test(t0)) return [{ s: 'grant', target: { t: 'self' }, kws: ['離れない'], when: 'always', cond: { c: 'countLess', sel: { owner: 'self', zones: ['battle'], kind: 'creature', other: true }, n: 1 } }];
+  {
+    const lv = t0.match(/^(.+?)は、?(破壊以外の方法で)?(?:バトルゾーンを)?離れない$/);
+    const lt = lv && target(lv[1]);
+    if (lv && lt && (lt.t !== 'self' || lv[2])) return [{ s: 'grant', target: lt, kws: [lv[2] ? '破壊以外で離れない' : '離れない'], when: 'always' }];
+    const ts = t0.match(/^(.+?)は、?呪文によって相手に選ばれない$/);
+    const tt = ts && target(ts[1]);
+    if (ts && tt && tt.t !== 'self') return [{ s: 'grant', target: tt, kws: ['呪文で選ばれない'], when: 'always' }];
+    const wb = t0.match(/^(.+?)は、?すべてのバトルに勝つ$/);
+    const wt = wb && target(wb[1]);
+    if (wb && wt && wt.t !== 'self') return [{ s: 'grant', target: wt, kws: ['すべてのバトルに勝つ'], when: 'always' }];
+    const fb = t0.match(/^(自分の.+?)すべてに「スピードアタッカー」を与え、それらはすべてブロックされない$/);
+    const ft = fb && target(fb[1]);
+    if (fb && ft) return [{ s: 'grant', target: ft, kws: ['スピードアタッカー', 'ブロックされない'], when: 'always' }];
+  }
+  if (/^相手のクリーチャーは、?自分を攻撃できない$/.test(t0)) return [{ s: 'oppNoAttackMe' }];
+  if (/^このクリーチャーは、?召喚以外の方法で(?:バトルゾーンに)?出ない$/.test(t0)) return [{ s: 'summonOnlyEnter' }];
+  if ((m = t0.match(/^相手の(クリーチャー|エレメント)は、?相手の手札以外から(?:バトルゾーンに)?出ない$/))) return [{ s: 'oppEnterOnlyFromHand', creatureOnly: m[1] === 'クリーチャー' }];
+  if (/^ハイパーモード状態でなければ、このクリーチャーは相手プレイヤーを攻撃できない$/.test(t0)) return [{ s: 'noPlayerAttackUnlessHyper' }];
+  // 「自分のターン中、自分の山札の上から1枚をいつでも見てもよい」(見るだけ: 画面の山札操作で見られる)
+  if (/^自分のターン中、自分の山札の上から\d+枚をいつでも見てもよい$/.test(t0)) return [{ s: 'note' }];
   if (/^このクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'mustBlock' }];
   if (/^相手のクリーチャーは、?可能(であれば|なら)ブロックする$/.test(t0)) return [{ s: 'oppMustBlock' }];
   if ((m = t0.match(/^(進化GV|超無限進化)[-ー―:：]?(名前に《.+?》とある)?自分の(.+?)(\d+)体(以上)?(?:を重ねた上に置く|の上に置く)$/))) {

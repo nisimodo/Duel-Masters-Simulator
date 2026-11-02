@@ -342,6 +342,16 @@ export function moveCard(
     log(s, c.owner, `${q(nameOf(s, L, iid))} は超次元ゾーンから出せない`);
     return from as ZoneName;
   }
+  // 「このクリーチャーは、召喚以外の方法で出ない」
+  if (to === 'battle' && from !== 'battle' && !opts.summoned && (card?.faces[opts.face ?? c.face]?.statics ?? []).some((x) => x.s === 'summonOnlyEnter')) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は召喚以外の方法では出せない`);
+    return from as ZoneName;
+  }
+  // 「相手のクリーチャー (エレメント) は、相手の手札以外から出ない」
+  if (to === 'battle' && from !== 'battle' && from !== 'hand' && activeStatics(s, L).some((x) => x.spec.s === 'oppEnterOnlyFromHand' && x.owner !== c.owner && (!x.spec.creatureOnly || !!card?.faces[opts.face ?? c.face]?.isCreature))) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は手札以外から出せない`);
+    return from as ZoneName;
+  }
   // デュエパ: 同じ名前のカードは各ターン1枚までしかバトルゾーンに出せない
   if (to === 'battle' && from !== 'battle' && s.mode === 'duepa' && card && turnStat(s, c.owner).enteredNames?.includes(card.name)) {
     log(s, c.owner, `${q(nameOf(s, L, iid))} は出せない (デュエパでは同じ名前のカードは各ターン1枚まで)`);
@@ -407,6 +417,11 @@ export function moveCard(
       return 'battle';
     }
     // 一時的に離れない
+    // 「破壊以外の方法で離れない」
+    if (to !== 'grave' && ((c.grants ?? []).some((g) => g.kws.includes('破壊以外で離れない')) || staticKws(s, L, iid).includes('破壊以外で離れない'))) {
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊以外の方法では離れない`);
+      return 'battle';
+    }
     if ((c.grants ?? []).some((g) => g.kws.includes('離れない')) || staticKws(s, L, iid).includes('離れない')) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は離れない`);
       return 'battle';
@@ -417,7 +432,7 @@ export function moveCard(
       return 'battle';
     }
     // 破壊されない
-    if (to === 'grave' && (own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow)) || (c.grants ?? []).some((g) => g.kws.includes('破壊されない') || (s.inBattleNow && g.kws.includes('バトル中破壊されない'))))) {
+    if (to === 'grave' && (own.some((x) => x.s === 'indestructible' && (!x.inBattle || s.inBattleNow)) || staticKws(s, L, iid).includes('破壊されない') || (c.grants ?? []).some((g) => g.kws.includes('破壊されない') || (s.inBattleNow && g.kws.includes('バトル中破壊されない'))))) {
       log(s, c.owner, `${q(card!.faces[c.face].name)} は破壊されない`);
       return 'battle';
     }
@@ -2037,7 +2052,9 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   function attackedOnce(o: number) {
     return s.players[o].attackedOnTurn === s.turn && activeStatics(s, L).some((x) => x.owner === o && x.spec.s === 'oppAttackOnce');
   }
-  const players = sickOnlyMach || k.cantAttackPlayer ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
+  // 「ハイパーモード状態でなければ、相手プレイヤーを攻撃できない」
+  const notHyper = mine.some((x) => x.s === 'noPlayerAttackUnlessHyper') && !(L(c.cid)?.hyper && c.face > 0);
+  const players = sickOnlyMach || k.cantAttackPlayer || notHyper ? [] : opps.filter((o) => o !== c.restrict?.noAttackPlayer && !guarded(o));
   const cards: number[] = [];
   // 出たターンにプレイヤーだけ攻撃できる (マッハファイターでなければクリーチャーは攻撃できない)
   if (c.sick && !k.speedAttacker && !k.machFighter) return { players, cards };

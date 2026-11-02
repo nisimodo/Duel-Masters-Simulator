@@ -199,7 +199,7 @@ export function PayDialog({
               refreshPay({ sasa, he, gzero, alt: v, taps });
             }}
           />{' '}
-          コスト{altSum.cost}で召喚{altSum.then ? ` (出た時: ${altSum.then.replace(/。$/, '')})` : ''}
+          コスト{altSum.cost}で{f.isSpell ? '唱える' : '召喚'}{altSum.then ? ` (出た時: ${altSum.then.replace(/。$/, '')})` : ''}
         </label>
       )}
       {vividOk && vivid && vivid.s === 'vivid' && (

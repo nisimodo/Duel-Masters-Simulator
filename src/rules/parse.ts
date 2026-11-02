@@ -1750,6 +1750,13 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
         { op: 'abyss', target: { ref: 'it' } },
       ];
   }
+  // 「そのエレメントを破壊する」「すべてのエレメントを破壊する」
+  if (/^その(?:エレメント|カード)を破壊する$/.test(s)) return [{ op: 'destroy', target: { ref: 'it' } }];
+  if (/^(?:バトルゾーンにある)?すべてのエレメントを破壊する$/.test(s))
+    return [{ op: 'choose', target: { ref: 'sel', sel: { owner: 'any', zones: ['battle'], kind: 'card' }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' }, { op: 'destroy', target: { ref: 'it' } }];
+  // 「次の自分のターンのはじめまで、自分のクリーチャーはすべて攻撃もブロックもされない」
+  if (/^次の自分のターンのはじめまで、自分のクリーチャーは(?:すべて)?、?攻撃もブロックもされない$/.test(s))
+    return [{ op: 'grant', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, count: { all: true }, chooser: 'self' }, kws: ['攻撃されない', 'ブロックされない'], until: 'nextOwnTurn' }];
   // D-Jealousy-灰撫 「バトルゾーンにある自分のクリーチャー1体の呪文側を、バトルゾーンに置いたままコストを支払わずに唱える」
   if (/^(?:バトルゾーンにある)?自分のクリーチャー1体の呪文側を、?バトルゾーンに置いたままコストを支払わずに唱え(?:る|てもよい)$/.test(s))
     return [
