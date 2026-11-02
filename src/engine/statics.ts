@@ -409,6 +409,7 @@ export function costOf(s: GameState, L: Lookup, p: number, iid: number, faceIdx:
     const sideOk = sp.side === 'any' || (sp.side === 'self' ? a.owner === p : a.owner !== p);
     if (!sideOk) continue;
     if (sp.action !== 'use' && sp.action !== action) continue;
+    if (sp.cond && !staticCondOk(s, L, a)) continue;
     // 「自分の墓地にある〇〇」のようにゾーンを1つに限るものは、そのゾーンから実行する時だけ
     if (sp.sel.zones.length === 1 && sp.sel.zones[0] !== c.zone) continue;
     if (!matchesSel(s, L, iid, { ...sp.sel, zones: [c.zone as never] })) continue;

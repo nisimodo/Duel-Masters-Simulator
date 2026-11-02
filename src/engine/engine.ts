@@ -792,6 +792,7 @@ export function moveCard(
       const destroyed = dest === 'grave';
       fireSelf(s, L, iid, prevFace, destroyed ? ['destroyed', 'leave'] : ['leave']);
       fireWatchers(s, L, c.owner, iid, 'otherOwnLeave', null);
+      if (faceOf0(L, c.cid, prevFace)?.isCreature) fireWatchers(s, L, c.owner, iid, 'anyOtherLeave', 'anyOtherLeave');
       // クロスギア・ドラグハート・オーラの「これを付けたクリーチャーが破壊された時」
       if (destroyed) for (const u of under) if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossDestroyed']);
       if (destroyed) {
@@ -1087,6 +1088,8 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
   const flipWord = event === 'flipped' ? normText(spec.text).match(/(龍解|覚醒|禁断爆発|禁断解放)した時/)?.[1] : undefined;
   log(s, owner, `⚡ ${q(card?.faces[faceIdx]?.name ?? '???')} の能力 (${flipWord ? `${flipWord}した時` : EVENT_LABEL[event]})`);
 }
+
+const faceOf0 = (L: Lookup, cid: string, face: number) => L(cid)?.faces[face];
 
 /** そのカード自身の「～時」能力 */
 function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
@@ -2526,7 +2529,8 @@ export function breakShields(s: GameState, L: Lookup, target: number, shields: n
     // 「〜なら、このクリーチャーに「S・トリガー」を与える」: シールドにある時に条件を見る
     const condTrig = (card?.faces[0]?.statics ?? []).some((x) => x.s === 'grant' && x.target.t === 'self' && x.kws.includes('S・トリガー') && staticCondOk(s, L, { src: sh, owner: target, spec: x }));
     // 「俺」の頂 ライオネル 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」
-    const granted = activeStatics(s, L).filter((x) => x.owner === target && x.spec.s === 'shieldsGetKw').map((x) => (x.spec.s === 'shieldsGetKw' ? x.spec.kw : ''));
+    const isEx = s.players[target].battle.some((b) => s.cards[b].exShield === sh || (s.cards[b].exExtra ?? []).includes(sh));
+    const granted = activeStatics(s, L).filter((x) => x.owner === target && x.spec.s === 'shieldsGetKw' && (!x.spec.exLifeOnly || isEx)).map((x) => (x.spec.s === 'shieldsGetKw' ? x.spec.kw : ''));
     const trigger = !!(card?.faces.some((f) => f.kw.shieldTrigger) || condTrig || granted.includes('S・トリガー')) && !activeStatics(s, L).some((x) => x.spec.s === 'noSTrigger' && (!x.spec.civ || cardCivs(L, s.cards[sh].cid).includes(x.spec.civ)) && (x.spec.who === 'all' || (x.spec.who === 'opp' ? x.owner !== target : x.owner === target)));
     const strike = !!(card?.faces.some((f) => f.kw.gStrike) || granted.includes('G・ストライク')) && !(s.attack && (faceOf(s, L, s.attack.attacker)?.statics ?? []).some((x) => x.s === 'noGStrike'));
     if (trigger || strike) s.pending.push({ kind: 'trigger', player: target, iid: sh, strike, trigger });

@@ -48,6 +48,7 @@ export type TrigEvent =
   | 'mugetsuUsed' // 自分の「無月の門」能力を使った時
   | 'attackEnd' // このクリーチャーの攻撃の終わりに
   | 'otherOwnLeave' // 自分の他のクリーチャーが離れた時
+  | 'anyOtherLeave' // 他のクリーチャーが離れた時 (どのプレイヤーのでも)
   | 'oppToGrave' // カードが相手の墓地に置かれた時
   | 'flipped' // このクリーチャーが龍解した時 / 覚醒した時
   | 'ownShieldAdded' // 自分のシールドゾーンにカードが置かれた時
@@ -114,6 +115,7 @@ export const EVENT_LABEL: Record<TrigEvent | 'spell', string> = {
   mugetsuUsed: '「無月の門」能力を使った時',
   attackEnd: '攻撃の終わり',
   otherOwnLeave: '自分の他のクリーチャーが離れた時',
+  anyOtherLeave: '他のクリーチャーが離れた時',
   oppToGrave: '相手の墓地にカードが置かれた時',
   oppTappedMyTurn: '自分のターンに相手のクリーチャーがタップした時',
   oppTapped: '相手のクリーチャーがタップした時',
@@ -313,6 +315,7 @@ export function parseTriggers(rawLines0: string[]): TriggerSpec[] {
     if (/^このクリーチャーを表向きにして(?:自分の)?シールドゾーンに(?:加えた|置いた)時/.test(clause)) ev.add('toShieldFaceUp');
     if (/^このクリーチャーの攻撃の終わりに$/.test(clause)) ev.add('attackEnd');
     if (/^(?:各ターン(?:に)?(?:1|一)度、)?自分の他の[^、]+?が(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('otherOwnLeave');
+    if (/^他のクリーチャーが(?:バトルゾーンを)?離れた時$/.test(clause)) ev.add('anyOtherLeave');
     // (「相手の墓地に、どこからでもカードが置かれた時」「相手のカードがどこからでも墓地へ置かれた時」も)
     if (/^(?:各ターン、?はじめて、?)?(?:カードが(?:どこからでも)?相手の墓地に置かれた時|相手の墓地に、?(?:どこからでも)?カードが置かれた時|相手のカードが(?:どこからでも)?墓地(?:へ|に)置かれた時)$/.test(clause)) ev.add('oppToGrave');
     if (/^自分のターン(?:中)?に、?相手のクリーチャーがタップした時$/.test(clause)) ev.add('oppTappedMyTurn');

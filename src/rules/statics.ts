@@ -58,7 +58,7 @@ export type StaticSpec =
   /** この条件を満たす時だけ召喚できる */
   | { s: 'summonOnlyIf'; cond: StaticCond }
   | { s: 'grant'; target: StaticTarget; kws: string[]; when: StaticWhen; cond?: StaticCond }
-  | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number; /** 各ターン、N体目の召喚だけ */ nth?: number }
+  | { s: 'cost'; side: 'self' | 'opp' | 'any'; sel: Sel; action: 'summon' | 'cast' | 'use'; delta: number; floor: number; /** 各ターン、N体目の召喚だけ */ nth?: number; cond?: StaticCond }
   | { s: 'untargetable'; bySpellOnly: boolean; cond?: StaticCond }
   | { s: 'noAttacked' }
   | { s: 'attackUntapped'; sel?: Sel }
@@ -348,7 +348,7 @@ export type StaticSpec =
   /** 進化GV・超無限進化: N体 (以上) を重ねた上に置く */
   | { s: 'evoMulti'; min: number; exact: boolean; sel: Sel; /** 進化元を選べるゾーン (なければバトルゾーン) */ zones?: ('battle' | 'grave' | 'mana')[]; /** 各ゾーンから1体ずつ (進化GV・Ω) */ oneEach?: boolean }
   /** 「自分の手札に加えるシールドカードはすべて「S・トリガー」を得る」 */
-  | { s: 'shieldsGetKw'; kw: 'S・トリガー' | 'G・ストライク' }
+  | { s: 'shieldsGetKw'; kw: 'S・トリガー' | 'G・ストライク'; /** 「EXライフ」シールドだけ */ exLifeOnly?: boolean }
   /** 飛行: 飛行を持たないクリーチャーから攻撃もブロックもされない */
   | { s: 'flying' }
   /** ソウルシフト: 進化元のコストだけ召喚コストが少なくなる */
@@ -866,6 +866,10 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
     const sk = t0.match(/^自分の手札に加えるシールドカード(?:はすべて|すべてに)「(S・トリガー|G・ストライク)」を(?:得る|与える)$/);
     if (sk) return [{ s: 'shieldsGetKw', kw: sk[1] as 'S・トリガー' | 'G・ストライク' }];
   }
+  {
+    const ex = t0.match(/^自分の「EXライフ」シールドすべてに「(S・トリガー|G・ストライク)」を与える$/);
+    if (ex) return [{ s: 'shieldsGetKw', kw: ex[1] as 'S・トリガー' | 'G・ストライク', exLifeOnly: true }];
+  }
   // 超無限進化・Ω: 「ガーディアンを1体以上自分の墓地、マナゾーンまたはバトルゾーンから選び、このクリーチャーをその上に重ねつつバトルゾーンに出す」
   {
     const om = t0.match(/^超無限進化・Ω[-ー―:：](.+?)を(\d+)体以上自分の墓地、マナゾーンまたはバトルゾーンから選び、/);
@@ -1164,6 +1168,22 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
 
   // ---- コスト ----
+  // 「自分のアーマード・ドラゴン・カードを実行するコストを1少なくする。自分のシールドゾーンに表向きのカードがあれば、追加で1少なくする」
+  if ((m = t.match(/^自分の(.+?)・カードを実行するコストを(\d+)少なくする。自分のシールドゾーンに表向きのカードがあれば、追加で(\d+)少なくする(?:[、。]?ただし.*)?$/))) {
+    const sel = parseSel(m[1] + '・カード', { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] }) ?? ({ owner: 'any', zones: ['hand', 'mana', 'grave', 'shield', 'deck'], kind: 'card', races: [m[1]] } as Sel);
+    return [
+      { s: 'cost', side: 'self', sel, action: 'use', delta: -m[2], floor: floorOf(full) },
+      { s: 'cost', side: 'self', sel, action: 'use', delta: -m[3], floor: floorOf(full), cond: { c: 'countAtLeast', sel: { owner: 'self', zones: ['shield'], kind: 'card', shieldFaceUp: true }, n: 1 } },
+    ];
+  }
+  // 「自分の墓地にカードがN枚以上あれば、このクリーチャーの召喚コストをN少なくする。さらに、自分の墓地から召喚してもよい」
+  if ((m = t0.match(/^自分の墓地にカードが(\d+)枚以上あれば、このクリーチャーの召喚コストを(\d+)少なくする。(?:ただし、?コストは\d+以下にならない。)?さらに、自分の墓地から召喚してもよい$/))) {
+    const cond: StaticCond = { c: 'countAtLeast', sel: { owner: 'self', zones: ['grave'], kind: 'card' }, n: +m[1] };
+    return [
+      { s: 'selfCost', delta: -m[2], cond, floor: floorOf(full) },
+      { s: 'summonFrom', zone: 'grave', cond },
+    ];
+  }
   // 「各ターン、自分の光のクリーチャー1体目の召喚コストを1少なくしてもよい」
   if ((m = t.match(/^各ターン、自分の(.*?)クリーチャー(\d+)体目の召喚コストを(\d+)少なく(?:する|してもよい)(?:[、。]?ただし.*)?$/))) {
     const sel = parseSel(m[1] + 'クリーチャー', { zones: ['hand', 'mana', 'grave', 'shield', 'deck'] });

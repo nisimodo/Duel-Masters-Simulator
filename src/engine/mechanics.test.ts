@@ -349,6 +349,7 @@ const db = buildDB(
     { id: 'jpSp', n: 'jpSp', img: '', f: [{ n: 'jpSp', t: '呪文', c: 'F', co: 0, p: null, r: [], x: ['自分のマナゾーンにドラゴン・クリーチャーが１体以上あれば、異なる名前のJack-Potを好きな数、自分の手札またはマナゾーンから出してもよい。'] }] },
     cr('jt2', 5, 5000, ['このクリーチャーが攻撃する時、Jトルネードを２回までする。そのJトルネードされたクリーチャーのコストの合計以下のコストを持つ呪文を１枚、自分の手札または墓地からコストを支払わずに唱えてもよい。']),
     { id: 'sp2draw', n: 'sp2draw', img: '', f: [{ n: 'sp2draw', t: '呪文', c: 'F', co: 2, p: null, r: [], x: ['カードを１枚引く。'] }] },
+    cr('leaveBuff', 3, 3000, ['他のクリーチャーが離れた時、そのターン、このクリーチャーのパワーを+2000する。']),
     cr('emo', 1, 5000, ['このクリーチャーが出た時、《emo》以外のクリーチャーの名前を１つ選ぶ。', '選んだ名前を持つクリーチャーの能力をすべて無視する。']),
   ],
   { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] },
@@ -3283,6 +3284,13 @@ describe('named mechanics', () => {
       s = drain(s);
       expect(s.players[0].battle.filter((i) => s.cards[i].cid === 'jkW').length).toBe(0);
       expect(s.cards[sp].zone).not.toBe('hand');
+    });
+    it('他のクリーチャーが離れた時 (相手のクリーチャーでも)、パワーを+2000する', () => {
+      let s = setup([{ p: 0, cid: 'leaveBuff', zone: 'battle' }, { p: 1, cid: 'vanilla', zone: 'battle' }]);
+      const b = find(s, 0, 'battle', 'leaveBuff')!;
+      moveCard(s, L, find(s, 1, 'battle', 'vanilla')!, 'grave');
+      s = drain(act(s, 0, { t: 'note', m: '' }));
+      expect(power(s, L, b)).toBe(5000);
     });
     it('次の能力を2回まで使う。▶カードを1枚引く', () => {
       let s = setup([{ p: 0, cid: 'rep2', zone: 'hand' }]);
