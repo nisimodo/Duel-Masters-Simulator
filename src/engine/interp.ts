@@ -22,6 +22,7 @@ import {
   detach,
   noteMove,
   removeSeal,
+  sealRemovable,
   nameOf,
   playCard,
   autoPay,
@@ -1227,6 +1228,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of ids) {
           const c = s.cards[i];
           if (c.zone !== 'battle') continue;
+          if ((faceOf(s, L, i)?.statics ?? []).some((x) => x.s === 'noSeal')) {
+            log(s, ex.player, `${q(nameOf(s, L, i))} には封印を付けられない`);
+            continue;
+          }
           const deck = s.players[c.owner].deck;
           for (let k = 0; k < op.n && deck.length; k++) {
             const top = deck.pop()!;
@@ -1245,7 +1250,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const owner = ex.player;
         for (let k = 0; k < op.n; k++) {
           const host = op.from === 'self' ? ex.src : s.players[owner].battle.find((b) => isSealed(s, b));
-          if (host == null || !isSealed(s, host)) break;
+          if (host == null || !isSealed(s, host) || !sealRemovable(s, L, s.cards[host].owner)) break;
           removeSeal(s, L, host, op.to);
         }
         break;
@@ -1969,6 +1974,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           }
           c.face = next;
           if (op.to === 'creature') c.tapped = false;
+          // 最終禁断クリーチャーは禁断コア4枚と合体する
+          if (/最終禁断クリーチャー/.test(card.faces[c.face].type)) c.cores = 4;
           log(s, ex.player, `${q(before)} を裏返して ${q(card.faces[c.face].name)} に`);
           if (op.to === 'creature' || op.to === 'big') fireFlipped(s, L, i);
         }

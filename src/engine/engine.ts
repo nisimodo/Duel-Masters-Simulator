@@ -505,6 +505,14 @@ export function moveCard(
       c.face = 0;
       return moveCard(s, L, iid, 'hyper', { ...opts, noReplace: true });
     }
+    // 終焉の禁断 ドルマゲドンX: 離れる時、かわりに禁断コアを2枚、このカードの下に置く。そうしたら、自分のシールドを1つ墓地に置く
+    if (own.some((x) => x.s === 'replaceLeave' && /禁断コアを2枚/.test(x.effect ?? '')) && (c.cores ?? 0) >= 2) {
+      c.cores = (c.cores ?? 0) - 2;
+      log(s, c.owner, `${q(card!.faces[c.face].name)} は離れるかわりに禁断コアを2枚下に置いた (残り${c.cores}枚)`);
+      const sh = s.players[c.owner].shield.at(-1);
+      if (sh != null) moveCard(s, L, sh, 'grave');
+      return 'battle';
+    }
     // 「破壊される時、かわりに自分の〜」: 払えるなら払ってとどまる
     for (const rl of own) {
       if (rl.s !== 'replaceLeave' || (rl.on === 'destroy' && to !== 'grave')) continue;
@@ -662,7 +670,8 @@ export function moveCard(
   }
   let dest: ZoneName = to;
   if (card && to !== 'battle') {
-    if (card.zone === 'hyper' && to !== 'hyper') dest = 'hyper';
+    // (最終禁断はデッキの外から始めるが、超次元ゾーンのカードではないので、そのまま移動する)
+    if (card.zone === 'hyper' && to !== 'hyper' && !/最終禁断/.test(card.faces[0].type)) dest = 'hyper';
     if (card.zone === 'gr' && to !== 'gr') dest = 'gr';
   }
   const pl = s.players[c.owner];
@@ -801,7 +810,7 @@ export function moveCard(
     if (dest === 'battle' && from !== 'battle' && (card?.faces[c.face]?.races ?? []).some((r) => r.includes('コマンド'))) {
       const civs = cardCivs(L, c.cid);
       const host = s.players[c.owner].battle.find((b) => b !== iid && isSealed(s, b) && (cardCivs(L, s.cards[b].cid).some((x) => civs.includes(x)) || !cardCivs(L, s.cards[b].cid).length));
-      if (host != null) removeSeal(s, L, host);
+      if (host != null && sealRemovable(s, L, c.owner, { iid, summoned: !!opts.summoned })) removeSeal(s, L, host);
     }
     if (dest === 'battle' && from !== 'battle' && card?.faces[c.face]?.marked?.OL && (card.faces[c.face].statics ?? []).some((x) => x.s === 'buzz')) {
       const eff = card.faces[c.face].marked!.OL;
@@ -909,6 +918,24 @@ export function luresFor(s: GameState, L: Lookup, attacker: number): number[] {
   return tg.cards.filter((t) => (faceOf(s, L, t)?.statics ?? []).some((x) => x.s === 'lure' && (!x.firstOnly || firstAttack)) || (s.cards[t].grants ?? []).some((g) => g.kws.includes('挑発')));
 }
 
+/** 封印を外せるか (FORBIDDEN STAR・終焉の禁断 ドルマゲドンX)。by: コマンドが出たことで外す時のそのコマンド */
+export function sealRemovable(s: GameState, L: Lookup, p: number, by?: { iid: number; summoned: boolean }): boolean {
+  const sts = activeStatics(s, L);
+  if (sts.some((x) => x.owner !== p && x.spec.s === 'oppSealLock')) {
+    log(s, p, '封印を墓地に置けない (相手の能力)');
+    return false;
+  }
+  const lock = sts.find((x) => x.owner === p && x.spec.s === 'sealLock');
+  if (!lock || lock.spec.s !== 'sealLock') return true;
+  const f = by ? faceOf(s, L, by.iid) : undefined;
+  const pl = s.players[p];
+  const used = pl.sealLockUsed?.turn === s.turn ? pl.sealLockUsed.n : 0;
+  const ok = !!by && by.summoned && !!f && (f.cost ?? 0) >= lock.spec.minCost && cardCivs(L, s.cards[by.iid].cid).some((x) => (lock.spec as { civs: Civ[] }).civs.includes(x)) && used < lock.spec.perTurn;
+  if (!ok) return false;
+  pl.sealLockUsed = { turn: s.turn, n: used + 1 };
+  return true;
+}
+
 /** 封印を1つ外して墓地に置く (なくなれば「封印がすべてなくなった時」) */
 export function removeSeal(s: GameState, L: Lookup, host: number, to?: 'deckBottom') {
   const hc = s.cards[host];
@@ -928,7 +955,14 @@ export function removeSeal(s: GameState, L: Lookup, host: number, to?: 'deckBott
     s.players[sc.owner].grave.push(seal);
   }
   log(s, hc.owner, `${q(nameOf(s, L, host))} の封印を1つ外した${to === 'deckBottom' ? ' (山札の一番下へ)' : ''}`);
-  fireSelf(s, L, host, hc.face, ['unsealOne']);
+  const hf = L(hc.cid)?.faces[hc.face];
+  const corner = /最終禁断フィールド/.test(hf?.type ?? '') ? (hf?.triggers ?? []).filter((t) => t.events.includes('unsealOne')) : [];
+  if (corner.length === 4) {
+    // 最終禁断フィールド: 外した封印の位置の能力だけを使う (右下の禁断爆発は最後に外す)
+    const left = hc.under.filter((u) => s.cards[u].sealOf === host).length;
+    const pick = corner[[1, 2, 0, 3][Math.min(3, Math.max(0, 3 - left))]];
+    if (!(sealIgnored(s, L, host) || abilitiesIgnored(s, L, host))) pushAbility(s, L, host, hc.face, pick, 'unsealOne');
+  } else fireSelf(s, L, host, hc.face, ['unsealOne']);
   if (!isSealed(s, host)) fireSelf(s, L, host, hc.face, ['unsealedAll']);
 }
 
@@ -1423,12 +1457,13 @@ export function createGame(init: GameInit, L: Lookup): GameState {
   });
   // 禁断の鼓動など: ゲーム開始時、封印を付けてバトルゾーンに置く
   s.players.forEach((pl) => {
-    for (const i of [...pl.deck]) {
+    for (const i of [...pl.deck, ...pl.hyper]) {
       const f = L(s.cards[i].cid)?.faces[0];
       const m = f?.text.map((l) => l.normalize('NFKC')).join('').match(/ゲーム開始時、(?:四隅に)?封印を(\d+|ひとつ|1)つ(?:ずつ)?付けて(?:リンクしたフィールドとして)?バトルゾーンに置く/);
       if (!m) continue;
       const n0 = (/\d/.test(m[1]) ? +m[1] : 1) * (/四隅/.test(m[0]) ? 4 : 1);
-      pl.deck.splice(pl.deck.indexOf(i), 1);
+      const from = pl.deck.includes(i) ? pl.deck : pl.hyper;
+      from.splice(from.indexOf(i), 1);
       s.cards[i].zone = 'battle';
       s.cards[i].faceUp = true;
       pl.battle.push(i);
@@ -2130,6 +2165,12 @@ export function canAttackWith(s: GameState, L: Lookup, iid: number): boolean {
   if (c.sick && activeStatics(s, L).some((x) => x.spec.s === 'newNoAttackSel' && matchesSel(s, L, iid, x.spec.sel, true))) return false;
   const k = kwOf(s, L, iid);
   if (k.cantAttack) return false;
+  // FORBIDDEN STAR 「自分は、コマンド、イニシャルズ、あるいは名前に《禁断》とあるクリーチャーでしか攻撃できない」
+  for (const x of activeStatics(s, L)) {
+    if (x.owner !== c.owner || x.spec.s !== 'attackOnly') continue;
+    const sp = x.spec;
+    if (!f.races.some((r) => sp.races.some((w) => r.includes(w))) && !(sp.nameHas && f.name.includes(sp.nameHas))) return false;
+  }
   const neoBare = /NEO/.test(f.type) && c.enteredTurn === s.turn && !c.under.some((u) => L(s.cards[u].cid)?.faces[0]?.isCreature);
   if ((c.sick || neoBare) && !k.speedAttacker && !k.machFighter && !ownStatics(s, L, iid).some((x) => x.s === 'hastePlayer') && !(c.grants ?? []).some((g) => g.kws.includes('プレイヤー攻撃可')) && !hasteByOther(s, iid)) return false;
   return true;

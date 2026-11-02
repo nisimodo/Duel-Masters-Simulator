@@ -2,12 +2,12 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { applyAction, canAttackWith, createGame, moveCard } from './engine';
+import { abilityPick, applyAction, canAttackWith, createGame, moveCard, removeSeal } from './engine';
 import { abilitiesIgnored } from './statics';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
-const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus'];
+const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～'];
 const picked = raw.filter((c) => c.f.some((f) => NAMES.includes(f.n)) || NAMES.includes(c.n));
 const vanilla = { id: 'vanilla', n: 'vanilla', img: '', f: [{ n: 'vanilla', t: 'クリーチャー', c: 'N', co: 1, p: '1000', r: ['テスト'], x: [] }] };
 const sa = { id: 'sa', n: 'sa', img: '', f: [{ n: 'sa', t: 'クリーチャー', c: 'F', co: 1, p: '3000', r: ['テスト'], x: ['スピードアタッカー'] }] };
@@ -19,18 +19,19 @@ const extra = [
   mk('rc', 'クリーチャー', 'F', 5, '9000', ['革命チェンジ：火のクリーチャー']),
   mk('neo', 'NEOクリーチャー', 'N', 1, '5000', ['NEO進化：自分のクリーチャー１体の上に置いてもよい。']),
   mk('drawSp', '呪文', 'N', 1, null, ['カードを１枚引く。']),
+  { id: 'cmdF', n: 'cmdF', img: '', f: [{ n: 'cmdF', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アウトレイジ', 'コマンド'], x: [] }] },
 ];
 const db = buildDB([vanilla, sa, ...extra, ...picked] as never, { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] }, []);
 const L = (cid: string) => db.byId.get(cid);
 const idOf = (name: string) => [...db.byId.values()].find((c) => c.faces.some((f) => f.name === name) || c.name === name)!.id;
 
-function setup(zones: { p: number; cid: string; zone: 'hand' | 'battle' | 'mana' }[], mana = 5): GameState {
+function setup(zones: { p: number; cid: string; zone: 'hand' | 'battle' | 'mana' }[], mana = 5, extraMain: string[] = []): GameState {
   let s = createGame(
     {
       mode: 'duema',
       seed: 1,
       createdAt: 0,
-      players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: [...Array(30).fill('vanilla'), ...zones.filter((z) => z.p === p).map((z) => z.cid)], hyper: [], gr: [], partner: null })),
+      players: [0, 1].map((p) => ({ uid: 'u' + p, name: 'P' + p, cpu: false, main: [...Array(30).fill('vanilla'), ...zones.filter((z) => z.p === p).map((z) => z.cid)], hyper: p === 0 ? extraMain : [], gr: [], partner: null })),
     },
     L,
   );
@@ -71,6 +72,11 @@ const act = (s: GameState, p: number, a: Action) => {
 const find = (s: GameState, p: number, zone: 'hand' | 'battle' | 'mana' | 'grave' | 'deck', cid: string) => s.players[p][zone].find((i) => s.cards[i].cid === cid);
 const drain = (s: GameState, until?: (s: GameState) => boolean) => {
   for (let k = 0; k < 30 && s.pending.length && !until?.(s); k++) {
+    const pk = abilityPick(s);
+    if (pk && pk.indices.length >= 2) {
+      s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+      continue;
+    }
     const top = s.pending[0];
     const a: Action =
       top.kind === 'choice' ? { t: 'choose', yes: true, picks: top.options?.slice(0, top.min ?? 0) ?? [], options: [0] } : top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : top.kind === 'block' ? { t: 'block', blocker: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : { t: 'resolve', use: true };
@@ -215,5 +221,47 @@ describe('総合ルールの変更点', () => {
     s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', 'drawSp')!, face: 0, pay: s.players[0].mana.slice(0, 1) });
     s = drain(s);
     expect(s.players[0].hand.length).toBe(h - 1);
+  });
+  it('FORBIDDEN STAR → 終焉の禁断 ドルマゲドンX (最終禁断・禁断コア)', () => {
+    const fs0 = idOf('FORBIDDEN STAR ～世界最後の日～');
+    let s = setup([{ p: 0, cid: 'vanilla', zone: 'battle' }, { p: 0, cid: 'cmdF', zone: 'hand' }, { p: 0, cid: 'cmdF', zone: 'hand' }], 10, [fs0]);
+    // デッキの40枚には含めない (デッキの外からゲーム開始時にバトルゾーンへ)
+    expect(L(fs0)!.zone).toBe('hyper');
+    const f = find(s, 0, 'battle', fs0)!;
+    for (const m of s.players[0].mana) s.cards[m].cid = 'sa';
+    expect(s.cards[f].under.length).toBe(4);
+    // コマンド・イニシャルズ・《禁断》でしか攻撃できない
+    expect(canAttackWith(s, L, find(s, 0, 'battle', 'vanilla')!)).toBe(false);
+    // 闇または火のコスト5以上のコマンドを召喚すると、各ターン1つだけ封印を外す
+    const [c1, c2] = s.players[0].hand.filter((i) => s.cards[i].cid === 'cmdF');
+    s = act(s, 0, { t: 'play', iid: c1, face: 0, pay: s.players[0].mana.slice(0, 5) });
+    s = drain(s);
+    expect(s.cards[f].under.length).toBe(3);
+    // 外した封印の位置 (左上) の能力だけを使う
+    expect(s.log.filter((l) => l.m.includes('封印が外された時')).length).toBe(1);
+    s = act(s, 0, { t: 'play', iid: c2, face: 0, pay: s.players[0].mana.filter((m) => !s.cards[m].tapped).slice(0, 5) });
+    s = drain(s);
+    expect(s.cards[f].under.length).toBe(3);
+    // 封印がすべて外れたら禁断爆発
+    for (let k = 0; k < 3; k++) {
+      removeSeal(s, L, f);
+      s = drain(act(s, 0, { t: 'note', m: '' }));
+    }
+    expect(L(s.cards[f].cid)!.faces[s.cards[f].face].name).toBe('終焉の禁断 ドルマゲドンX');
+    expect(s.cards[f].cores).toBe(4);
+    // 離れる時、かわりに禁断コアを2枚下に置き、シールドを1つ墓地に (2回まで)
+    const sh = s.players[0].shield.length;
+    moveCard(s, L, f, 'grave');
+    s = drain(s);
+    expect(s.cards[f].zone).toBe('battle');
+    expect(s.players[0].shield.length).toBe(sh - 1);
+    moveCard(s, L, f, 'grave');
+    s = drain(s);
+    expect(s.cards[f].zone).toBe('battle');
+    expect(s.cards[f].cores).toBe(0);
+    moveCard(s, L, f, 'grave');
+    s = drain(s);
+    expect(s.cards[f].zone).toBe('grave');
+    expect(s.players[0].lost).toBe(true);
   });
 });

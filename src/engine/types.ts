@@ -93,6 +93,8 @@ export interface CardInst {
   exExtra?: number[];
   /** ターンの終わりの処理 (J・O・E: 山札の下へ置いて1枚引く / B・A・D: 破壊) */
   endOfTurn?: 'joe' | 'bad' | 'abyss' | 'ninja';
+  /** 終焉の禁断 ドルマゲドンX: まだ使える禁断コアの数 */
+  cores?: number;
   /** バトルゾーンに出た順番 (総合ルール 608.5: 能力を無視しあう時は先に出ていたほうを優先) */
   enterSeq?: number;
   /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
@@ -176,6 +178,8 @@ export interface PlayerState {
   charged: boolean;
   /** このターン、次に召喚するクリーチャーのコスト軽減 */
   nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number; grants?: string[] };
+  /** FORBIDDEN STAR: このターンに外した封印の数 */
+  sealLockUsed?: { turn: number; n: number };
   /** このターン中、次にカードを使う時のコストの軽減 */
   nextUse?: { turn: number; n: number; floor: number };
   /** このターン、マナゾーンから召喚できる残りの数 */

@@ -72,6 +72,14 @@ export type StaticSpec =
   /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
   /** 多色ではない、クリーチャーの能力と呪文の効果を無視する */
   | { s: 'ignoreNonMulti' }
+  /** FORBIDDEN STAR: 自分の封印は、各ターン perTurn つだけ、civs のコスト minCost 以上のコマンドを召喚して出すことによってのみ外せる */
+  | { s: 'sealLock'; civs: Civ[]; minCost: number; perTurn: number }
+  /** 自分は sel のクリーチャーでしか攻撃できない */
+  | { s: 'attackOnly'; races: string[]; nameHas?: string }
+  /** 相手は自身のクリーチャーに付いている封印を墓地に置けない */
+  | { s: 'oppSealLock' }
+  /** このクリーチャーに封印を付けることはできない */
+  | { s: 'noSeal' }
   /** エンジンが別に処理する行 (デッキの枚数の増加・キング・セルの合体) */
   | { s: 'handled'; what: string }
   /** 自分のターン中、攻撃の前に、手札がちょうど hand 枚なら、マナゾーンにあるこのカードをタップしてカードを1枚引いてもよい */
@@ -975,6 +983,13 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  if ((m = t0.match(/^(?:バトルゾーンにある)?自分の封印は、各ターン(\d+)つだけ、(.+?)のコスト(\d+)以上のコマンドを召喚(?:または「侵略ZERO」を使って)?(?:バトルゾーンに)?出すことによってのみ、外すことができる$/))) {
+    const civs = m[2].split(/または|、/).map((x) => ({ 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as Record<string, Civ>)[x]).filter(Boolean);
+    return [{ s: 'sealLock', civs, minCost: +m[3], perTurn: +m[1] }];
+  }
+  if ((m = t0.match(/^自分は、(.+?)(?:、あるいは名前に《([^》]+)》とある)?クリーチャーでしか攻撃できない$/))) return [{ s: 'attackOnly', races: m[1].split(/、|または|か/).filter(Boolean), nameHas: m[2] }];
+  if (/^相手は(?:自身|自分)のクリーチャーに付いている封印を墓地に置けない$/.test(t0)) return [{ s: 'oppSealLock' }];
+  if (/^このクリーチャーに封印を付けることはできない$/.test(t0)) return [{ s: 'noSeal' }];
   if (/^自分は、?デッキの枚数を\d+枚増やしてゲームを開始する$/.test(t0)) return [{ s: 'handled', what: 'deckSize' }];
   if (/^自分の手札またはマナゾーンに\d+種のキング・セル(?:《[^》]+》)+が揃っていれば、合体させ、コストを支払ってこのキング・クリーチャーを召喚してもよい$/.test(t0)) return [{ s: 'handled', what: 'kingCell' }];
   if ((m = t0.match(/^自分のターン中、攻撃の前に、自分の手札がちょうど(\d+)枚なら、マナゾーンにあるこのカードをタップしてもよい。そうしたら、カードを1枚引く$/))) return [{ s: 'manaTapDraw', hand: +m[1] }];
