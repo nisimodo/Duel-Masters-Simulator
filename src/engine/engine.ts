@@ -1076,7 +1076,9 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
     auto: spec.auto,
     subject: subject ?? undefined,
   });
-  log(s, owner, `⚡ ${q(card?.faces[faceIdx]?.name ?? '???')} の能力 (${EVENT_LABEL[event]})`);
+  // 「裏返った時」は、テキストの書き方 (龍解・覚醒・禁断爆発・禁断解放) どおりに表示する
+  const flipWord = event === 'flipped' ? normText(spec.text).match(/(龍解|覚醒|禁断爆発|禁断解放)した時/)?.[1] : undefined;
+  log(s, owner, `⚡ ${q(card?.faces[faceIdx]?.name ?? '???')} の能力 (${flipWord ? `${flipWord}した時` : EVENT_LABEL[event]})`);
 }
 
 /** そのカード自身の「～時」能力 */

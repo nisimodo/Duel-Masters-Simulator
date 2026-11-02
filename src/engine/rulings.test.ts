@@ -258,6 +258,7 @@ describe('総合ルールの変更点', () => {
     expect(['破壊', 'スレイヤー', 'パワーアタッカー'].every((w) => s.log.some((l) => l.m.includes('の封印を外した →') && l.m.includes(w)))).toBe(true);
     expect(L(s.cards[f].cid)!.faces[s.cards[f].face].name).toBe('終焉の禁断 ドルマゲドンX');
     expect(s.cards[f].cores).toBe(4);
+    expect(s.log.some((l) => l.m.includes('の能力 (禁断爆発した時)'))).toBe(true);
     // 離れる時、かわりに禁断コアを2枚下に置き、シールドを1つ墓地に (2回まで)
     const sh = s.players[0].shield.length;
     moveCard(s, L, f, 'grave');
