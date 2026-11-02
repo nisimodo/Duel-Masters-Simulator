@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { CIV_COLOR, CIV_NAME, cardImage, cardImageSmall, type Card, type CardDB } from '../lib/cards';
 import { keywordBadges } from '../lib/keywords';
 import { deckThumb, type Deck } from '../lib/deck';
+import type { EffectRow } from '../game/effectsOf';
 
 export function civGradient(card: Card): string {
   const cs = card.civs.length ? card.civs.map((c) => CIV_COLOR[c]) : [CIV_COLOR.Z];
@@ -111,9 +112,9 @@ export function CardImg({ card, face = 0, width, tapped, selected, target, glow,
   );
 }
 
-export function CardBack({ sleeve, width, onClick, children, title }: { sleeve?: string | null; width?: number; onClick?: (e: MouseEvent) => void; children?: ReactNode; title?: string }) {
+export function CardBack({ sleeve, width, onClick, onContextMenu, children, title }: { sleeve?: string | null; width?: number; onClick?: (e: MouseEvent) => void; onContextMenu?: (e: MouseEvent) => void; children?: ReactNode; title?: string }) {
   return (
-    <div className="card" style={width ? ({ '--w': `${width}px` } as CSSProperties) : undefined} onClick={onClick} title={title}>
+    <div className="card" style={width ? ({ '--w': `${width}px` } as CSSProperties) : undefined} onClick={onClick} onContextMenu={onContextMenu} title={title}>
       <div className="cardback">{sleeve ? <img src={sleeve} alt="" draggable={false} /> : 'DM'}</div>
       {children}
     </div>
@@ -127,16 +128,20 @@ export function RegBadge({ db, card }: { db: CardDB; card: Card }) {
   return null;
 }
 
-/** カードの詳細 (画像 + テキスト) */
-export function CardDetail({ db, card, face }: { db: CardDB; card: Card | null; face?: number }) {
+/** カードの詳細 (画像 + テキスト)。effects: 対戦中にそのカードに付いている効果 */
+export function CardDetail({ db, card, face, effects, imgWidth = 130 }: { db: CardDB; card: Card | null; face?: number; effects?: EffectRow[]; imgWidth?: number | string }) {
   if (!card) return <div className="muted small">カードにマウスを乗せると詳細を表示します</div>;
   const faces = face != null && !card.twin ? [card.faces[face] ?? card.faces[0]] : card.faces;
+  const shownFace = face && !card.twin ? face : 0;
+  // 2面のカードは面ごとに名前を出すので、ふりがなも面ごと
+  const multi = card.twin || card.faces.length > 1;
+  const reading = (fi: number) => card.readings[fi] ?? (fi === 0 ? card.readings[0] : undefined);
   return (
-    <div className="col">
+    <div className="col card-detail">
       <div className="row" style={{ alignItems: 'flex-start' }}>
-        <CardImg key={face} card={card} width={130} face={face && !card.twin ? face : 0} />
-        <div className="col grow" style={{ gap: 2 }}>
-          <b>{card.name}</b>
+        <CardImg key={face} card={card} width={imgWidth} face={shownFace} />
+        <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
+          <Ruby text={card.name} reading={multi ? undefined : reading(0)} />
           <div className="row">
             <CivDots card={card} />
             <RegBadge db={db} card={card} />
@@ -144,24 +149,83 @@ export function CardDetail({ db, card, face }: { db: CardDB; card: Card | null; 
           <span className="small muted">{card.id}</span>
         </div>
       </div>
-      {faces.map((f, i) => (
-        <div key={i} className="col" style={{ gap: 2, borderTop: i ? '1px solid var(--line)' : undefined, paddingTop: i ? 6 : 0 }}>
-          {(card.twin || card.faces.length > 1) && <b>{f.name}</b>}
-          <div className="small">
-            {f.type} / コスト {f.cost}
-            {f.powerText ? ` / パワー ${f.powerText}` : ''}
-          </div>
-          {f.races.length > 0 && <div className="small muted">{f.races.join(' / ')}</div>}
-          <div className="row" style={{ gap: 3 }}>
-            {keywordBadges(f.kw).map((b) => (
-              <span key={b} className="badge">
-                {b}
-              </span>
-            ))}
-          </div>
-          <div className="detail-text">{f.text.join('\n')}</div>
+      {effects && effects.length > 0 && (
+        <div className="col card-effects">
+          <b className="small">付いている効果</b>
+          {effects.map((e, i) => (
+            <div key={i} className="card-effect">
+              <span className="eff-src">{e.manual ? '手動で変更' : e.src ? `《${e.src}》の効果` : '効果'}</span>
+              {e.items.map((it) => (
+                <span key={it} className={`badge${/パワー-/.test(it) ? ' minus' : /パワー\+/.test(it) ? ' plus' : ''}`}>
+                  {it}
+                </span>
+              ))}
+              <span className="small muted">{e.dur}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {faces.map((f, i) => {
+        const fi = card.faces.indexOf(f);
+        return (
+          <div key={i} className="col" style={{ gap: 2, borderTop: i ? '1px solid var(--line)' : undefined, paddingTop: i ? 6 : 0 }}>
+            {multi && <Ruby text={f.name} reading={reading(fi)} />}
+            <div className="small">
+              {f.type} / コスト {f.cost}
+              {f.powerText ? ` / パワー ${f.powerText}` : ''}
+            </div>
+            {f.races.length > 0 && <div className="small muted">{f.races.join(' / ')}</div>}
+            <div className="row" style={{ gap: 3 }}>
+              {keywordBadges(f.kw).map((b) => (
+                <span key={b} className="badge">
+                  {b}
+                </span>
+              ))}
+            </div>
+            <div className="detail-text">{f.text.join('\n')}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** カード名とその上のふりがな (読みが名前と同じ時は出さない) */
+function Ruby({ text, reading }: { text: string; reading?: string }) {
+  return (
+    <span className="col card-name">
+      {reading && reading !== text && <span className="furigana">{reading}</span>}
+      <b>{text}</b>
+    </span>
+  );
+}
+
+// マウスの位置 (カードの詳細を、カーソルと反対側に出すため)
+let pointerX = 0;
+if (typeof window !== 'undefined') window.addEventListener('mousemove', (e) => (pointerX = e.clientX), { passive: true });
+
+/**
+ * マウスを乗せている間に出すカードの詳細。画面の高さに収まるように文字と画像を小さくして、
+ * スクロールしなくても全文が見えるようにする (カーソルと反対側に出す)。
+ * avoidRight: 右側にある固定のパネルの幅 (そこには重ねない)
+ */
+export function HoverDetail({ db, card, face, effects, avoidRight = 0 }: { db: CardDB; card: Card; face?: number; effects?: EffectRow[]; avoidRight?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const left = pointerX > (window.innerWidth - avoidRight) / 2;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // 収まるまで少しずつ小さくする
+    let fs = 1;
+    el.style.setProperty('--fs', '1');
+    while (el.scrollHeight > el.clientHeight + 1 && fs > 0.55) {
+      fs = Math.round((fs - 0.05) * 100) / 100;
+      el.style.setProperty('--fs', String(fs));
+    }
+  }, [card, face, effects]);
+  return (
+    <div ref={ref} className="hover-detail" style={left ? { left: 8 } : { right: avoidRight + 8 }}>
+      <CardDetail db={db} card={card} face={face} effects={effects} imgWidth="calc(120px * var(--fs, 1))" />
     </div>
   );
 }

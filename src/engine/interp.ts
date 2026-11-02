@@ -4,6 +4,7 @@ import { CIV_NAME, type Card, type Face } from '../lib/cards';
 import { ELEMENT_FROM_GRAVE, type Cond, type Count, type Dest, type Op, type Sel, type Target } from '../rules/ops';
 import { parseEffect } from '../rules/parse';
 import {
+  addPower,
   attachCross,
   stabIntoDeck,
   attackTargets,
@@ -866,7 +867,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           if (s.cards[i].zone !== 'battle') continue;
           // 「そのバトルの終わりまで」はバトル中だけ (バトルの外で使われたらこのターン)
           if (op.until === 'battle' && s.battleNow) s.cards[i].battleMod = (s.cards[i].battleMod ?? 0) + op.delta;
-          else s.cards[i].powerMod += op.delta;
+          else addPower(s, i, op.delta, ex.src);
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワー${op.delta >= 0 ? '+' : ''}${op.delta}`);
         }
         break;
@@ -877,7 +878,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         if (n)
           for (const i of ids) {
             if (s.cards[i].zone !== 'battle') continue;
-            s.cards[i].powerMod += op.delta * n;
+            addPower(s, i, op.delta * n, ex.src);
           }
         log(s, ex.player, `${n}体分、パワー${op.delta * n >= 0 ? '+' : ''}${op.delta * n}`);
         break;
@@ -1909,7 +1910,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'powerDouble': {
         for (const i of ex.it) {
           if (s.cards[i]?.zone !== 'battle') continue;
-          s.cards[i].powerMod += Math.max(0, power(s, L, i));
+          addPower(s, i, Math.max(0, power(s, L, i)), ex.src);
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを2倍にした`);
         }
         break;
@@ -2149,7 +2150,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of ids) {
           const c = s.cards[i];
           if (c.zone !== 'battle') continue;
-          (c.grants ??= []).push({ kws: op.kws, until: op.until === 'turn' ? -1 : op.until === 'perm' ? -2 : ex.player });
+          (c.grants ??= []).push({ kws: op.kws, until: op.until === 'turn' ? -1 : op.until === 'perm' ? -2 : ex.player, src: s.cards[ex.src]?.cid });
           log(s, ex.player, `${q(nameOf(s, L, i))} に${op.kws.map((k) => `「${k}」`).join('')}を与えた`);
         }
         break;
@@ -2199,7 +2200,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
         for (const i of ids) {
           if (s.cards[i].zone !== 'battle') continue;
-          s.cards[i].powerMod += n;
+          addPower(s, i, n, ex.src);
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワー${n >= 0 ? '+' : ''}${n}`);
         }
         break;
@@ -2209,7 +2210,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const i of ids) {
           if (s.cards[i].zone !== 'battle') continue;
           const p0 = power(s, L, i);
-          s.cards[i].powerMod += p0 * (op.times - 1);
+          addPower(s, i, p0 * (op.times - 1), ex.src);
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを${op.times}倍に`);
         }
         break;
@@ -2293,7 +2294,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const ids = op.target.ref === 'sel' ? candidates(s, L, ex, op.target.sel) : (resolveRef(s, ex, op.target) ?? []);
         for (const i of ids) {
           if (s.cards[i].zone !== 'battle') continue;
-          s.cards[i].powerMod += op.value - power(s, L, i);
+          addPower(s, i, op.value - power(s, L, i), ex.src);
           log(s, ex.player, `${q(nameOf(s, L, i))} のパワーを${op.value}にした`);
         }
         break;

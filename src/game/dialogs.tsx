@@ -562,8 +562,8 @@ export function PendingDialog({
           <div className="row" style={{ maxWidth: 820 }}>
             {pending.options.map((o) => (
               <div key={o} className="col" style={{ alignItems: 'center', gap: 2 }}>
-                {s.cards[o].zone === 'shield' ? (
-                  // シールドは裏向きのまま選ぶ
+                {s.cards[o].zone === 'shield' && !s.cards[o].faceUp ? (
+                  // 裏向きのシールドは裏向きのまま選ぶ (名前や詳細は出さない)
                   <CardBack width={90} onClick={() => setPicks(picks.includes(o) ? picks.filter((x) => x !== o) : [...picks, o].slice(-pending.max))}>
                     {picks.includes(o) && <span className="count">✓</span>}
                   </CardBack>

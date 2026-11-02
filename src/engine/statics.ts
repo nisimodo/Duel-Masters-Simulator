@@ -225,24 +225,44 @@ export function notCreatureNow(s: GameState, L: Lookup, iid: number): boolean {
 /** パワーへの常在型能力の修正 (攻撃中・バトル中などの文脈つき) */
 export function staticPower(s: GameState, L: Lookup, iid: number, ctx: PowerCtx = {}): number {
   let d = 0;
-  for (const a of activeStatics(s, L)) {
-    const sp = a.spec;
-    if (sp.s !== 'power') continue;
-    if (!whenOk(s, a, sp.when, ctx) || !targetMatch(s, L, a, sp.target, iid)) continue;
-    if (sp.cond && sp.cond.c !== 'powerAtLeast' && sp.cond.c !== 'powerAtMost' && !condOk(s, L, a, sp.cond, iid)) continue;
-    if (sp.vs && (ctx.foe == null || !matchesSel(s, L, ctx.foe, { ...sp.vs, zones: ['battle'] }))) continue;
-    if (sp.perCiv) {
-      const civs = new Set((sp.perCiv === 'battle' ? s.players[a.owner].battle : s.players[a.owner].mana).flatMap((m) => L(s.cards[m].cid)?.civs ?? []));
-      d += civs.size * sp.delta;
-      continue;
-    }
-    if (sp.perUnder) {
-      d += (s.cards[a.src]?.under.length ?? 0) * sp.delta;
-      continue;
-    }
-    d += sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
-  }
+  for (const a of activeStatics(s, L)) d += staticPowerBy(s, L, a, iid, ctx);
   return d;
+}
+
+/** 1つの常在型能力によるパワーの修正 (当てはまらなければ 0) */
+function staticPowerBy(s: GameState, L: Lookup, a: ActiveStatic, iid: number, ctx: PowerCtx): number {
+  const sp = a.spec;
+  if (sp.s !== 'power') return 0;
+  if (!whenOk(s, a, sp.when, ctx) || !targetMatch(s, L, a, sp.target, iid)) return 0;
+  if (sp.cond && sp.cond.c !== 'powerAtLeast' && sp.cond.c !== 'powerAtMost' && !condOk(s, L, a, sp.cond, iid)) return 0;
+  if (sp.vs && (ctx.foe == null || !matchesSel(s, L, ctx.foe, { ...sp.vs, zones: ['battle'] }))) return 0;
+  if (sp.perCiv) {
+    const civs = new Set((sp.perCiv === 'battle' ? s.players[a.owner].battle : s.players[a.owner].mana).flatMap((m) => L(s.cards[m].cid)?.civs ?? []));
+    return civs.size * sp.delta;
+  }
+  if (sp.perUnder) return (s.cards[a.src]?.under.length ?? 0) * sp.delta;
+  return sp.per ? Math.floor(countRel(s, L, a, sp.per.sel) / sp.per.each) * sp.delta : sp.delta;
+}
+
+/** 他のカードの常在型能力から受けている効果 (カードの詳細の表示用。発生源ごとのパワー修正とキーワード) */
+export function staticEffectsOn(s: GameState, L: Lookup, iid: number): { src: number; power: number; kws: string[] }[] {
+  const out: { src: number; power: number; kws: string[] }[] = [];
+  if (s.cards[iid]?.zone !== 'battle') return out;
+  for (const a of activeStatics(s, L)) {
+    if (a.src === iid) continue;
+    const sp = a.spec;
+    let power = 0;
+    let kws: string[] = [];
+    if (sp.s === 'power') power = staticPowerBy(s, L, a, iid, {});
+    else if (sp.s === 'grant' && whenOk(s, a, sp.when, {}) && targetMatch(s, L, a, sp.target, iid) && condOk(s, L, a, sp.cond, iid)) kws = sp.kws;
+    if (!power && !kws.length) continue;
+    const e = out.find((x) => x.src === a.src);
+    if (e) {
+      e.power += power;
+      e.kws.push(...kws.filter((k) => !e.kws.includes(k)));
+    } else out.push({ src: a.src, power, kws: [...kws] });
+  }
+  return out;
 }
 
 /** 条件なしの常時のパワー修正だけ (powerAtLeast 判定用) */

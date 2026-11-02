@@ -1418,12 +1418,6 @@ button.glow-btn {
   overflow: hidden;
   transition: width 0.2s;
 }
-.testplay-bar .a {
-  background: #1d4d8f;
-}
-.testplay-bar .b {
-  background: #8f1d3a;
-}
 .testplay-bar .d {
   background: #555;
 }
@@ -1529,5 +1523,107 @@ button.glow-btn {
   }
   .room-cpu {
     order: 4;
+  }
+}
+
+/* ---------- カードの詳細 (ふりがな・付いている効果) ---------- */
+.card-name {
+  gap: 0;
+  line-height: 1.25;
+}
+.furigana {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.card-effects {
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(240, 180, 41, 0.08);
+  border: 1px solid rgba(240, 180, 41, 0.35);
+}
+.card-effect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  font-size: 12px;
+}
+.card-effect .eff-src {
+  font-weight: bold;
+}
+.badge.plus {
+  background: #1d4d2f;
+  border-color: #3fb950;
+}
+.badge.minus {
+  background: #5a1d24;
+  border-color: #f0883e;
+}
+/* マウスを乗せている間のカードの詳細 (画面の高さに収まるよう --fs で全体を縮める) */
+.hover-detail {
+  position: fixed;
+  top: 8px;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  z-index: 250;
+  pointer-events: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(24, 27, 38, 0.97);
+  border: 1px solid var(--accent);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  font-size: calc(14px * var(--fs, 1));
+}
+.hover-detail .card-detail {
+  gap: calc(8px * var(--fs, 1));
+}
+.hover-detail .small,
+.hover-detail .card-effect {
+  font-size: 0.86em;
+}
+.hover-detail .detail-text {
+  font-size: 1em;
+  line-height: 1.45;
+}
+.hover-detail .badge {
+  font-size: 0.8em;
+}
+.hover-detail .furigana {
+  font-size: 0.72em;
+}
+/* カード一覧の大きさを変えるボタン (カードに重ならないよう一覧の上に置く) */
+.size-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.size-buttons button {
+  min-width: 30px;
+}
+/* テストプレイ: デッキが3つ以上の時は枠を小さくする (スマホでは2つずつ並べる) */
+.testplay-slots.many .testplay-slot {
+  width: 240px;
+}
+@media (max-width: 600px) {
+  .testplay-slots.many {
+    gap: 6px;
+  }
+  .testplay-slots.many .testplay-vs {
+    display: none;
+  }
+  .testplay-slots.many .testplay-slot {
+    width: calc(50% - 3px);
+    padding: 4px;
+  }
+  .testplay-slots.many .deck-tile-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px;
   }
 }

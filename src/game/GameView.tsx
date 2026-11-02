@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { backend } from '../backend';
-import { CardBack, CardDetail, CardImg, isWideCard } from '../components/CardView';
+import { CardBack, CardDetail, CardImg, HoverDetail, isWideCard } from '../components/CardView';
+import { effectsOf } from './effectsOf';
+import { OnlineResultDialog } from './OnlineResultDialog';
 import { useApp } from '../context';
 import type { Profile, Room } from '../data/api';
 import type { Card, CardDB } from '../lib/cards';
@@ -36,7 +38,8 @@ const ZONE_JA: Record<string, string> = { grave: '墓地', hyper: '超次元ゾ�
 export default function GameView({ room, db, onBackToLobby, onLeave }: { room: Room; db: CardDB; onBackToLobby: () => void; onLeave: () => void }) {
   const { user } = useApp();
   const { state: s, submit, L, error } = useGameSync(room.gameId, db, room.key);
-  const [hover, setHover] = useState<{ card: Card; face?: number } | null>(null);
+  // iid: 対戦中のカード (付いている効果を出す)
+  const [hover, setHover] = useState<{ card: Card; face?: number; iid?: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   // Esc でメニューを閉じる
@@ -79,7 +82,10 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const short = useMedia('(max-height: 820px)');
   /** スマホ等で下から引き出すパネル */
   const [drawer, setDrawer] = useState<'none' | 'detail' | 'log'>('none');
-  const [detailModal, setDetailModal] = useState<{ card: Card; face?: number } | null>(null);
+  const [detailModal, setDetailModal] = useState<{ card: Card; face?: number; iid?: number } | null>(null);
+  // マウスを乗せられる画面では、詳細をカーソルの近くに大きく出す (スマホ等では下のパネル)
+  const canHover = useMedia('(hover: hover) and (pointer: fine)');
+  const [resultImage, setResultImage] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   const me = s && user ? s.players.findIndex((p) => p.uid === user.uid) : -1;
@@ -238,7 +244,12 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
   const isMyTurn = s.active === me && !pending && s.phase !== 'over';
   const L2 = L;
   const cardAt = (iid: number) => L2(s.cards[iid].cid)!;
-  const hov = (iid: number) => (c: Card | null) => setHover(c ? { card: c, face: s.cards[iid].zone === 'battle' || s.cards[iid].zone === 'hyper' ? s.cards[iid].face : undefined } : null);
+  /** 裏向きのシールド (自分のものも含めて、カード名や詳細を見せない) */
+  const hiddenShield = (iid: number) => s.cards[iid].zone === 'shield' && !s.cards[iid].faceUp;
+  const hov = (iid: number) => (c: Card | null) =>
+    setHover(c && !hiddenShield(iid) ? { card: c, iid, face: s.cards[iid].zone === 'battle' || s.cards[iid].zone === 'hyper' ? s.cards[iid].face : undefined } : null);
+  /** メニューの見出し (裏向きのシールドは名前を出さない) */
+  const titleOf = (iid: number) => (hiddenShield(iid) ? 'シールド' : nameOf(s, L, iid));
   const openMenu = (e: MouseEvent, title: string, items: MenuItem[]) => {
     e.preventDefault();
     e.stopPropagation();
@@ -463,10 +474,14 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       setBreakPicks(breakPicks.includes(iid) ? breakPicks.filter((x) => x !== iid) : [...breakPicks, iid].slice(-myPending.count));
       return;
     }
+    if (hiddenShield(iid)) {
+      openMenu(e, titleOf(iid), cardMenu(iid));
+      return;
+    }
     const card = cardAt(iid);
     const face = c.zone === 'battle' || c.zone === 'hyper' ? c.face : undefined;
-    setHover({ card, face });
-    openMenu(e, nameOf(s, L, iid), [{ label: '🔍 カードの詳細', onClick: () => setDetailModal({ card, face }) }, ...cardMenu(iid)]);
+    setHover({ card, face, iid });
+    openMenu(e, titleOf(iid), [{ label: '🔍 カードの詳細', onClick: () => setDetailModal({ card, face, iid }) }, ...cardMenu(iid)]);
   };
 
   const runHint = async (h: EffectHint, targets?: number[]) => {
@@ -507,7 +522,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
         glow={activation?.cards.includes(iid)}
         onHover={hov(iid)}
         onClick={(e) => onCardClick(iid, e)}
-        onContextMenu={(e) => openMenu(e, nameOf(s, L, iid), cardMenu(iid))}
+        onContextMenu={(e) => openMenu(e, titleOf(iid), cardMenu(iid))}
       >
         {opts.showPower && pw != null && <span className={`pw${c.powerMod ? ' mod' : ''}`}>{pw}</span>}
         {(c.under.length > 0 || (c.zone === 'battle' && c.sick && f?.isCreature && !kw?.speedAttacker) || c.noAttack || (c.zone === 'mana' && c.manaDown) || (s.onceGame ?? []).includes(iid)) && (
@@ -619,6 +634,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
               width={pos === 'compact' ? 32 : 44}
               title={castle != null ? `シールド${k + 1} (${nameOf(s, L, castle)} で要塞化)` : `シールド${k + 1}`}
               onClick={(e) => onCardClick(i, e)}
+              onContextMenu={(e) => openMenu(e, titleOf(i), cardMenu(i))}
             >
               {castle != null && <span className="tag">城</span>}
               {marks}
@@ -758,7 +774,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
           if (viewer.kind === 'peek') act({ t: 'peekEnd' });
           setViewer(null);
         }}
-        onCard={(i, e) => openMenu(e, nameOf(s, L, i), cardMenu(i).length ? cardMenu(i) : moveItems(i))}
+        onCard={(i, e) => openMenu(e, titleOf(i), cardMenu(i).length ? cardMenu(i) : moveItems(i))}
         footer={
           viewer.kind === 'deck' || viewer.kind === 'peek' ? (
             <div className="row">
@@ -965,10 +981,10 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             </div>
           )}
         </div>
-        {(!narrow || drawer === 'detail') && (
+        {(narrow ? drawer === 'detail' : !canHover) && (
           <>
         <div style={{ padding: 8, borderTop: '1px solid var(--line)', maxHeight: '42vh', overflow: 'auto' }}>
-          <CardDetail db={db} card={hover?.card ?? null} face={hover?.face} />
+          <CardDetail db={db} card={hover?.card ?? null} face={hover?.face} effects={hover?.iid != null ? effectsOf(s, L, hover.iid, viewerIdx) : undefined} />
         </div>
           </>
         )}
@@ -1088,8 +1104,11 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
       {gachaQueue[0] && <GachaRoulette key={gachaCount - gachaQueue.length} spin={gachaQueue[0]} onDone={gachaDone} />}
       {detailModal && (
         <Modal title="カードの詳細" onClose={() => setDetailModal(null)}>
-          <CardDetail db={db} card={detailModal.card} face={detailModal.face} />
+          <CardDetail db={db} card={detailModal.card} face={detailModal.face} effects={detailModal.iid != null ? effectsOf(s, L, detailModal.iid, viewerIdx) : undefined} />
         </Modal>
+      )}
+      {hover && !narrow && canHover && !detailModal && (
+        <HoverDetail db={db} card={hover.card} face={hover.face} effects={hover.iid != null ? effectsOf(s, L, hover.iid, viewerIdx) : undefined} avoidRight={300} />
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} title={menu.title} items={menu.items} onClose={closeMenu} />}
       {s.phase === 'over' && (
@@ -1109,9 +1128,11 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             <button className="primary" onClick={onBackToLobby}>
               ルームに戻る
             </button>
+            <button onClick={() => setResultImage(true)}>結果を画像にする</button>
           </div>
         </Modal>
       )}
+      {resultImage && s.phase === 'over' && <OnlineResultDialog db={db} s={s} room={room} onClose={() => setResultImage(false)} />}
       <MoveAnimator s={s} L={L} me={me} showAll={allCpu} sleeveOf={sleeveOf} />
       {toast && <div className="toast">{toast}</div>}
     </div>

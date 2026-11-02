@@ -43,6 +43,18 @@ export function nameOf(s: GameState, L: Lookup, iid: number): string {
 }
 export const q = (n: string) => `《${n}》`;
 
+/** ターン終了までのパワー修正 (src: 効果を出したカード。カードの詳細に「誰の効果か」を出すために内訳も残す) */
+export function addPower(s: GameState, iid: number, n: number, src: number | null) {
+  const c = s.cards[iid];
+  c.powerMod += n;
+  if (!n) return;
+  const cid = src != null ? (s.cards[src]?.cid ?? null) : null;
+  const list = (c.powerSrc ??= []);
+  const e = list.find((x) => x.cid === cid);
+  if (e) e.n += n;
+  else list.push({ cid, n });
+}
+
 export function log(s: GameState, p: number | null, m: string) {
   s.log.push({ p, m });
   if (s.log.length > 400) s.log.splice(0, s.log.length - 400);
@@ -155,6 +167,7 @@ function resetCard(c: CardInst) {
   c.tapped = false;
   c.sick = false;
   c.powerMod = 0;
+  c.powerSrc = undefined;
   c.battleMod = undefined;
   c.noAttack = false;
   c.revealed = false;
@@ -1717,6 +1730,7 @@ function finishEndTurn(s: GameState, L: Lookup) {
   endBattle(s);
   for (const c of s.cards) {
     c.powerMod = 0;
+    c.powerSrc = undefined;
     c.noAttack = false;
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== -1);
   }
@@ -2897,10 +2911,10 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
       if (!canAttackWith(s, L, a.iid)) return 'このクリーチャーは攻撃できる状態ではありません';
       c.tapped = true;
       const pw = power(s, L, a.iid);
-      o.powerMod += pw;
+      addPower(s, a.onto, pw, a.iid);
       const k = kwOf(s, L, a.iid);
       const kws = [k.breaker >= 99 ? 'ワールド・ブレイカー' : k.breaker === 4 ? 'Q・ブレイカー' : k.breaker === 3 ? 'T・ブレイカー' : k.breaker === 2 ? 'W・ブレイカー' : '', k.blocker ? 'ブロッカー' : '', k.slayer ? 'スレイヤー' : ''].filter(Boolean);
-      if (kws.length) (o.grants ??= []).push({ kws, until: -1 });
+      if (kws.length) (o.grants ??= []).push({ kws, until: -1, src: c.cid });
       log(s, p, `ダイナモ: ${q(nameOf(s, L, a.iid))} のパワー${pw}と能力を ${q(nameOf(s, L, a.onto))} に加えた`);
       return null;
     }
@@ -3834,7 +3848,7 @@ function applyManual(s: GameState, p: number, a: Action, L: Lookup): Result {
     case 'power': {
       const c = s.cards[a.iid];
       if (!c || c.zone !== 'battle') return 'バトルゾーンのカードを選んでください';
-      c.powerMod += a.delta;
+      addPower(s, a.iid, a.delta, null);
       log(s, p, `${who}: ${q(nameOf(s, L, a.iid))} のパワー ${a.delta >= 0 ? '+' : ''}${a.delta} (ターン終了まで)`);
       return null;
     }

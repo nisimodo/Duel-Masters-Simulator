@@ -4,6 +4,7 @@ import type { Card, CardDB } from '../lib/cards';
 import { frontCost } from '../lib/deckImage';
 import { mainSize, type Deck } from '../lib/deck';
 import { CardDetail, CardImg } from './CardView';
+import { useCardScale } from './CardSize';
 
 /** コスト順 (同じコストは枚数が多い順) の (カード, 枚数) */
 function entries(db: CardDB, m: Record<string, number>): { card: Card; n: number }[] {
@@ -15,6 +16,7 @@ function entries(db: CardDB, m: Record<string, number>): { card: Card; n: number
 
 export function DeckContents({ db, deck }: { db: CardDB; deck: Deck }) {
   const [detail, setDetail] = useState<Card | null>(null);
+  const [scale, sizeButtons] = useCardScale('deckContents');
   const partner = deck.partner ? db.byId.get(deck.partner) : undefined;
   const sections = [
     { title: `メインデッキ (${mainSize(deck) - (partner ? 1 : 0)})`, list: entries(db, deck.main) },
@@ -24,12 +26,15 @@ export function DeckContents({ db, deck }: { db: CardDB; deck: Deck }) {
   ].filter((s) => s.list.length);
   return (
     <div className="col deck-contents">
-      {sections.map((s) => (
+      {sections.map((s, i) => (
         <div key={s.title} className="col" style={{ gap: 4 }}>
-          <b className="small">{s.title}</b>
+          <div className="row">
+            <b className="small grow">{s.title}</b>
+            {i === 0 && sizeButtons}
+          </div>
           <div className="deck-contents-grid">
             {s.list.map(({ card, n }) => (
-              <CardImg key={card.id} card={card} width={72} selected={detail === card} title={card.name} onClick={() => setDetail(detail === card ? null : card)}>
+              <CardImg key={card.id} card={card} width={Math.round(72 * scale)} selected={detail === card} title={card.name} onClick={() => setDetail(detail === card ? null : card)}>
                 <span className="count-badge">×{n}</span>
               </CardImg>
             ))}

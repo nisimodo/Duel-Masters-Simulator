@@ -1,5 +1,5 @@
-// テストプレイ: 2つのデッキをCPU同士で何度も高速に対戦させ、勝率と勝因・敗因を見る
-import { useEffect, useMemo, useRef, useState } from 'react';
+// テストプレイ: 2つ (デュエパは4つまで) のデッキをCPU同士で何度も高速に対戦させ、勝率と勝因・敗因を見る
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, useFavs } from '../context';
 import { DeckViewDialog, ViewButton } from '../components/DeckViewDialog';
 import { favFirst, subscribeDecks } from '../data/api';
@@ -7,8 +7,8 @@ import { DeckSection, DeckTile, FormatBadge } from '../components/DeckGrid';
 import { expandDeck, presetToDeck, splitByFormat, type Deck } from '../lib/deck';
 import { addGame, emptyStats, simulateGame, type SimStats } from '../engine/sim';
 import type { CardDB } from '../lib/cards';
-import { Modal } from '../game/dialogs';
-import { deckReport, downloadBlob, pct, renderResultImage, type ImageShape } from '../lib/resultImage';
+import { ResultImageDialog } from '../components/ResultImageDialog';
+import { deckLetter, deckReport, pct, renderResultImage, SIDE_COLORS, type ImageShape } from '../lib/resultImage';
 
 interface Option {
   id: string;
@@ -41,20 +41,21 @@ function DeckSlot({ db, label, opt, active, onClick }: { db: CardDB; label: stri
 }
 
 /** デッキごとの結果 */
-function DeckReport({ db, st, p, name }: { db: CardDB; st: SimStats; p: 0 | 1; name: string }) {
-  const q = (1 - p) as 0 | 1;
-  const { wins, losses, finishers: fin, usage } = deckReport(db, st, p);
-  const total = st.wins[p] + st.wins[q];
+function DeckReport({ db, st, p, name }: { db: CardDB; st: SimStats; p: number; name: string }) {
+  const { wins, losses, finishers: fin, usage, lost, avgPlace } = deckReport(db, st, p);
+  const total = st.games - st.draws;
+  const multi = st.players > 2;
   return (
-    <div className="panel col" style={{ flex: '1 1 320px', minWidth: 0 }}>
+    <div className="panel col" style={{ flex: '1 1 320px', minWidth: 0, borderLeft: `4px solid ${SIDE_COLORS[p % SIDE_COLORS.length].bar}` }}>
       <h3 style={{ margin: 0 }}>
-        {p === 0 ? 'A' : 'B'}: {name}
+        {deckLetter(p)}: {name}
       </h3>
       <div>
-        勝率 <b className="testplay-big">{pct(st.wins[p], st.games)}</b> ({st.wins[p]}勝 {st.wins[q]}敗{st.draws ? ` ${st.draws}分` : ''}){total < st.games && <span className="small muted"> ・ 決着した試合での勝率 {pct(st.wins[p], total)}</span>}
+        勝率 <b className="testplay-big">{pct(st.wins[p], st.games)}</b> ({st.wins[p]}勝 {lost}敗{st.draws ? ` ${st.draws}分` : ''}){total < st.games && <span className="small muted"> ・ 決着した試合での勝率 {pct(st.wins[p], total)}</span>}
       </div>
       <div className="small">
-        先攻 {pct(st.firstWins[p], st.firstGames[p])} ({st.firstGames[p]}試合) ・ 後攻 {pct(st.wins[p] - st.firstWins[p], st.games - st.firstGames[p])} ({st.games - st.firstGames[p]}試合)
+        先攻 {pct(st.firstWins[p], st.firstGames[p])} ({st.firstGames[p]}試合) ・ {multi ? 'それ以外' : '後攻'} {pct(st.wins[p] - st.firstWins[p], st.games - st.firstGames[p])} ({st.games - st.firstGames[p]}試合)
+        {multi && avgPlace != null && ` ・ 平均順位 ${avgPlace}位`}
       </div>
       <b>勝因 (勝った時の決着)</b>
       {wins.length ? (
@@ -169,60 +170,39 @@ export default function TestPlay() {
     // お気に入りを先に
     return favFirst([...mine, ...presets], favs, (o) => o.id);
   }, [db, decks, favs, deckType]);
-  const [slot, setSlot] = useState<0 | 1>(0);
+  // デュエパの対戦人数 (デュエマは2人)
+  const [duepaPlayers, setDuepaPlayers] = useState(4);
+  const nDecks = mode === 'duema' ? 2 : duepaPlayers;
+  const [slot, setSlot] = useState(0);
   // 中身を見ているデッキ
   const [view, setView] = useState<Deck | null>(null);
-  const [pick, setPick] = useState<[string | null, string | null]>([null, null]);
+  const [pick, setPick] = useState<(string | null)[]>([null, null, null, null]);
   const [count, setCount] = useState(50);
   const [stats, setStats] = useState<SimStats | null>(null);
   const [running, setRunning] = useState(false);
-  const [names, setNames] = useState<[string, string]>(['', '']);
+  const [names, setNames] = useState<string[]>([]);
   // 結果を出したデッキ (画像に使う。対戦の後で選び直しても変わらない)
-  const [resultDecks, setResultDecks] = useState<[Deck, Deck] | null>(null);
+  const [resultDecks, setResultDecks] = useState<Deck[] | null>(null);
   // 結果画像のプレビュー (保存ボタンで保存する)
-  const [preview, setPreview] = useState<{ shape: ImageShape; blob: Blob; url: string; missingThumbs: number } | null>(null);
-  const [making, setMaking] = useState<ImageShape | 'reload' | null>(null);
-  useEffect(
-    () => () => {
-      if (preview) URL.revokeObjectURL(preview.url);
-    },
-    [preview],
-  );
-  // カード画像を読み込めなかった時は、裏で取得し続けて、読み込めたらプレビューを自動で作り直す
-  const autoTry = useRef(0);
-  const [autoTick, setAutoTick] = useState(0);
-  useEffect(() => {
-    if (!db || !preview || preview.missingThumbs === 0 || making || !stats || !resultDecks) return;
-    if (autoTry.current >= 10) return;
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      autoTry.current++;
-      try {
-        const r = await renderResultImage(db, stats, resultDecks, preview.shape, 60000);
-        // (待っている間に閉じた・切り替えた時は何もしない)
-        if (!cancelled && r.missingThumbs < preview.missingThumbs) setPreview({ shape: preview.shape, blob: r.blob, url: URL.createObjectURL(r.blob), missingThumbs: r.missingThumbs });
-        // まだ読み込めなければ、もう一度試す
-        else if (!cancelled) setAutoTick((x) => x + 1);
-      } catch {
-        // 作り直せなくても今のプレビューのまま
-      }
-    }, 3000);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [preview, making, stats, resultDecks, db, autoTick]);
+  const [preview, setPreview] = useState<ImageShape | null>(null);
+  const makeImage = useCallback((shape: ImageShape, timeoutMs: number) => renderResultImage(db!, stats!, resultDecks!, shape, timeoutMs), [db, stats, resultDecks]);
 
   const cancel = useRef(false);
   if (!db || !user) return null;
 
-  const optA = options.find((o) => o.id === pick[0]) ?? null;
-  const optB = options.find((o) => o.id === pick[1]) ?? null;
+  const opts = Array.from({ length: nDecks }, (_, i) => options.find((o) => o.id === pick[i]) ?? null);
+  const ready = opts.every((o) => !!o);
   const choose = (id: string) => {
-    const next: [string | null, string | null] = [...pick];
+    const next = [...pick];
     next[slot] = id;
     setPick(next);
-    if (slot === 0 && !next[1]) setSlot(1);
+    // まだ選んでいない次の枠へ
+    const empty = Array.from({ length: nDecks }, (_, i) => (slot + 1 + i) % nDecks).find((i) => !next[i]);
+    if (empty != null) setSlot(empty);
+  };
+  const pickNote = (id: string) => {
+    const ls = pick.slice(0, nDecks).flatMap((p, i) => (p === id ? [deckLetter(i)] : []));
+    return ls.length ? `デッキ${ls.join('・')}` : undefined;
   };
   const tile = (o: Option) => (
     <DeckTile
@@ -233,8 +213,8 @@ export default function TestPlay() {
       actions={<ViewButton onClick={() => setView(o.deck)} />}
       fav={favs.has(o.id)}
       onFav={() => toggle(o.id)}
-      selected={pick[0] === o.id || pick[1] === o.id}
-      okNote={pick[0] === o.id && pick[1] === o.id ? 'A・B (ミラー)' : pick[0] === o.id ? 'デッキA' : pick[1] === o.id ? 'デッキB' : undefined}
+      selected={pick.slice(0, nDecks).includes(o.id)}
+      okNote={pickNote(o.id)}
       onClick={() => choose(o.id)}
     />
   );
@@ -243,15 +223,15 @@ export default function TestPlay() {
   const L = (cid: string) => db.byId.get(cid);
 
   const run = async () => {
-    if (!optA || !optB) return;
+    if (!ready) return;
+    const ds = opts.map((o) => o!.deck);
     cancel.current = false;
     setRunning(true);
-    setNames([optA.deck.name, optB.deck.name]);
-    setResultDecks([optA.deck, optB.deck]);
-    const st = emptyStats();
-    setStats({ ...st });
-    const a = expandDeck(optA.deck);
-    const b = expandDeck(optB.deck);
+    setNames(ds.map((d) => d.name));
+    setResultDecks(ds);
+    const st = emptyStats(ds.length);
+    setStats(structuredClone(st));
+    const expanded = ds.map(expandDeck);
     let last = performance.now();
     for (let i = 0; i < count && !cancel.current; i++) {
       const g = simulateGame(
@@ -259,12 +239,9 @@ export default function TestPlay() {
           mode: mode === 'duema' ? 'duema' : 'duepa',
           seed: Math.floor(Math.random() * 2 ** 31),
           createdAt: 0,
-          // 先攻は交互にする
-          first: i % 2,
-          players: [
-            { uid: 'test:a', name: 'A', cpu: true, ...a },
-            { uid: 'test:b', name: 'B', cpu: true, ...b },
-          ],
+          // 先攻は順番に交代する
+          first: i % ds.length,
+          players: expanded.map((d, k) => ({ uid: `test:${k}`, name: deckLetter(k), cpu: true, ...d })),
         },
         L,
       );
@@ -280,31 +257,10 @@ export default function TestPlay() {
     setRunning(false);
   };
 
-  /** reload: カード画像を読み込み直す (長めに待つ) */
-  const showImage = async (shape: ImageShape, reload = false) => {
-    if (!stats || !resultDecks) return;
-    setMaking(reload ? 'reload' : shape);
-    try {
-      const { blob, missingThumbs } = await renderResultImage(db, stats, resultDecks, shape, reload ? 30000 : 10000);
-      autoTry.current = 0;
-      setPreview({ shape, blob, url: URL.createObjectURL(blob), missingThumbs });
-    } catch (e) {
-      alert(`画像を作れませんでした: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setMaking(null);
-    }
-  };
-  const saveImage = () => {
-    if (!preview) return;
-    const d = new Date();
-    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-    downloadBlob(preview.blob, `testplay-${stamp}-${preview.shape === 'landscape' ? '16x9' : '9x16'}.png`);
-  };
-
   return (
     <div className="page col">
       <h2>テストプレイ</h2>
-      <p className="small muted">2つのデッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます。先攻は1試合ごとに交互です。対戦はこのブラウザの中だけで行い、記録は残りません。</p>
+      <p className="small muted">デッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます (デュエパは4つまで)。先攻は1試合ごとに交代します。対戦はこのブラウザの中だけで行い、記録は残りません。</p>
       <div className="panel col">
         <div className="row small">
           <b>形式</b>
@@ -323,18 +279,41 @@ export default function TestPlay() {
                 onChange={() => {
                   setMode(m);
                   // (デッキの種類が変わる時は選び直す)
-                  if ((m === 'duepa') !== (mode === 'duepa')) setPick([null, null]);
+                  if ((m === 'duepa') !== (mode === 'duepa')) setPick([null, null, null, null]);
+                  setSlot(0);
                 }}
               />{' '}
               {label}
             </label>
           ))}
         </div>
-        {mode !== 'duema' && <span className="small muted">デュエパのルール (手札とシールド6枚・先攻も1ターン目に引く・勝敗を直接決める効果と追加ターンは無効 など) で1対1の対戦をします。</span>}
-        <div className="row" style={{ alignItems: 'stretch' }}>
-          <DeckSlot db={db} label="デッキA" opt={optA} active={slot === 0} onClick={() => setSlot(0)} />
-          <div className="testplay-vs">VS</div>
-          <DeckSlot db={db} label="デッキB" opt={optB} active={slot === 1} onClick={() => setSlot(1)} />
+        {mode !== 'duema' && (
+          <div className="row small">
+            <b>人数</b>
+            {[2, 3, 4].map((n) => (
+              <label key={n}>
+                <input
+                  type="radio"
+                  disabled={running}
+                  checked={duepaPlayers === n}
+                  onChange={() => {
+                    setDuepaPlayers(n);
+                    if (slot >= n) setSlot(0);
+                  }}
+                />{' '}
+                {n}人
+              </label>
+            ))}
+            <span className="muted">デュエパのルール (手札とシールド6枚・先攻も1ターン目に引く・勝敗を直接決める効果と追加ターンは無効 など) で、最後の1人になるまで対戦します。</span>
+          </div>
+        )}
+        <div className={`row testplay-slots${nDecks > 2 ? ' many' : ''}`} style={{ alignItems: 'stretch' }}>
+          {opts.map((o, i) => (
+            <Fragment key={i}>
+              {i > 0 && <div className="testplay-vs">VS</div>}
+              <DeckSlot db={db} label={`デッキ${deckLetter(i)}`} opt={o} active={slot === i} onClick={() => setSlot(i)} />
+            </Fragment>
+          ))}
           <div className="col" style={{ justifyContent: 'center', gap: 8 }}>
             <label className="row small">
               対戦回数
@@ -345,14 +324,14 @@ export default function TestPlay() {
                 中止
               </button>
             ) : (
-              <button className="primary" disabled={!optA || !optB} onClick={run}>
+              <button className="primary" disabled={!ready} onClick={run}>
                 対戦開始
               </button>
             )}
           </div>
         </div>
         <span className="small muted">
-          {slot === 0 ? 'デッキA' : 'デッキB'} を選んでいます。上の枠を押すと、選ぶ側を切り替えられます。
+          デッキ{deckLetter(slot)} を選んでいます。上の枠を押すと、選ぶ枠を切り替えられます。
         </span>
         <div className="deck-pick-grid col" style={{ gap: 8 }}>
           {deckType === 'duepa' ? (
@@ -379,23 +358,22 @@ export default function TestPlay() {
               {!running && stats.games > 0 && (
                 <span className="row small" style={{ gap: 6 }}>
                   結果画像
-                  <button disabled={!!making} onClick={() => showImage('landscape')} title="1920×1080 のプレビューを表示">
-                    {making === 'landscape' ? '作成中…' : '横長 16:9'}
+                  <button onClick={() => setPreview('landscape')} title="横幅1920のプレビューを表示 (文字が多い時は縦に伸ばします)">
+                    横長
                   </button>
-                  <button disabled={!!making} onClick={() => showImage('portrait')} title="1080×1920 のプレビューを表示">
-                    {making === 'portrait' ? '作成中…' : '縦長 9:16'}
+                  <button onClick={() => setPreview('portrait')} title="横幅1080のプレビューを表示 (文字が多い時は縦に伸ばします)">
+                    縦長
                   </button>
                 </span>
               )}
             </div>
             <div className="testplay-bar">
-              <div className="a" style={{ width: pct(stats.wins[0], stats.games) }}>
-                {stats.wins[0] > 0 && `A ${pct(stats.wins[0], stats.games)}`}
-              </div>
+              {stats.wins.map((w, p) => (
+                <div key={p} style={{ width: pct(w, stats.games), background: SIDE_COLORS[p % SIDE_COLORS.length].bar }}>
+                  {w > 0 && `${deckLetter(p)} ${pct(w, stats.games)}`}
+                </div>
+              ))}
               <div className="d" style={{ width: pct(stats.draws, stats.games) }} />
-              <div className="b" style={{ width: pct(stats.wins[1], stats.games) }}>
-                {stats.wins[1] > 0 && `B ${pct(stats.wins[1], stats.games)}`}
-              </div>
             </div>
             <div className="testplay-progress">
               <div style={{ width: pct(stats.games, count) }} />
@@ -403,36 +381,14 @@ export default function TestPlay() {
             {stats.draws > 0 && <span className="small muted">引き分け・決着なし {stats.draws}試合 (6000手以内に終わらなかった試合を含みます)</span>}
           </div>
           <div className="row" style={{ alignItems: 'flex-start' }}>
-            <DeckReport db={db} st={stats} p={0} name={names[0]} />
-            <DeckReport db={db} st={stats} p={1} name={names[1]} />
+            {names.map((n, p) => (
+              <DeckReport key={p} db={db} st={stats} p={p} name={n} />
+            ))}
           </div>
           <IssueReport db={db} st={stats} />
         </>
       )}
-      {preview && (
-        <Modal title="結果画像のプレビュー" onClose={() => setPreview(null)}>
-          <div className="row small" style={{ gap: 6 }}>
-            {(['landscape', 'portrait'] as const).map((sh) => (
-              <button key={sh} className={preview.shape === sh ? 'primary' : ''} disabled={!!making} onClick={() => preview.shape !== sh && showImage(sh)}>
-                {making === sh ? '作成中…' : sh === 'landscape' ? '横長 16:9' : '縦長 9:16'}
-              </button>
-            ))}
-            <span className="grow" />
-            <button disabled={!!making} onClick={() => showImage(preview.shape, true)} title="カードの画像を取得し直して、画像を作り直す">
-              {making === 'reload' ? '再取得中…' : '↻ 再読み込み'}
-            </button>
-            <button className="primary" disabled={!!making} onClick={saveImage}>
-              保存
-            </button>
-          </div>
-          {preview.missingThumbs > 0 && (
-            <div className="small caution">
-              カード画像を読み込めなかったため、{preview.missingThumbs === 2 ? '両方のデッキ' : '一方のデッキ'}は文明の色で代わりに表示しています。読み込めたら自動でプレビューを更新します (「再読み込み」ですぐに取得し直すこともできます。初めて使うカードは時間がかかることがあります)。
-            </div>
-          )}
-          <img className="result-preview" src={preview.url} alt="テストプレイの結果画像" style={preview.shape === 'landscape' ? { width: 'min(860px, 88vw)' } : { height: 'min(70vh, 1200px)' }} />
-        </Modal>
-      )}
+      {preview && stats && resultDecks && <ResultImageDialog make={makeImage} name="testplay" shape={preview} onClose={() => setPreview(null)} />}
       {view && <DeckViewDialog db={db} deck={view} onClose={() => setView(null)} />}
     </div>
   );

@@ -18,7 +18,7 @@ export default function Home() {
         </Link>
         <Link className="menu-card" to="/testplay">
           <h3>テストプレイ</h3>
-          <div className="muted">2つのデッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます。</div>
+          <div className="muted">2〜4つのデッキをCPU同士で何度も対戦させて、勝率と勝因・敗因を調べます。</div>
         </Link>
         <Link className="menu-card" to="/shared">
           <h3>みんなのデッキ</h3>

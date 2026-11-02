@@ -5,8 +5,8 @@ import { programOf } from './interp';
 import type { Action, GameInit, GameState } from './types';
 
 export interface SimGame {
-  /** 勝ったプレイヤー (0 = デッキA, 1 = デッキB)。引き分け・決着なしは null */
-  winner: 0 | 1 | null;
+  /** 勝ったプレイヤー (0 = デッキA, 1 = デッキB, …)。引き分け・決着なしは null */
+  winner: number | null;
   /** 先攻のプレイヤー */
   first: number;
   turns: number;
@@ -15,7 +15,11 @@ export interface SimGame {
   /** とどめを刺したカードの名前 (ダイレクトアタックしたクリーチャー) */
   finisher: string | null;
   /** 各プレイヤーが使った (召喚・唱えた・S・トリガー・革命チェンジ) カードID */
-  played: [string[], string[]];
+  played: string[][];
+  /** 各プレイヤーの順位 (デュエパの脱落順。決着しなければ null) */
+  places: (number | null)[];
+  /** 各プレイヤーが負けた理由 (負けなかったプレイヤーは null) */
+  lossReasons: (string | null)[];
   /** うまく処理できなかったこと (解析できない能力・内部エラー・進行不能・決着なし) */
   issues: SimIssue[];
 }
@@ -32,11 +36,15 @@ const FALLBACK: Action[] = [{ t: 'resolve', use: false }, { t: 'choose', picks: 
 /** 1試合を最後まで進める (時間がかかりすぎた試合は決着なし) */
 export function simulateGame(init: GameInit, L: Lookup, maxSteps = 6000): SimGame {
   let s: GameState = createGame(init, L);
-  const played: [Set<string>, Set<string>] = [new Set(), new Set()];
+  const n = init.players.length;
+  const played: Set<string>[] = init.players.map(() => new Set());
+  const lossReasons: (string | null)[] = init.players.map(() => null);
   const note = (p: number, a: Action) => {
     const iid = a.t === 'play' ? a.iid : a.t === 'attackOpt' ? a.iid : a.t === 'trigger' && a.use ? (s.pending[0]?.kind === 'trigger' ? s.pending[0].iid : null) : null;
-    if (iid != null && p < 2) played[p].add(s.cards[iid].cid);
+    if (iid != null && p < n) played[p].add(s.cards[iid].cid);
   };
+  /** 新しく負けたプレイヤーの、負けた理由を残す */
+  const noteLost = () => s.players.forEach((pl, i) => pl.lost && lossReasons[i] == null && (lossReasons[i] = s.endReason || '不明'));
   const issues: SimIssue[] = [];
   const seenManual = new Set<string>();
   const lastLog = () => s.log.slice(-4).map((x) => x.m).join(' / ');
@@ -64,6 +72,7 @@ export function simulateGame(init: GameInit, L: Lookup, maxSteps = 6000): SimGam
         // 使ったカードは、行動する前の状態で調べる (applyAction は元の状態を変えない)
         note(p, a);
         s = r.state;
+        noteLost();
         moved = true;
       }
     }
@@ -73,6 +82,7 @@ export function simulateGame(init: GameInit, L: Lookup, maxSteps = 6000): SimGam
         const r = applyAction(s, p, a, L);
         if (!r.error) {
           s = r.state;
+          noteLost();
           ok = true;
           break;
         }
@@ -98,37 +108,64 @@ export function simulateGame(init: GameInit, L: Lookup, maxSteps = 6000): SimGam
     }
   }
   return {
-    winner: w === 0 || w === 1 ? w : null,
+    winner: w,
     first: s.firstPlayer,
     turns: s.turn,
     reason: over ? s.endReason || '不明' : '決着なし',
     finisher,
-    played: [[...played[0]], [...played[1]]],
+    played: played.map((x) => [...x]),
+    places: s.players.map((pl) => (over ? pl.place : null)),
+    lossReasons,
     issues,
   };
 }
 
 export interface SimStats {
+  /** 対戦するデッキの数 */
+  players: number;
   games: number;
-  wins: [number, number];
+  wins: number[];
   draws: number;
   /** 先攻だった試合数と、そのうちの勝ち数 */
-  firstGames: [number, number];
-  firstWins: [number, number];
+  firstGames: number[];
+  firstWins: number[];
   turnSum: number;
   decided: number;
-  /** 決着の理由 → [Aの勝ち, Bの勝ち, 決着なし] */
-  reasons: Record<string, [number, number, number]>;
+  /** 決着の理由 → [Aの勝ち, Bの勝ち, …, 決着なし] */
+  reasons: Record<string, number[]>;
+  /** 負けた理由 → 回数 (デッキごと) */
+  losses: Record<string, number>[];
+  /** 順位の合計と、順位が決まった試合数 (デッキごと。3人以上の時の平均順位) */
+  placeSum: number[];
+  placed: number[];
   /** とどめを刺したカード名 → 回数 (デッキごと) */
-  finishers: [Record<string, number>, Record<string, number>];
+  finishers: Record<string, number>[];
   /** カードID → [使った試合数, そのうち勝った数] (デッキごと) */
-  usage: [Record<string, [number, number]>, Record<string, [number, number]>];
+  usage: Record<string, [number, number]>[];
   /** うまく処理できなかったこと → 起きた試合数 */
   issues: Record<string, SimIssue & { games: number }>;
 }
 
-export function emptyStats(): SimStats {
-  return { games: 0, wins: [0, 0], draws: 0, firstGames: [0, 0], firstWins: [0, 0], turnSum: 0, decided: 0, reasons: {}, finishers: [{}, {}], usage: [{}, {}], issues: {} };
+export function emptyStats(players = 2): SimStats {
+  const zeros = () => Array.from({ length: players }, () => 0);
+  const objs = <T>() => Array.from({ length: players }, () => ({}) as Record<string, T>);
+  return {
+    players,
+    games: 0,
+    wins: zeros(),
+    draws: 0,
+    firstGames: zeros(),
+    firstWins: zeros(),
+    turnSum: 0,
+    decided: 0,
+    reasons: {},
+    losses: objs(),
+    placeSum: zeros(),
+    placed: zeros(),
+    finishers: objs(),
+    usage: objs(),
+    issues: {},
+  };
 }
 
 export function addGame(st: SimStats, g: SimGame) {
@@ -139,19 +176,25 @@ export function addGame(st: SimStats, g: SimGame) {
     st.decided++;
     st.turnSum += g.turns;
   }
-  if (g.first === 0 || g.first === 1) {
+  if (g.first >= 0 && g.first < st.players) {
     st.firstGames[g.first]++;
     if (g.winner === g.first) st.firstWins[g.first]++;
   }
-  const r = (st.reasons[g.reason] ??= [0, 0, 0]);
-  r[g.winner ?? 2]++;
+  const r = (st.reasons[g.reason] ??= Array.from({ length: st.players + 1 }, () => 0));
+  r[g.winner ?? st.players]++;
+  g.lossReasons.forEach((lr, p) => lr != null && p < st.players && (st.losses[p][lr] = (st.losses[p][lr] ?? 0) + 1));
+  g.places.forEach((pl, p) => {
+    if (pl == null || p >= st.players) return;
+    st.placeSum[p] += pl;
+    st.placed[p]++;
+  });
   if (g.winner != null && g.finisher) st.finishers[g.winner][g.finisher] = (st.finishers[g.winner][g.finisher] ?? 0) + 1;
   for (const i of g.issues) {
     const key = `${i.kind}|${i.cid ?? ''}|${i.kind === 'manual' ? i.text : i.text.replace(/:.*$/, '')}`;
     (st.issues[key] ??= { ...i, games: 0 }).games++;
   }
-  for (const p of [0, 1] as const)
-    for (const cid of g.played[p]) {
+  for (let p = 0; p < st.players; p++)
+    for (const cid of g.played[p] ?? []) {
       const u = (st.usage[p][cid] ??= [0, 0]);
       u[0]++;
       if (g.winner === p) u[1]++;

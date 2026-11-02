@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { CardDetail, CardImg, CivDots, RegBadge } from '../components/CardView';
+import { CardDetail, CardImg, CivDots, HoverDetail, RegBadge } from '../components/CardView';
+import { useCardScale } from '../components/CardSize';
 import { useApp } from '../context';
 import { getDecks, saveDeck, SharedWriteError } from '../data/api';
 import { CIV_COLOR, CIV_NAME, mainFace, type Card, type Civ, type DeckZone } from '../lib/cards';
@@ -46,6 +47,7 @@ export default function DeckEditor() {
   const [tab, setTab] = useState<'search' | 'deck'>('search');
   const [detail, setDetail] = useState<Card | null>(null);
   const [moreFilters, setMoreFilters] = useState(false);
+  const [scale, sizeButtons] = useCardScale(narrow ? 'editorNarrow' : 'editor');
 
   useEffect(() => {
     if (!user) return;
@@ -241,6 +243,7 @@ export default function DeckEditor() {
         <div className="row">
           <span className="muted">{results.length.toLocaleString()} 件</span>
           <span className="grow" />
+          {sizeButtons}
           <button className="small" disabled={page === 0} onClick={() => setPage(page - 1)}>
             ◀
           </button>
@@ -254,7 +257,7 @@ export default function DeckEditor() {
         <div className="small muted">
           タップ(クリック)で追加 / −で1枚減らす / iで詳細{deck.type === 'duepa' ? ' / デッキ画面の「P」でパートナーに設定' : ''}
         </div>
-        <div className="result-grid">
+        <div className="result-grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.round((narrow ? 72 : 92) * scale)}px, 1fr))` }}>
           {pageCards.map((c) => {
             const n = totalOf(c.id);
             const lim = copyLimit(db, c, rules);
@@ -426,7 +429,7 @@ export default function DeckEditor() {
               </b>
               {sortedEntries(deck[z]).map(({ card, n, cid }) =>
                 card ? (
-                  <div key={cid} className="deck-list-row" onMouseEnter={() => setHover(card)}>
+                  <div key={cid} className="deck-list-row" onMouseEnter={() => setHover(card)} onMouseLeave={() => setHover(null)}>
                     <span className="small" style={{ width: 18, textAlign: 'right' }}>
                       {mainFace(card).cost}
                     </span>
@@ -467,12 +470,9 @@ export default function DeckEditor() {
           ),
         )}
 
-        {!narrow && (
-          <div className="panel">
-            <CardDetail db={db} card={hover} />
-          </div>
-        )}
+        {!narrow && <div className="panel small muted">カードにマウスを乗せると、その近くに詳細を表示します</div>}
       </div>
+      {hover && !narrow && !detail && <HoverDetail db={db} card={hover} />}
       {detail && (
         <Modal title="カードの詳細" onClose={() => setDetail(null)}>
           <CardDetail db={db} card={detail} />
