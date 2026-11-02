@@ -2153,6 +2153,33 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'looked', sel: { owner: 'self', zones: ['deck'], kind: 'card', twinpact: true }, count: { all: true } }, purpose: 'neutral', prompt: 'all' },
       { op: 'move', target: { ref: 'it' }, to: 'mana' },
     ];
+  // 「(自分の手札を捨てた時、)相手にも自身の手札を1枚選んで捨てさせる」
+  if ((mm = s.match(/^相手にも(?:自身|自分)の手札を(\d+)枚選んで捨てさせる$/))) return [{ op: 'discard', who: 'opp', count: { n: +mm[1], upTo: false }, how: 'ownerChooses' }];
+  // 「(自分の手札を捨てた時、)捨てた手札と同じコストを持つ相手のエレメントをすべて、持ち主の手札に戻す」
+  if (/^捨てた手札と同じコストを持つ相手のエレメントをすべて、持ち主の手札に戻す$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'element', costEqIt: true }, count: { all: true }, chooser: 'self' }, purpose: 'hostile', prompt: 'all' },
+      { op: 'move', target: { ref: 'it' }, to: 'hand' },
+    ];
+  // 「このクリーチャーはシールドを1つブレイクしてもよい」
+  if ((mm = s.match(/^このクリーチャーは(?:相手の)?シールドを(\d+)つブレイクしてもよい$/))) return [{ op: 'optional', body: [{ op: 'breakShield', n: +mm[1] }], prompt: s0 }];
+  // 「このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、墓地に置くかわりにマナゾーンに置いてもよい」
+  if (/^このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、墓地に置くかわりにマナゾーンに置いてもよい$/.test(s)) return [{ op: 'graveToManaTurn' }];
+  // 「このターン、バトルゾーンにある自分の光のクリーチャーと水のクリーチャーすべてのパワーは、相手のマナゾーンでタップされているカード1枚につき+1000される」
+  if ((mm = s.match(/^このターン、バトルゾーンにある自分の(光|水|闇|火|自然)のクリーチャーと(光|水|闇|火|自然)のクリーチャーすべてのパワーは、相手のマナゾーンでタップされているカード1枚につき\+(\d+)される$/))) {
+    const C = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' } as const;
+    return [{ op: 'powerPerCount', target: { ref: 'sel', sel: { owner: 'self', zones: ['battle'], kind: 'creature', civs: [C[mm[1] as '光'], C[mm[2] as '光']] }, count: { all: true }, chooser: 'self' }, per: { owner: 'opp', zones: ['mana'], kind: 'card', tapped: true }, delta: +mm[3] }];
+  }
+  // 「相手に手札を1枚捨てさせ、その後、カードを1枚引いてもよい」
+  if ((mm = s.match(/^▶?相手に手札を(\d+)枚捨てさせ、その後、カードを(\d+)枚引いてもよい$/)))
+    return [{ op: 'discard', who: 'opp', count: { n: +mm[1], upTo: false }, how: 'ownerChooses' }, { op: 'optional', body: [{ op: 'draw', n: +mm[2], who: 'self' }], prompt: `カードを${mm[2]}枚引く` }];
+  // 「その後、こうして山札の下に置かれたカードの枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい」
+  if ((mm = s.match(/^(?:その後、)?こうして山札の下に置かれたカードの枚数以下のコストを持つ相手のクリーチャーを(\d+)体選び、破壊してもよい$/)))
+    return [
+      { op: 'countSet', itLen: true },
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'opp', zones: ['battle'], kind: 'creature', costLeCount: true }, count: { n: +mm[1], upTo: true }, chooser: 'self' }, purpose: 'hostile', prompt: s0 },
+      { op: 'destroy', target: { ref: 'it' } },
+    ];
   // 「このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する」
   if (/^このようにして手札を1枚も捨てない場合、このクリーチャーを破壊する$/.test(s)) return [{ op: 'if', cond: { c: 'itCount', cmp: '==', n: 0 }, body: [{ op: 'destroy', target: { ref: 'self' } }] }];
   // 「バトルゾーンにある相手の多色ではない、コスト5以下のクリーチャーを1体破壊するか、〜クロスギアを1枚選んで持ち主の墓地に置く」

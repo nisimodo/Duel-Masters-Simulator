@@ -72,6 +72,8 @@ export type StaticSpec =
   /** マスター・G・ブレイカー: 攻撃の後、自分のシールドをすべてブレイクする。出たターンは各ブレイクの前に相手のクリーチャーを1体破壊 */
   /** 多色ではない、クリーチャーの能力と呪文の効果を無視する */
   | { s: 'ignoreNonMulti' }
+  /** 相手のターンにこのクリーチャーが自分の手札から捨てられる時、墓地に置くかわりに出す / 捨てられた時、墓地から出す */
+  | { s: 'discardToBattleOpp' }
   /** 〇〇を召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい */
   | { s: 'rainbowSelf'; sel?: Sel; partner?: boolean }
   /** このクリーチャーの召喚コストを、相手のエレメントの文明1つにつき each 少なくする */
@@ -294,7 +296,7 @@ export type StaticSpec =
   /** 5.S.D.: ブレイクしたシールドを手札に加えるかわりに、相手の山札の上から4枚目に横向きに刺す */
   | { s: 'breakToDeck4' }
   /** 相手のクリーチャーがバトルゾーンに出る時、かわりに〜へ (cip: 「出た時」の能力を持つものだけ / notSummon: 召喚以外で出るものだけ) */
-  | { s: 'enterReplace'; to: 'mana' | 'grave'; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn'; free?: boolean; /** この種族のクリーチャーだけ */ races?: string[] }
+  | { s: 'enterReplace'; to: 'mana' | 'grave'; /** 多色以外 */ monoOnly?: boolean; cip?: boolean; notSummon?: boolean; nonDragon?: boolean; all?: boolean; when?: 'ownTurn' | 'oppTurn'; free?: boolean; /** この種族のクリーチャーだけ */ races?: string[] }
   /** 鬼S-MAX進化: 自分がゲームに負ける時・このクリーチャーが離れる時、かわりに自分の表向きのカードをN枚破壊する (orShield: かわりにシールドを1つ墓地に置いてもよい) */
   | { s: 'oniSmax'; n: number; orShield?: boolean }
   /** バトルゾーンを離れない */
@@ -722,6 +724,7 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   // 「相手の「このクリーチャーがバトルゾーンに出た時」で始まる能力を持つクリーチャーがバトルゾーンに出る時、相手はかわりにそのクリーチャーをマナゾーンに置く」
   if (/^相手の「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力を持つクリーチャーが(?:バトルゾーンに)?出る時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', cip: true }];
   if (/^自分のターン中に、?相手のクリーチャーがバトルゾーンに出る時、そのクリーチャーはバトルゾーンのかわりに持ち主の墓地に置かれる$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'ownTurn' }];
+  if (/^相手は、?多色以外のクリーチャーをバトルゾーンに出す時、バトルゾーンに出すかわりに墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', monoOnly: true }];
   // モモキング -旅丸- 「相手のターン中、相手がマナゾーンのカードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーをマナゾーンに置く」
   if (/^相手のターン中(?:に)?、?相手が(?:自身の)?マナゾーン(?:にある|の)カードをタップせずにクリーチャーを出す時、相手はかわりにそのクリーチャーを(?:自身の|持ち主の)?マナゾーンに置く$/.test(t0)) return [{ s: 'enterReplace', to: 'mana', when: 'oppTurn', free: true }];
   if (/^相手のターン中に、?相手のクリーチャーが召喚以外の方法で出る時、相手はかわりにそのクリーチャーを墓地に置く$/.test(t0)) return [{ s: 'enterReplace', to: 'grave', when: 'oppTurn', notSummon: true }];
@@ -998,6 +1001,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   }
   if (/^このクリーチャーは、?攻撃もブロックもされない$/.test(t0)) return [{ s: 'noAttacked' }, { s: 'grant', target: { t: 'self' }, kws: ['ブロックされない'], when: 'always' }];
   if (/^多色ではない、?クリーチャーの能力と呪文の効果を無視する$/.test(t0)) return [{ s: 'ignoreNonMulti' }];
+  if (/^相手のターンにこのクリーチャーが自分の手札から捨てられる時、墓地に置くかわりに(?:バトルゾーンに)?出してもよい$/.test(t0)) return [{ s: 'discardToBattleOpp' }];
+  if (/^相手の、?クリーチャーの能力または呪文によって、このクリーチャーが自分の手札から捨てられた時、このクリーチャーを自分の墓地から(?:バトルゾーンに)?出してもよい$/.test(t0)) return [{ s: 'discardToBattleOpp' }];
   if ((m = t0.match(/^(.+?)を召喚する時、マナゾーンにあるこのカードをすべての文明を持つかのようにタップしてもよい$/))) {
     if (m[1] === 'パートナー') return [{ s: 'rainbowSelf', partner: true }];
     const sel = parseSel(m[1], { zones: ['hand', 'mana', 'grave', 'shield', 'deck', 'partner' as never] });

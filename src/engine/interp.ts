@@ -192,10 +192,17 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.enteredThisTurn && !s.cards[iid].sick) continue;
-        if (sel.costEqIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) === maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        if (sel.costEqIt) {
+          const ref = ex.it[0] ?? ex.subject;
+          if (ref == null || maxCost(L, s.cards[iid].cid) !== maxCost(L, s.cards[ref].cid)) continue;
+        }
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
         if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
-        if (sel.costLeIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.it[0]].cid))) continue;
+        // (選んだカードがなければ、誘発させたカード: 「自分が手札を捨てた時、こうして捨てたカード以下のコスト」)
+        if (sel.costLeIt) {
+          const ref = ex.it[0] ?? ex.subject;
+          if (ref == null || !(maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ref].cid))) continue;
+        }
         if (sel.attackingNow && s.attack?.attacker !== iid) continue;
         if (sel.toGraveThisTurn && s.cards[iid].graveTurn !== s.turn) continue;
         if (sel.notIt && ex.it.includes(iid)) continue;
@@ -1119,6 +1126,10 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         for (const o of opps(s, ex.player)) s.players[o].execCap = { turn: s.turn + 1, n: op.n };
         log(s, ex.player, `次のターン中、相手はカードを${op.n}枚までしか実行できない`);
         break;
+      case 'graveToManaTurn':
+        s.players[ex.player].graveToMana = s.turn;
+        log(s, ex.player, 'このターン、自分のカードを墓地に置くかわりにマナゾーンに置く');
+        break;
       case 'saveAppend':
         ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
         break;
@@ -1559,6 +1570,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           ex.count = host != null ? s.cards[host].under.filter((u) => /オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')).length : 0;
         } else if (op.cardsOfSelf) {
           ex.count = s.cards[ex.src]?.zone === 'battle' ? 1 + s.cards[ex.src].under.length : 0;
+        } else if (op.subjectCost) {
+          ex.count = ex.subject != null ? maxCost(L, s.cards[ex.subject].cid) : 0;
         } else if (op.savedCostSum) {
           ex.count = (ex.saved ?? []).reduce((a, i) => a + maxCost(L, s.cards[i].cid), 0);
         } else if (op.itLen) {

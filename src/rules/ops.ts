@@ -339,7 +339,7 @@ export type Op =
   /** バトルの後で body を行う */
   | { op: 'afterBattle'; body: Op[] }
   /** 数える (sel に合うカードの数 / 文明の数)。結果は「その数」で使う */
-  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; /** このクリーチャーに含まれるカード */ cardsOfSelf?: boolean; /** そのカードのコスト */ costOfIt?: boolean; /** こうして動かしたカードの枚数 */ itLen?: boolean; /** 保存したカードのコストの合計 */ savedCostSum?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
+  | { op: 'countSet'; /** 自分より手札・マナが多い相手の数 */ oppsMore?: 'hand' | 'mana'; sel?: Sel; civsOf?: 'mana' | 'battle'; cardsOfIt?: boolean; /** このクリーチャーに含まれるカード */ cardsOfSelf?: boolean; /** そのカードのコスト */ costOfIt?: boolean; /** こうして動かしたカードの枚数 */ itLen?: boolean; /** 保存したカードのコストの合計 */ savedCostSum?: boolean; /** 誘発させたカード (捨てたカードなど) のコスト */ subjectCost?: boolean; aurasOf?: 'it' | 'host'; underSelf?: boolean; players?: boolean; racesExcept?: string }
   /** 「その数だけ〜」: 数えた数 (なければ直前に選んだ数) だけ body をくり返す */
   | { op: 'repeatCount'; body: Op[] }
   /** it のコストと同じ枚数のカードを引く */
@@ -462,6 +462,8 @@ export type Op =
   | { op: 'hyperAll' }
   /** 選んだカードを保存したカードに加える (くり返しの中で選んだものをまとめる) */
   | { op: 'saveAppend' }
+  /** このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、かわりにマナゾーンに置く */
+  | { op: 'graveToManaTurn' }
   /** 次のターン中、相手はカードを n 枚までしか実行できない */
   | { op: 'oppExecCap'; n: number }
   /** 山札の上から n 枚を裏向きで、そのシールド (it) の下に置く (シールド・プラス) */

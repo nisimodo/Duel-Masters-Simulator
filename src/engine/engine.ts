@@ -176,6 +176,7 @@ function enterReplaceOf(s: GameState, L: Lookup, iid: number, opts: { face?: num
     if (sp.free && opts.summoned && !opts.free) continue;
     if (sp.cip && !face.triggers.some((t) => t.events.includes('enter'))) continue;
     if (sp.nonDragon && face.races.some((r) => r.includes('ドラゴン'))) continue;
+    if (sp.monoOnly && face.civs.length >= 2) continue;
     if (sp.races && !face.races.some((r) => sp.races!.some((x) => r.includes(x)))) continue;
     return sp.to;
   }
@@ -352,6 +353,19 @@ export function moveCard(
   if (from === 'deck' && to !== 'hand' && to !== 'deck' && activeStatics(s, L).some((x) => x.spec.s === 'oppDeckToBottom' && x.owner !== c.owner)) {
     log(s, c.owner, '山札から出るかわりに山札の下へ (相手の能力)');
     return moveCard(s, L, iid, 'deck', { pos: 'bottom', silent: true });
+  }
+  // 「相手のターンにこのクリーチャーが自分の手札から捨てられる時、墓地に置くかわりに出してもよい」
+  if (from === 'hand' && to === 'grave' && !opts.noReplace) {
+    const dtb = (card?.faces ?? []).flatMap((f) => f.statics ?? []).some((x) => x.s === 'discardToBattleOpp');
+    if (dtb && s.active !== c.owner) {
+      log(s, c.owner, `${q(card!.faces[0].name)} は捨てられるかわりにバトルゾーンに出る`);
+      return moveCard(s, L, iid, 'battle', { ...opts, noReplace: true });
+    }
+  }
+  // 「このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、墓地に置くかわりにマナゾーンに置いてもよい」
+  if ((from === 'hand' || from === 'battle') && to === 'grave' && !opts.noReplace && s.players[c.owner].graveToMana === s.turn) {
+    log(s, c.owner, `${q(nameOf(s, L, iid))} は墓地に置くかわりにマナゾーンへ`);
+    return moveCard(s, L, iid, 'mana', { ...opts, noReplace: true });
   }
   // 土地はバトルゾーンに置かれたら墓地へ (313.3)。ルール・プラスは超次元ゾーンへ (314.4)
   if (to === 'battle' && from !== 'battle' && /^(?:土地|ルール・プラス)$/.test(card?.faces[0]?.type ?? '')) {
@@ -788,6 +802,8 @@ export function moveCard(
     s.pending.push({ kind: 'partner', player: c.owner, iid });
   }
   if (!opts.silent) {
+    // 「自分の手札を捨てた時」
+    if (from === 'hand' && dest === 'grave') fireWatchers(s, L, c.owner, null, 'ownDiscard', null, iid);
     if (from === 'battle' && dest !== 'battle') {
       const destroyed = dest === 'grave';
       fireSelf(s, L, iid, prevFace, destroyed ? ['destroyed', 'leave'] : ['leave']);

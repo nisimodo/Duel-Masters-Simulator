@@ -186,6 +186,8 @@ export interface PlayerState {
   charged: boolean;
   /** このターン、次に召喚するクリーチャーのコスト軽減 */
   nextSummon?: { turn: number; sel: import('../rules/ops').Sel; n: number; grants?: string[] };
+  /** このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、かわりにマナゾーンに置く */
+  graveToMana?: number;
   /** このターン中、カードをN枚までしか実行できない */
   execCap?: { turn: number; n: number };
   /** このターンに実行したカードの数 */
