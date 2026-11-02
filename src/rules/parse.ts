@@ -3350,7 +3350,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'untap' }];
   }
-  if ((m = s.match(/^次の(?:相手|自分)のターンのはじめ(?:に|まで)、(.+?)はアンタップ(?:しない|されない)$/))) {
+  if ((m = s.match(/^次の(?:相手|自分)のターンのはじめ(?:に|まで)、?(.+?)はアンタップ(?:しない|されない)$/))) {
     const t = refTarget(m[1]);
     if (t) return [{ op: 'restrict', target: t, what: 'untap' }];
   }
