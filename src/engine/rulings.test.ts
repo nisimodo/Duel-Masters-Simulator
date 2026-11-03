@@ -7,7 +7,7 @@ import { abilitiesIgnored } from './statics';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
-const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ'];
+const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ', 'コンダマ'];
 const picked = raw.filter((c) => c.f.some((f) => NAMES.includes(f.n)) || NAMES.includes(c.n));
 const vanilla = { id: 'vanilla', n: 'vanilla', img: '', f: [{ n: 'vanilla', t: 'クリーチャー', c: 'N', co: 1, p: '1000', r: ['テスト'], x: [] }] };
 const sa = { id: 'sa', n: 'sa', img: '', f: [{ n: 'sa', t: 'クリーチャー', c: 'F', co: 1, p: '3000', r: ['テスト'], x: ['スピードアタッカー'] }] };
@@ -380,5 +380,40 @@ describe('総合ルールの変更点', () => {
     expect(s.cards[a].zone).toBe('hand');
     expect(s.cards[b].zone).toBe('mana');
     expect(s.cards[m].zone).toBe('grave');
+  });
+  it('コンダマ: ツインパクトカードを自分のマナゾーンに置いた時、マナゾーンのカードを1枚アンタップする', () => {
+    const kd = idOf('コンダマ');
+    const twin = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: kd, zone: 'battle' }, { p: 0, cid: twin, zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }], 3);
+    for (const m of s.players[0].mana) s.cards[m].tapped = true;
+    // ツインパクトでないカードをチャージしても何もしない
+    s = drain(act(s, 0, { t: 'charge', iid: find(s, 0, 'hand', 'vanilla')! }));
+    expect(s.players[0].mana.filter((m) => !s.cards[m].tapped).length).toBe(1);
+    s.players[0].charged = false;
+    // ツインパクトをチャージすると1枚アンタップ
+    s = drain(act(s, 0, { t: 'charge', iid: find(s, 0, 'hand', twin)! }));
+    expect(s.players[0].mana.filter((m) => !s.cards[m].tapped).length).toBe(3);
+  });
+
+  it('魂フエミドロ: 山札の上から1枚をマナゾーンに置き、それがツインパクトならもう1枚。呪文側は自然', () => {
+    const kd = idOf('コンダマ');
+    const twin = idOf('全虹帝 ミノガミ');
+    const card = L(kd)!;
+    const fi = card.faces.findIndex((f) => f.isSpell);
+    expect(card.faces[fi].civs).toEqual(['N']);
+    const go = (topTwin: boolean) => {
+      let s = setup([{ p: 0, cid: kd, zone: 'hand' }, { p: 0, cid: twin, zone: 'hand' }], 3);
+      const tw = find(s, 0, 'hand', twin)!;
+      if (topTwin) {
+        s.players[0].hand.splice(s.players[0].hand.indexOf(tw), 1);
+        s.cards[tw].zone = 'deck';
+        s.players[0].deck.push(tw);
+      }
+      const m0 = s.players[0].mana.length;
+      s = drain(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', kd)!, face: fi, pay: s.players[0].mana.slice(0, 3) }));
+      return s.players[0].mana.length - m0;
+    };
+    expect(go(true)).toBe(2);
+    expect(go(false)).toBe(1);
   });
 });

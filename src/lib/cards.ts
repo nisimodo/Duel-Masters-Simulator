@@ -172,6 +172,8 @@ function toFace(f0: RawFace, defs: Map<string, KwDef>): Face {
 
 function toCard(r: RawCard, defs: Map<string, KwDef>): Card {
   const faces = r.f.map((f) => toFace(f, defs));
+  // ツインパクトの呪文側の文明がデータで空になっているものは、クリーチャー側と同じ文明 (公式データの取り込みもれ)
+  if (r.tw && faces.length === 2 && faces[1].isSpell && !faces[1].civs.length && faces[0].civs.length) faces[1] = { ...faces[1], civs: [...faces[0].civs] };
   const civSet = new Set<Civ>();
   // サイキック等の裏面は表と同じ文明扱い。ツインパクトは両面の文明。
   for (const f of r.tw ? faces : faces.slice(0, 1)) f.civs.forEach((c) => civSet.add(c));
