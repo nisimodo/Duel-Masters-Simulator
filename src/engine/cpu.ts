@@ -74,6 +74,28 @@ function hasOp(ops: unknown, name: Op['op']): boolean {
   if (!Array.isArray(ops)) return false;
   return ops.some((o) => o && typeof o === 'object' && ((o as Op).op === name || Object.values(o).some((v) => Array.isArray(v) && (hasOp(v, name) || v.some((x) => x && typeof x === 'object' && 'body' in x && hasOp((x as { body: unknown }).body, name))))));
 }
+/** 効果の中の「次の自分のターンのはじめに[N]を支払う」のコスト (逆転撃。なければ 0) */
+function payLaterCost(ops: unknown): number {
+  if (!Array.isArray(ops)) return 0;
+  let n = 0;
+  for (const o of ops) {
+    if (!o || typeof o !== 'object') continue;
+    if ((o as Op).op === 'payLater') n += (o as Extract<Op, { op: 'payLater' }>).cost;
+    for (const v of Object.values(o)) if (Array.isArray(v)) n += payLaterCost(v) + v.reduce((a: number, x) => a + (x && typeof x === 'object' && 'body' in x ? payLaterCost((x as { body: unknown }).body) : 0), 0);
+  }
+  return n;
+}
+/**
+ * 逆転撃: 次の自分のターンのはじめにコストを支払えるか (支払えなければ負けるので、払えない時は使わない)。
+ * ターンのはじめにアンタップしてから支払うので、アンタップできるマナの枚数で見る (すでに使った逆転撃の分も含める)
+ */
+function canPayLater(s: GameState, p: number, ops: unknown): boolean {
+  const cost = payLaterCost(ops);
+  if (!cost) return true;
+  const owed = (s.debts ?? []).filter((d) => d.player === p).reduce((a, d) => a + d.cost, 0);
+  const mana = s.players[p].mana.filter((m) => !(s.cards[m].tapped && s.cards[m].noUntap)).length;
+  return mana >= owed + cost;
+}
 /** 追加ターンを得る呪文・カード */
 const givesExtraTurn = (f: Face | undefined) => !!f && hasOp(faceOps(f), 'extraTurn');
 /** 「攻撃する時、呪文を手札からコストを支払わずに唱えてもよい」 */
@@ -809,6 +831,8 @@ function opsValue(s: GameState, p: number, L: Lookup, ops: Op[]): number {
 function chooseForChoice(s: GameState, p: number, L: Lookup, top: Extract<GameState['pending'][number], { kind: 'choice' }>): Action {
   if (top.mode === 'yesno') {
     const op = top.exec.ops[0];
+    // 逆転撃: 次のターンのはじめにコストを支払えなければ (負けるので) 使わない
+    if (!canPayLater(s, p, top.exec.ops)) return { t: 'choose', yes: false };
     const risky = op?.op === 'optional' && op.body.some((o) => (o.op === 'draw' && o.who === 'self') || (o.op === 'top' && o.who === 'self'));
     if (risky) {
       // 山札切れの方針: シャコガイルがいれば引く、山札が少なく負けない算段がなければ引かない
@@ -1176,6 +1200,8 @@ export function cpuPlan(s: GameState, p: number, L: Lookup): Action[] {
   const pk = abilityPick(s);
   const ordering = !!pk && pk.indices.length >= 2;
   if (!ordering && top?.kind === 'ability' && top.player === p) {
+    // 逆転撃: 次のターンのはじめにコストを支払えなければ (負けるので) 使わない
+    if (top.optional && !canPayLater(s, p, programOf(top.effect).ops)) return [{ t: 'resolve', use: false }];
     const out: Action[] = [];
     let cur = s;
     for (const h of hintsFromText(top.effect.split('\n'))) {
