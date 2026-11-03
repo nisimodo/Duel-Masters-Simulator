@@ -1858,7 +1858,7 @@ function advance(s: GameState, L: Lookup): boolean {
       if (prog.complete) {
         s.pending.shift();
         const nm = L(top.cid)?.faces[top.face]?.name ?? '';
-        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined, top.subject, top.activate);
+        startExec(s, L, top.player, top.src, prog.ops, q(nm), top.event === 'spell' ? top.player : undefined, top.subject, top.activate, top.viaDdd);
         return true;
       }
       if (top.auto) {
@@ -3465,6 +3465,7 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
         effect,
         optional: false,
         auto: lines.length === 1 && isAutoEffect(lines[0], false),
+        ...(s.dddPlaying === a.iid ? { viaDdd: true } : {}),
       });
     }
     // 「この呪文を[ll04]支払って唱えてもよい。そうしたら、〜」

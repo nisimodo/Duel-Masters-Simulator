@@ -150,7 +150,7 @@ export type Target =
   | { ref: 'blocker' } // この攻撃をブロックしたクリーチャー
   | { ref: 'underIt' } // 選んだクリーチャーの下にあるカードすべて
   | { ref: 'leftBehind' }
-  | { ref: 'formerUnder' } // バトルゾーンを離れた時に下に重なっていたカード
+  | { ref: 'formerUnder'; sel?: Sel } // バトルゾーンを離れた時に下に重なっていたカード
   | { ref: 'kept' } // 「こうして出したクリーチャー」(keep で覚えたカード) // スター進化で離れた時、下にあったクリーチャー
   | { ref: 'sel'; sel: Sel; count: Count; chooser: 'self' | 'opp' };
 
@@ -173,7 +173,8 @@ export type Cond =
   | { c: 'did' } // 直前の「〜してもよい」を実行した / ガチンコ・ジャッジに勝った
   | { c: 'ownStrongest' }
   | { c: 'formerUnderHas'; cost: number }
-  | { c: 'selfEnteredTurn' } // このクリーチャーがこのターン出ていた // 離れる前、このクリーチャーの下にコストNのクリーチャーがあった
+  | { c: 'selfEnteredTurn' } // このクリーチャーがこのターン出ていた
+  | { c: 'viaDdd' } // この呪文を「D・D・D」で唱えた // 離れる前、このクリーチャーの下にコストNのクリーチャーがあった
   | { c: 'itSameNameSaved' } // そのカードが、保存したカード (手札に戻したクリーチャー) と同じ名前
   | { c: 'lookedSameCostCreatures' } // 表向きにしたカードがすべて同じコストのクリーチャー
   | { c: 'linkedWith'; names: string[] } // このクリーチャーがその名前のカードとリンクしている

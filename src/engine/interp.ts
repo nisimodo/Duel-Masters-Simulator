@@ -291,6 +291,8 @@ function evalCond(s: GameState, L: Lookup, ex: Exec, c: Cond): boolean {
       const go = (k: number, used: Set<number>): boolean => k === opts.length || opts[k].some((c2) => !used.has(c2) && go(k + 1, new Set([...used, c2])));
       return go(0, new Set());
     }
+    case 'viaDdd':
+      return !!ex.viaDdd;
     case 'selfEnteredTurn':
       return s.cards[ex.src]?.enteredTurn === s.turn;
     case 'formerUnderHas':
@@ -597,8 +599,8 @@ function castNextTwin(s: GameState, L: Lookup, player: number, src: number) {
 }
 
 /** 効果プログラムの実行を開始する */
-export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number, activated?: boolean) {
-  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy, ...(subject != null && s.cards[subject] ? { subject } : {}), ...(activated ? { activated } : {}) });
+export function startExec(s: GameState, L: Lookup, player: number, src: number, ops: Op[], name: string, spellBy?: number, subject?: number, activated?: boolean, viaDdd?: boolean) {
+  runExec(s, L, { player, src, ops: [...ops], it: subject != null && s.cards[subject] ? [subject] : [], looked: [], did: false, name, spellBy, ...(subject != null && s.cards[subject] ? { subject } : {}), ...(activated ? { activated } : {}), ...(viaDdd ? { viaDdd } : {}) });
 }
 
 /** 続けて処理している「〜してもよい」を、何も選ばなかったので使わなかったことにする */
@@ -874,7 +876,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         return;
       }
       case 'move': {
-        const ids = resolveRef(s, ex, op.target) ?? [];
+        const t = op.target;
+        const ids = (resolveRef(s, ex, t) ?? []).filter((i) => t.ref !== 'formerUnder' || !t.sel || matchesSel(s, L, i, { ...t.sel, zones: [s.cards[i].zone as Sel['zones'][number]] }));
         for (const i of ids) moveTo(s, L, ex, i, op.to, op.reveal);
         break;
       }

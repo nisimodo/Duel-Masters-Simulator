@@ -2,12 +2,12 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { abilityPick, applyAction, canAttackWith, createGame, moveCard, removeSeal } from './engine';
+import { abilityPick, applyAction, canAttackWith, createGame, moveCard, removeSeal, settle } from './engine';
 import { abilitiesIgnored } from './statics';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
-const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ', 'コンダマ'];
+const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ', 'コンダマ', '剣轟奥義 ドドド・ドギラゴン・ドライブ', '燃える革命 ドギラゴン', 'ボルシャック・ドギラゴン', '燃える侵略 レッドギラゴン'];
 const picked = raw.filter((c) => c.f.some((f) => NAMES.includes(f.n)) || NAMES.includes(c.n));
 const vanilla = { id: 'vanilla', n: 'vanilla', img: '', f: [{ n: 'vanilla', t: 'クリーチャー', c: 'N', co: 1, p: '1000', r: ['テスト'], x: [] }] };
 const sa = { id: 'sa', n: 'sa', img: '', f: [{ n: 'sa', t: 'クリーチャー', c: 'F', co: 1, p: '3000', r: ['テスト'], x: ['スピードアタッカー'] }] };
@@ -19,6 +19,7 @@ const extra = [
   mk('rc', 'クリーチャー', 'F', 5, '9000', ['革命チェンジ：火のクリーチャー']),
   mk('neo', 'NEOクリーチャー', 'N', 1, '5000', ['NEO進化：自分のクリーチャー１体の上に置いてもよい。']),
   mk('drawSp', '呪文', 'N', 1, null, ['カードを１枚引く。']),
+  { id: 'drgN', n: 'drgN', img: '', f: [{ n: 'drgN', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
   { id: 'cmdF', n: 'cmdF', img: '', f: [{ n: 'cmdF', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アウトレイジ', 'コマンド'], x: [] }] },
 ];
 const db = buildDB([vanilla, sa, ...extra, ...picked] as never, { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] }, []);
@@ -415,5 +416,102 @@ describe('総合ルールの変更点', () => {
     };
     expect(go(true)).toBe(2);
     expect(go(false)).toBe(1);
+  });
+
+  it('ドドド・ドギラゴン・ドライブ: D・D・Dで唱えると、表向きのクリーチャーを手札に加え、マナゾーンからコストの小さいクリーチャーを出せる', () => {
+    const dr = idOf('剣轟奥義 ドドド・ドギラゴン・ドライブ');
+    let s = setup([{ p: 0, cid: 'sa', zone: 'battle' }, { p: 0, cid: dr, zone: 'hand' }, { p: 0, cid: 'drgN', zone: 'mana' }], 8);
+    const d = find(s, 0, 'hand', dr)!;
+    const big = find(s, 0, 'mana', 'drgN')!;
+    const h0 = s.players[0].hand.length;
+    s = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'sa')!, player: 1 });
+    let putPrompt = false;
+    for (let k = 0; k < 20 && s.pending.length && s.cards[big].zone === 'mana'; k++) {
+      const top = s.pending[0];
+      if (top.kind === 'choice') {
+        const put = /マナゾーンから出す/.test(top.prompt ?? '');
+        putPrompt ||= put;
+        const opts = top.options ?? [];
+        // 山札から表向きにした2枚はすべて手札に、マナゾーンからは drgN を出す
+        s = act(s, 0, { t: 'choose', yes: true, picks: put ? opts.filter((o) => o === big) : opts, options: [0] });
+        continue;
+      }
+      s = act(s, top.player, top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[d].zone).toBe('grave');
+    expect(putPrompt).toBe(true);
+    expect(s.cards[big].zone).toBe('battle');
+    // D・D・D で使ったこの呪文が手札から出て、表向きにした2枚 (クリーチャー) が手札に加わる
+    expect(s.players[0].hand.length).toBe(h0 - 1 + 2);
+  });
+
+  it('ドドド・ドギラゴン・ドライブ: 普通に唱えたらマナゾーンから出さない', () => {
+    const dr = idOf('剣轟奥義 ドドド・ドギラゴン・ドライブ');
+    let s = setup([{ p: 0, cid: dr, zone: 'hand' }, { p: 0, cid: 'drgN', zone: 'mana' }], 8);
+    const big = find(s, 0, 'mana', 'drgN')!;
+    const card = L(dr)!;
+    const fi = card.faces.findIndex((f) => f.isSpell);
+    const d0 = s.players[0].deck.length;
+    s = drain(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', dr)!, face: fi, pay: s.players[0].mana.filter((m) => m !== big).slice(0, card.faces[fi].cost ?? 0) }));
+    expect(s.cards[big].zone).toBe('mana');
+    expect(s.players[0].deck.length).toBe(d0 - 2);
+  });
+
+  it('燃える革命 ドギラゴン: シールドが2つ以下で出た時、次の自分のターンのはじめまで負けない', () => {
+    const dg = idOf('燃える革命 ドギラゴン');
+    const go = (shields: number) => {
+      let s = setup([{ p: 0, cid: dg, zone: 'hand' }], 3);
+      while (s.players[0].shield.length > shields) {
+        const sh = s.players[0].shield.pop()!;
+        s.cards[sh].zone = 'grave';
+        s.players[0].grave.push(sh);
+      }
+      moveCard(s, L, find(s, 0, 'hand', dg)!, 'battle');
+      settle(s, L);
+      s = drain(s);
+      return s.players[0].noLose;
+    };
+    expect(go(2)).toEqual({ until: 0 });
+    expect(go(3)).toBeUndefined();
+  });
+
+  it('ボルシャック・ドギラゴン: シールドが0枚で攻撃された時、手札から見せて火の非進化クリーチャーの上に出る', () => {
+    const bd = idOf('ボルシャック・ドギラゴン');
+    let s = setup([{ p: 1, cid: 'sa', zone: 'battle' }, { p: 0, cid: bd, zone: 'hand' }, { p: 0, cid: 'sa', zone: 'hand' }], 3);
+    for (const sh of s.players[0].shield.splice(0)) {
+      s.cards[sh].zone = 'grave';
+      s.players[0].grave.push(sh);
+    }
+    // 山札の一番上を火の非進化クリーチャーにする
+    const fire = find(s, 0, 'hand', 'sa')!;
+    s.players[0].hand.splice(s.players[0].hand.indexOf(fire), 1);
+    s.cards[fire].zone = 'deck';
+    s.players[0].deck.push(fire);
+    const b = find(s, 0, 'hand', bd)!;
+    s.active = 1;
+    s = act(s, 1, { t: 'attack', attacker: find(s, 1, 'battle', 'sa')!, player: 0 });
+    s = drain(s, (x) => x.cards[b].zone === 'battle');
+    expect(s.cards[b].zone).toBe('battle');
+    expect(s.cards[fire].zone).toBe('under');
+    expect(s.cards[fire].parent).toBe(b);
+  });
+
+  it('燃える侵略 レッドギラゴン: 攻撃の終わりに山札の上を下に重ね、破壊されたら下の進化ではないドラゴンを出す', () => {
+    const rg = idOf('燃える侵略 レッドギラゴン');
+    let s = setup([{ p: 0, cid: rg, zone: 'battle' }, { p: 0, cid: 'drgN', zone: 'hand' }], 3);
+    const r = find(s, 0, 'battle', rg)!;
+    const dn = find(s, 0, 'hand', 'drgN')!;
+    s.players[0].hand.splice(s.players[0].hand.indexOf(dn), 1);
+    s.cards[dn].zone = 'deck';
+    s.players[0].deck.push(dn);
+    s = act(s, 0, { t: 'attack', attacker: r, player: 1 });
+    s = drain(s);
+    expect(s.cards[dn].zone).toBe('under');
+    expect(s.cards[r].under).toContain(dn);
+    s.active = 1;
+    moveCard(s, L, r, 'grave');
+    settle(s, L);
+    s = drain(s);
+    expect(s.cards[dn].zone).toBe('battle');
   });
 });

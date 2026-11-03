@@ -574,6 +574,10 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/全て/g, 'すべて')
     .replace(/^このターン(?=(?:その|この|自分の|相手の)[^、]+?は)/, 'このターン、')
     .replace(/^(このターン|そのターン)、自分はゲームに負けず、相手は勝てない$/, '$1、自分はゲームに負けず、相手はゲームに勝てない')
+    // 燃える革命 ドギラゴン 「相手はゲームに勝たない」
+    .replace(/、相手は(ゲームに)?勝たない$/, '、相手は$1勝てない')
+    // ドドド・ドギラゴン・ドライブ 「その中からクリーチャーとタマシードを好きな数手札に加え」
+    .replace(/^その中からクリーチャーとタマシードを/, 'その中からクリーチャーまたはタマシードを')
     .replace(/パワーは[ーｰ](\d)/, 'パワーは-$1')
     .replace(/^このターン、(その|この)クリーチャーは無限にパワーを失う$/, 'このターン、$1クリーチャーのパワーを-999999する')
     .replace(/^それ以外であれば、/, 'それ以外なら、')
@@ -1633,6 +1637,23 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'creature', nonEvolution: true, costVs: { by: 'mana', cmp: 'lt', ofOwner: true } }, count: { n: +mm[1], upTo: false }, chooser: 'self' }, purpose: 'benefit', prompt: '出すクリーチャーを選ぶ' },
       { op: 'move', target: { ref: 'it' }, to: 'battle' },
     ];
+  // ドドド・ドギラゴン・ドライブ 「この呪文を「D・D・D」で唱えたなら、自分のマナゾーンにあるカードの枚数よりコストが小さい、クリーチャーまたはタマシードを1つ、自分のマナゾーンから出してもよい」
+  if ((mm = s.match(/^この呪文を「D・D・D」で唱えたなら、(.+)$/))) {
+    const body = sentence(mm[1], ctx);
+    if (body) return [{ op: 'if', cond: { c: 'viaDdd' }, body }];
+  }
+  if (/^自分のマナゾーンにあるカードの枚数よりコストが小さい、?クリーチャーまたはタマシードを1つ、?自分のマナゾーンから出してもよい$/.test(s))
+    return [
+      { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['mana'], kind: 'creatureOrTama', costVs: { by: 'mana', cmp: 'lt', ofOwner: true } }, count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: '自分のマナゾーンから出すクリーチャーまたはタマシードを選ぶ (選ばなくてもよい)' },
+      { op: 'move', target: { ref: 'it' }, to: 'battle' },
+    ];
+  // 燃える侵略 レッドギラゴン 「(破壊された時、)その下に重ねてあった進化ではないドラゴンをすべてバトルゾーンに出す」
+  if (/^その下に重ねてあった進化ではないドラゴンをすべてバトルゾーンに出す$/.test(s)) return [{ op: 'move', target: { ref: 'formerUnder', sel: { owner: 'any', zones: ['grave'], kind: 'creature', races: ['ドラゴン'], nonEvolution: true } }, to: 'battle' }];
+  // 燃える侵略 レッドギラゴン 「自分の山札の上から1枚目を表向きにして、このクリーチャーの下に重ねてもよい」 (重ねなければ山札の上に戻る)
+  if ((mm = s.match(/^自分の山札の上から(\d+)枚目?を表向きに(?:して、?|し、)このクリーチャーの下に重ねてもよい$/)))
+    return [{ op: 'top', n: +mm[1], to: 'reveal', who: 'self' }, { op: 'optional', body: [{ op: 'stackUnder', what: 'it' }], prompt: s0 }];
+  // ボルシャック・ドギラゴン 「(革命0トリガー) このクリーチャーを手札から見せてもよい。そうしたら、〜」
+  if (/^このクリーチャーを(?:自分の)?手札から見せてもよい$/.test(s)) return [{ op: 'optional', body: [{ op: 'note', text: '手札から見せた' }], prompt: s0 }];
   // 竜のフレア・エッグ / 龍世界 「(そうした場合、)そのドラゴンをバトルゾーンに出す」
   if (/^その(?:ドラゴン|クリーチャー)をバトルゾーンに出す$/.test(s)) return [{ op: 'move', target: { ref: 'looked' }, to: 'battle' }];
   // お清めトラップ 「相手の墓地からカードを1枚以上選ぶ。(そうした場合、)相手はこれを自身の山札に加えてシャッフルする」
@@ -2996,7 +3017,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       ctx.looked = true;
       return [{ op: 'top', n: +sv[1], to: 'reveal', who: 'self' }];
     }
-    const su = s.match(/^自分の山札の上から(\d+)枚(?:目)?を表向きに(?:して|し、)このクリーチャーの下に置く$/);
+    const su = s.match(/^自分の山札の上から(\d+)枚(?:目)?を表向きに(?:して、?|し、)このクリーチャーの下に(?:置く|重ねる)$/);
     if (su) return [{ op: 'top', n: +su[1], to: 'reveal', who: 'self' }, { op: 'stackUnder', what: 'it' }];
   }
   if (/^相手はそれを(?:自身の)?山札の上か下に置く$/.test(s)) return [{ op: 'topOrBottom', target: { ref: 'it' }, chooser: 'opp' }];

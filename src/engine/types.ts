@@ -323,6 +323,8 @@ export type Pending =
       picked?: boolean;
       /** プレイヤーが光ったカードを押して発動した (最初の「〜してもよい」は使うものとして続けて処理する) */
       activate?: boolean;
+      /** 「D・D・D」で唱えた呪文の効果 */
+      viaDdd?: boolean;
     };
 
 /** 実行中の効果プログラム */
@@ -357,6 +359,8 @@ export interface Exec {
   turnOf?: number;
   /** この効果が呪文なら唱えたプレイヤー */
   spellBy?: number;
+  /** 「D・D・D」で唱えた呪文の効果 */
+  viaDdd?: boolean;
   /** 選択待ちの対象 */
   pendingIds?: number[];
   /** ガチンコ・ジャッジに勝った数 */
