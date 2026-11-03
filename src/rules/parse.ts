@@ -149,6 +149,13 @@ export function parseCond(c0: string): Cond | null {
     .replace(/^(バトルゾーンに自分の《[^》]+》が\d+(?:体|枚))あ$/, '$1以上あ')
     .replace(/^(名前に《[^》]+》とあるカード|[^、]+?・カード)(が\d+枚以上|が)自分の(墓地|マナゾーン)に(あ|な(?:け|い)?)$/, '自分の$3に$1$2$4');
   if ((m = c.match(new RegExp(`^シールドが${N}つもないプレイヤーがい$`)))) return { c: 'anyShieldsLess', n: +m[1] };
+  // 無量大龍 トゥリナーツァッチ 「バトルゾーンと墓地に自分のクリーチャーがそれぞれ13体以上あれば」
+  if ((m = c.match(/^バトルゾーンと墓地に自分のクリーチャーがそれぞれ(\d+)体以上あ$/)))
+    return {
+      c: 'and',
+      a: { c: 'count', sel: { owner: 'self', zones: ['battle'], kind: 'creature' }, cmp: '>=', n: +m[1] },
+      b: { c: 'count', sel: { owner: 'self', zones: ['grave'], kind: 'creature' }, cmp: '>=', n: +m[1] },
+    };
   // 「そのターン、相手が〜していたら」: そのターンにしたこと
   {
     const t = c.replace(/(?:その|この)ターン(?:中)?(?:に)?、?/g, '').replace(/^その(?=相手)/, '');
@@ -422,7 +429,8 @@ export function parseCond(c0: string): Cond | null {
   if (/^このクリーチャーがリンクしていな(い|け)?$/.test(c)) return { c: 'linked', neg: true };
   if (/^この(?:クリーチャー|呪文|カード)が表向きで(自分の)?シールドゾーンにあ$/.test(c)) return { c: 'selfFaceUpShield' };
   if ((m = c.match(/^(それ|そのカード|そのクリーチャー|見せたカード|そのようにして見せたカード|このようにして見せたカード)が、?(.+?)(である|であ|で|だった)?$/))) {
-    const Z = { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield'] as SelZone[] };
+    // (超次元ゾーンに置いたカード (桜龍パーフェクト・スターズ) も見る)
+    const Z = { zones: ['battle', 'hand', 'mana', 'grave', 'deck', 'shield', 'hyper'] as SelZone[] };
     // 「それが火または自然」「それが多色」: 文明だけならカード
     const cv = m[2].match(/^((?:光|水|闇|火|自然)(?:(?:または|か|、)(?:光|水|闇|火|自然))*|多色|無色)$/);
     const sel = cv ? parseSel(`${cv[1]}のカード`.replace(/^(多色|無色)の/, '$1'), Z) : parseSel(m[2], Z);
@@ -774,7 +782,7 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
     .replace(/^(パワー|コスト)の合計が(\d+)以下になるように(.+?)を99枚まで選び、/, '$3を、$1の合計が$2以下になるように好きな数選び、')
     .replace(/^このようにして山札を見ていた場合、(?:その後)?シャッフルする$/, '自分の山札をシャッフルする')
     .replace(/^このようにして(.+?)をバトルゾーンに出した場合、/, 'それが$1であれば、')
-    .replace(/^(?:こうして|このようにして)(?:見せた|捨てた|墓地に置いた|戻した|タップした|マナゾーンに置いた)(?:カード|クリーチャー|の)?が、?(.+?)(ならば|なら|であれば)、/, 'それが$1$2、')
+    .replace(/^(?:こうして|このようにして)(?:見せた|捨てた|墓地に置いた|戻した|タップした|マナゾーンに置いた|置いた)(?:カード|クリーチャー|の)?が、?(.+?)(ならば|なら|であれば)、/, 'それが$1$2、')
     .replace(/^このようにして、?([^、]+?)を(?:墓地に置いた|手札に加えた|マナゾーンに置いた|破壊した)場合(?:は)?、/, 'それが$1であれば、')
     .replace(/クリ[―‐-]チャー/g, 'クリーチャー')
     .replace(/^自分のターンの終わりに、/, 'このターンの終わりに、')
@@ -1128,6 +1136,19 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
   // 「「〜」と言ってもよい」: 言ったかどうかだけ
   if ((mm = s.match(/^「([^」]+)」と言ってもよい$/))) return [{ op: 'optional', body: [{ op: 'note', text: `「${mm[1]}」` }], prompt: s0 }];
   if (/^(?:この|その)ターン、相手のクリーチャーの能力(?:を)?すべて(?:を)?無視する$/.test(s)) return [{ op: 'ignoreAbilities', until: 'turn' }];
+  // 禁時混成王 ドキンダンテXXII
+  if (/^次の自分のターンのはじめまで、相手のクリーチャーの能力(?:を)?すべて(?:を)?無視する$/.test(s)) return [{ op: 'ignoreAbilities', until: 'nextOwnTurn' }];
+  // 水神 ミヅハノメノカミ 「相手は自身の山札の上からクリーチャーが出るまで表向きにし、そのクリーチャーを墓地に置き、山札をシャッフルする」
+  if (/^相手は自身の山札の上からクリーチャーが出るまで表向きにし、そのクリーチャーを(?:持ち主の)?墓地に置き、山札をシャッフルする$/.test(s))
+    return [{ op: 'revealUntil', sel: { owner: 'opp', zones: ['deck'], kind: 'creature' }, opp: true }, { op: 'move', target: { ref: 'it' }, to: 'grave' }, { op: 'shuffle', who: 'opp' }];
+  // 「自分はこうして墓地に置いたクリーチャーの「このクリーチャーが出た時」で始まる能力をすべて使ってもよい」
+  if (/^(?:自分は)?こうして墓地に置いたクリーチャーの「このクリーチャーが(?:バトルゾーンに)?出た時」で始まる能力をすべて使ってもよい$/.test(s))
+    return [{ op: 'optional', body: [{ op: 'useCipOf' }], prompt: s0 }];
+  // 桜龍パーフェクト・スターズ 「次の自分のターンのはじめまで、このクリーチャーはそのクリーチャーになる」
+  if (/^次の自分のターンのはじめまで、このクリーチャーはそのクリーチャーになる$/.test(s)) return [{ op: 'becomeIt' }];
+  // 帝哲人＜声出していけヨ！＞ 「負けたクリーチャーのコストと同じ枚数まで、自分の山札の上からカードをマナゾーンに置いてもよい」
+  if (/^負けたクリーチャーのコストと同じ枚数まで、自分の山札の上からカードをマナゾーンに置いてもよい$/.test(s))
+    return [{ op: 'countSet', subjectCost: true }, { op: 'optional', body: [{ op: 'top', n: 0, fromCount: true, to: 'mana', who: 'self' }], prompt: s0 }];
   if (/^次の自分のターンのはじめまで、〈数字コスト〉の相手のエレメントの能力を無視し、相手は〈数字コスト〉の呪文を唱えられない$/.test(s))
     return [{ op: 'ignoreAbilities', until: 'nextOwnTurn', costRef: true }, { op: 'lockSpells', until: 'nextOwnTurn', costRef: true }];
   // 「そのクリーチャーのパワーは、自分の墓地にあるクリーチャー1体につき-1000される」

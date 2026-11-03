@@ -121,6 +121,8 @@ export interface Sel {
   costLeCount?: boolean;
   /** このクリーチャーよりコストが小さい */
   costLtSelf?: boolean;
+  /** このクリーチャー以下のパワー (「このクリーチャー以下のパワーを持つ」) */
+  powerLeSelf?: boolean;
   evolution?: boolean;
   nonEvolution?: boolean;
   twinpact?: boolean;
@@ -546,7 +548,9 @@ export type Op =
   /** このカードの呪文側を唱える (ラスト・バースト等) */
   | { op: 'castSelfSpell'; it?: boolean }
   /** 山札の上から条件に合うカードが出るまで表向きにする (見つかったカードが it、全部が looked) */
-  | { op: 'revealUntil'; sel: Sel; /** N体出るまで */ n?: number }
+  | { op: 'revealUntil'; sel: Sel; /** N体出るまで */ n?: number; /** 相手の山札 */ opp?: boolean }
+  /** 「次の自分のターンのはじめまで、このクリーチャーはそのクリーチャーになる」(it のカードになる) */
+  | { op: 'becomeIt' }
   /** 今選んでいるカードを保存 (2つ目の選択のため) */
   | { op: 'save' }
   /** 保存しておいたカード (saved) を it に加える (「選んだクリーチャーをすべて〜」) */

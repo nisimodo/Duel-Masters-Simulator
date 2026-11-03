@@ -42,6 +42,12 @@ import { GACHA } from '../rules/gacha';
 
 // ---------- 解析結果のキャッシュ ----------
 const progCache = new Map<string, ReturnType<typeof parseEffect>>();
+/** カードのパワー (バトルゾーンでは修正込み、それ以外はカードに書かれたパワー) */
+function cardPower(s: GameState, L: Lookup, iid: number): number {
+  const c = s.cards[iid];
+  return c.zone === 'battle' ? power(s, L, iid) : (L(c.cid)?.faces[c.face]?.power ?? L(c.cid)?.faces[0]?.power ?? 0);
+}
+
 export function programOf(effect: string) {
   let p = progCache.get(effect);
   if (!p) {
@@ -193,6 +199,8 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.self && iid !== ex.src) continue;
         if (sel.inLooked && !ex.looked.includes(iid)) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
+        // (バトルゾーン以外のカードは、カードに書かれたパワー)
+        if (sel.powerLeSelf && !(cardPower(s, L, iid) <= power(s, L, ex.src))) continue;
         if (sel.powerLtIt && !(ex.it.length && power(s, L, iid) < power(s, L, ex.it[0]))) continue;
         if (sel.costLtIt && !(ex.it.length && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.it[0]].cid))) continue;
         if (sel.enteredThisTurn && !s.cards[iid].sick) continue;
@@ -505,7 +513,8 @@ function moveTo(s: GameState, L: Lookup, ex: Exec, iid: number, to: Dest, reveal
   const c = s.cards[iid];
   if (!c || c.zone === 'gone') return;
   // 超次元ゾーンに置けるのはサイキック・ドラグハートだけ (それ以外はその場にとどまる)
-  if (to === 'hyper' && L(c.cid)?.zone !== 'hyper') {
+  // (手札のカードを超次元ゾーンに置く効果 (桜龍パーフェクト・スターズ) は、どのカードでも置ける)
+  if (to === 'hyper' && L(c.cid)?.zone !== 'hyper' && c.zone !== 'hand') {
     log(s, ex.player, `${q(nameOf(s, L, iid))} は超次元ゾーンに置けない`);
     return;
   }
@@ -1447,6 +1456,19 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         log(s, ex.player, '次の自分のターンのはじめまで、相手はDスイッチを使えず、D2フィールドを展開できない');
         break;
       }
+      case 'becomeIt': {
+        const c = s.cards[ex.src];
+        // (超次元ゾーンに置いたクリーチャー)
+        const to = ex.it.find((i) => i !== ex.src && s.cards[i].zone === 'hyper' && L(s.cards[i].cid)?.faces[0]?.isCreature);
+        if (!c || c.zone !== 'battle' || to == null) break;
+        const before = nameOf(s, L, ex.src);
+        // (元のカードを覚えておき、次の自分のターンのはじめ・バトルゾーンを離れる時に戻す)
+        c.became = { cid: c.became?.cid ?? c.cid, face: c.became?.face ?? c.face, until: ex.player };
+        c.cid = s.cards[to].cid;
+        c.face = 0;
+        log(s, ex.player, `${q(before)} は次の自分のターンのはじめまで ${q(nameOf(s, L, ex.src))} になった`);
+        break;
+      }
       case 'useCipOf': {
         // 選んだカードの「出た時」の能力を、このカードの能力として自分が使う (順に解決する)
         for (const i of ex.it) {
@@ -2079,7 +2101,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         break;
       }
       case 'revealUntil': {
-        const deck = s.players[ex.player].deck;
+        const deck = s.players[op.opp ? oppOf(s, ex) : ex.player].deck;
         const shown: number[] = [];
         const founds: number[] = [];
         for (let k = deck.length - 1; k >= 0; k--) {

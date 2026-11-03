@@ -100,6 +100,8 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^他の/, () => (sel.other = true));
     changed ||= take(/^(?:名前に)?《([^》]+)》(?:とある(?:クリーチャー|カード))?(?:以外の|ではない、?)/, (m) => (sel.nameNot = m[1]));
     changed ||= take(/^名前に《([^》]+)》(とある|を持つ)/, (m) => (sel.nameHas = m[1]));
+    // 決闘者・チャージャー 「《ボルシャック》と名前にあるカード」
+    changed ||= take(/^《([^》]+)》と名前にある/, (m) => (sel.nameHas = m[1]));
     changed ||= take(/^コスト(\d+)以下の/, (m) => (sel.costMax = +m[1]));
     changed ||= take(/^コスト(\d+)以上の/, (m) => (sel.costMin = +m[1]));
     changed ||= take(/^コスト(\d+)の/, (m) => ((sel.costMin = +m[1]), (sel.costMax = +m[1])));
@@ -129,11 +131,14 @@ function parseSel0(phrase: string, defaults: Partial<Sel> = {}): Sel | null {
     changed ||= take(/^、?(?:パワーが一番小さい|最もパワーの小さい|一番パワーの小さい)/, () => (sel.extreme = 'minPower'));
     changed ||= take(/^、?(?:パワーが一番大きい|一番パワーの大きい)/, () => (sel.extreme = 'maxPower'));
     changed ||= take(/^(このクリーチャー|これ)よりコストが小さい/, () => (sel.costLtSelf = true));
+    // 王闘竜皇 ボルシャック・ドラゴン 「このクリーチャー以下のパワーを持つ」
+    changed ||= take(/^(?:このクリーチャー|これ)以下のパワーを持つ|^パワーがこのクリーチャー以下の/, () => (sel.powerLeSelf = true));
     changed ||= take(
       /^(?:その選んだクリーチャー|そのクリーチャー|そのカード|それ|その[゠-ヿー・]+)のコスト以下の|^(?:その選んだクリーチャー|そのクリーチャー|そのカード|それ|その[゠-ヿー・]+|こうして(?:墓地に置いた|捨てた|手札に加えた|マナゾーンに置いた)(?:カード|手札|クリーチャー))(?:の)?以下のコストを持つ/,
       () => (sel.costLeIt = true),
     );
-    changed ||= take(/^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストが小さい|^(?:それ|そのクリーチャー|そのカード)より(?:も)?コストの小さい/, () => (sel.costLtIt = true));
+    // (蒼き王道 ドギラゴン超 「その多色クリーチャーよりコストが小さい」: 能力を誘発させたクリーチャー)
+    changed ||= take(/^(?:それ|そのクリーチャー|そのカード|その多色クリーチャー|その[゠-ヿー・]+)より(?:も)?コストが小さい|^(?:それ|そのクリーチャー|そのカード|その多色クリーチャー|その[゠-ヿー・]+)より(?:も)?コストの小さい/, () => (sel.costLtIt = true));
     changed ||= take(/^(?:それ|そのクリーチャー)よりコストが(\d+)(?:だけ)?大きい/, (m) => (sel.costItPlus = +m[1]));
     changed ||= take(/^((光|水|闇|火|自然)((または|か|、|と|・)(光|水|闇|火|自然))*)の/, (m) => {
       sel.civs = [...m[1].matchAll(/光|水|闇|火|自然/g)].map((x) => CIV[x[0]]);

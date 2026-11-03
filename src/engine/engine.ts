@@ -155,7 +155,16 @@ export function detach(s: GameState, iid: number) {
   c.parent = null;
 }
 
+/** 「そのクリーチャーになる」を終えて、元のカードに戻す */
+export function unbecome(c: CardInst) {
+  if (!c.became) return;
+  c.cid = c.became.cid;
+  c.face = c.became.face;
+  c.became = undefined;
+}
+
 function resetCard(c: CardInst) {
+  unbecome(c);
   c.grants = undefined;
   c.frozenBy = undefined;
   c.revChanged = undefined;
@@ -698,7 +707,9 @@ export function moveCard(
   let dest: ZoneName = to;
   if (card && to !== 'battle') {
     // (最終禁断はデッキの外から始めるが、超次元ゾーンのカードではないので、そのまま移動する)
-    if (card.zone === 'hyper' && to !== 'hyper' && !/最終禁断/.test(card.faces[0].type)) dest = 'hyper';
+    // (「そのクリーチャーになる」間は、元のカードで判断する)
+    const own = c.became ? (L(c.became.cid) ?? card) : card;
+    if (own.zone === 'hyper' && to !== 'hyper' && !/最終禁断/.test(own.faces[0].type)) dest = 'hyper';
     if (card.zone === 'gr' && to !== 'gr') dest = 'gr';
   }
   const pl = s.players[c.owner];
@@ -1131,7 +1142,7 @@ function pushAbility(s: GameState, L: Lookup, src: number, faceIdx: number, spec
 const faceOf0 = (L: Lookup, cid: string, face: number) => L(cid)?.faces[face];
 
 /** そのカード自身の「～時」能力 */
-function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[]) {
+function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events: TrigEvent[], subject?: number) {
   const f = L(s.cards[iid].cid)?.faces[faceIdx];
   if (!f) return;
   if (s.cards[iid].zone === 'battle' && (sealIgnored(s, L, iid) || abilitiesIgnored(s, L, iid)) && !events.some((e) => e === 'unsealOne' || e === 'unsealedAll')) return;
@@ -1143,7 +1154,7 @@ function fireSelf(s: GameState, L: Lookup, iid: number, faceIdx: number, events:
   }
   for (const spec of [...(f.triggers ?? []), ...effGroups(s, L, iid).flatMap((g) => g.triggers)]) {
     const ev = spec.events.find((e) => events.includes(e));
-    if (ev) pushAbility(s, L, iid, faceIdx, spec, ev);
+    if (ev) pushAbility(s, L, iid, faceIdx, spec, ev, subject);
   }
   // リンクしているゴッドの「このクリーチャーが〜時」
   if (s.cards[iid].zone === 'battle')
@@ -1612,6 +1623,24 @@ function startTurn(s: GameState, L: Lookup) {
     for (const m of tapped.slice(untapLimit)) s.cards[m].noUntap = true;
     log(s, p, `マナゾーンのカードは${untapLimit}枚までしかアンタップできない`);
   }
+  // 無量大龍 トゥリナーツァッチ 「相手は、自身のターンのはじめに、クリーチャーを1体しかアンタップできない」
+  let creatureLimit: number | undefined;
+  for (let o = 0; o < s.players.length; o++) {
+    if (o === p || s.players[o].lost) continue;
+    for (const b of s.players[o].battle) {
+      if (sealIgnored(s, L, b) || abilitiesIgnored(s, L, b)) continue;
+      for (const l of faceOf(s, L, b)?.text ?? []) {
+        const m = normText(l).match(/^相手は、?自身のターンのはじめに、?クリーチャーを(\d+)体しかアンタップできない/);
+        if (m) creatureLimit = Math.min(+m[1], creatureLimit ?? +m[1]);
+      }
+    }
+  }
+  if (creatureLimit != null) {
+    // (どれをアンタップするかは、パワーの大きいクリーチャーから)
+    const tapped = pl.battle.filter((b) => s.cards[b].tapped && !s.cards[b].noUntap && faceOf(s, L, b)?.isCreature).sort((a, b) => power(s, L, b) - power(s, L, a));
+    for (const b of tapped.slice(creatureLimit)) s.cards[b].noUntap = true;
+    if (tapped.length > creatureLimit) log(s, p, `クリーチャーは${creatureLimit}体しかアンタップできない`);
+  }
   for (const iid of [...pl.mana, ...pl.battle]) {
     const c = s.cards[iid];
     // 「このD2フィールドがある間アンタップしない」
@@ -1661,6 +1690,10 @@ function startTurn(s: GameState, L: Lookup) {
       c.hyperUntil = undefined;
     }
     if (c.justDive === p) c.justDive = undefined;
+    if (c.became?.until === p) {
+      if (c.zone === 'battle') log(s, c.owner, `${q(L(c.cid)?.name ?? '')} は元の ${q(L(c.became.cid)?.name ?? '')} に戻った`);
+      unbecome(c);
+    }
     if (c.restrict && c.restrict.until === p && c.restrict.untilEnd == null) c.restrict = undefined;
     if (c.grants) c.grants = c.grants.filter((g) => g.until !== p);
   }
@@ -2494,8 +2527,9 @@ function battleInner(s: GameState, L: Lookup, att: number, def: number) {
     if (w != null)
       for (const u of s.cards[w].under)
         if (/クロスギア|ドラグハート|オーラ/.test(L(s.cards[u].cid)?.faces[s.cards[u].face]?.type ?? '')) fireSelf(s, L, u, s.cards[u].face, ['crossWin']);
-  if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle']);
-  if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle']);
+  // (「負けたクリーチャー」を誘発させたカードとして渡す)
+  if (killD && !killA) fireSelf(s, L, att, s.cards[att].face, ['winBattle'], def);
+  if (killA && !killD) fireSelf(s, L, def, s.cards[def].face, ['winBattle'], att);
   // 「バトルの後で〜」
   const after = s.afterBattleExecs ?? [];
   s.afterBattleExecs = [];

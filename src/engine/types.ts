@@ -109,6 +109,8 @@ export interface CardInst {
   enterSeq?: number;
   /** Zラッシュでハイパーモード中 (このプレイヤーのターンのはじめに戻る) */
   hyperUntil?: number;
+  /** 「このクリーチャーはそのクリーチャーになる」(桜龍パーフェクト・スターズ): 元のカード (cid・面) と、元に戻るプレイヤーのターン */
+  became?: { cid: string; face: number; until: number };
   /** G・リンクで下に重なっているゴッド (リンク先の一番上のカード) */
   linkedTo?: number;
   /** 覚醒リンクで下に重なっているサイキック・セル (一番上のカード) */
