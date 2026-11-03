@@ -89,6 +89,8 @@ export interface Sel {
   faceUpCard?: boolean;
   /** いま攻撃しているクリーチャー (「攻撃クリーチャー」) */
   attackingNow?: boolean;
+  /** ツインパクトで、呪文側のコストが持ち主のマナゾーンの枚数以下 */
+  twinSpellLeOwnerMana?: boolean;
   /** 攻撃しているクリーチャーよりコストが小さい */
   costLtAttacker?: boolean;
   /** 直前に見た・置いたカード (looked) の中だけ */
@@ -467,6 +469,12 @@ export type Op =
   | { op: 'hyperAll' }
   /** 選んだカードを保存したカードに加える (くり返しの中で選んだものをまとめる) */
   | { op: 'saveAppend' }
+  /** 保存したツインパクトの呪文側を自分がコストを支払わずに唱え、すべて唱えた後、その持ち主は墓地からエレメント側を出す */
+  | { op: 'castTwinsThenElements' }
+  /** (castTwinsThenElements の続き) 唱えたツインパクトのエレメント側を、持ち主の墓地から出す */
+  | { op: 'putElementSides' }
+  /** (castTwinsThenElements の続き) 次のツインパクト呪文を唱える */
+  | { op: 'castNextTwin' }
   /** このターン、自分のカードを手札またはバトルゾーンから墓地に置く時、かわりにマナゾーンに置く */
   | { op: 'graveToManaTurn' }
   /** 次のターン中、相手はカードを n 枚までしか実行できない */

@@ -344,6 +344,10 @@ export interface Exec {
   looked: number[];
   /** 「〜を数える」で数えた数 */
   count?: number;
+  /** 見たカードを山札 (超GR) から見た (「残り」は、まだ山札にあるものだけ) */
+  lookedFromDeck?: boolean;
+  /** 直前に「〜を選ぶ」をした (選ばなかった時も「それ」は空のまま) */
+  itChosen?: boolean;
   /** 2つ目の選択の前に保存したカード */
   saved?: number[];
   did: boolean;
@@ -452,6 +456,10 @@ export interface GameState {
   firstDrawNow?: boolean;
   /** 能力を無視する効果 (by 以外のプレイヤーのバトルゾーンのカード。until のプレイヤーのターンのはじめまで / turn のターンだけ / costEq のコストだけ) */
   ignoreAbil?: { by: number; until?: number; turn?: number; costEq?: number; iid?: number }[];
+  /** 「すべて唱えた後、その持ち主は自身の墓地からそのエレメント側を出す」を待っているツインパクト */
+  elementPut?: number[];
+  /** これから唱えるツインパクト呪文 */
+  twinCastQueue?: number[];
   /** 今実行している効果のプレイヤー (カードの効果でない移動では undefined) */
   effBy?: number;
   /** 「D・D・D」で出しているカード (「D・D・Dによって出た時」) */

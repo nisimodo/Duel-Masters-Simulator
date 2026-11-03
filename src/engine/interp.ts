@@ -197,6 +197,8 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
       for (const iid of arr) {
         if (sel.other && iid === ex.src) continue;
         if (sel.self && iid !== ex.src) continue;
+        // 解決中の呪文はまだ墓地にない (総合ルール: 呪文は解決してから墓地に置かれる)
+        if (ex.spellBy != null && iid === ex.src && z === 'grave' && !sel.self) continue;
         if (sel.inLooked && !ex.looked.includes(iid)) continue;
         if (sel.powerLtSelf && !(power(s, L, iid) < power(s, L, ex.src))) continue;
         // (バトルゾーン以外のカードは、カードに書かれたパワー)
@@ -233,6 +235,11 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.costItPlus != null && !(ex.it.length && L(s.cards[iid].cid)?.faces.some((f) => f.cost === maxCost(L, s.cards[ex.it[0]].cid) + sel.costItPlus!))) continue;
         if (sel.costLtSelf && !(maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[ex.src].cid))) continue;
         if (sel.costLeSelf && !(maxCost(L, s.cards[iid].cid) <= maxCost(L, s.cards[ex.src].cid))) continue;
+        if (sel.twinSpellLeOwnerMana) {
+          const cd = L(s.cards[iid].cid);
+          const sp = cd?.twin ? cd.faces.find((f) => f.isSpell) : undefined;
+          if (!sp || (sp.cost ?? 0) > s.players[s.cards[iid].owner].mana.length) continue;
+        }
         if (sel.costLtAttacker && !(s.attack && maxCost(L, s.cards[iid].cid) < maxCost(L, s.cards[s.attack.attacker].cid))) continue;
         if (!canBeChosen(s, L, iid, ex.player, s.cards[ex.src] ? !!L(s.cards[ex.src].cid)?.faces.some((f) => f.isSpell) && s.cards[ex.src].zone !== 'battle' : false, ex.src)) continue;
         if (matchesSel(s, L, iid, sel)) out.push(iid);
@@ -457,14 +464,15 @@ function resolveRef(s: GameState, ex: Exec, t: Target): number[] | null {
   switch (t.ref) {
     case 'it': {
       // 「それ」: 直前に選んだカード。選んでいなければ表向きにした/見たカード
-      const base = ex.it.length ? ex.it : ex.looked;
+      const base = ex.it.length || ex.itChosen ? ex.it : ex.looked;
       return base.filter((i) => s.cards[i].zone !== 'gone');
     }
     case 'self':
       // G・リンクで下になったゴッドの「このクリーチャー」はリンクしたクリーチャー全体
       return [s.cards[ex.src]?.linkedTo ?? ex.src];
     case 'rest':
-      return ex.looked.filter((i) => !ex.it.includes(i));
+      // (山札から見たカードの「残り」は、ほかの場所に動かしたものを除く)
+      return ex.looked.filter((i) => !ex.it.includes(i) && (!ex.lookedFromDeck || s.cards[i].zone === 'deck' || s.cards[i].zone === 'gr'));
     case 'saved':
       return (ex.saved ?? []).filter((i) => s.cards[i].zone !== 'gone');
     case 'kept':
@@ -556,6 +564,36 @@ function sameCardType(L: Lookup, a: string, b: string): boolean {
     (L(cid)?.faces ?? []).map((f) => (f.isCreature ? 'クリーチャー' : f.isSpell ? '呪文' : /タマシード/.test(f.type) ? 'タマシード' : /フィールド/.test(f.type) ? 'フィールド' : f.type));
   const kb = kinds(b);
   return kinds(a).some((k) => kb.includes(k));
+}
+
+/** 「選んだ呪文を、好きな順序で唱える。すべて唱えた後、エレメント側を出す」: 次の1枚を唱え、その後に続きを積む */
+function castNextTwin(s: GameState, L: Lookup, player: number, src: number) {
+  const queue = s.twinCastQueue ?? [];
+  const sc = s.cards[src];
+  const next = queue.shift();
+  s.twinCastQueue = queue;
+  if (next != null && s.cards[next].zone === 'mana') {
+    const card = L(s.cards[next].cid);
+    const fi = card ? card.faces.findIndex((f) => f.isSpell) : -1;
+    if (fi >= 0) {
+      log(s, player, `${q(card!.faces[fi].name)} をコストを支払わずに唱える`);
+      playCard(s, player, { t: 'play', iid: next, face: fi, pay: [], free: true, force: true }, L);
+    }
+  }
+  // 唱えた呪文の効果を解決した後に、次の呪文 (なければエレメント側を出す)
+  const more = queue.length > 0;
+  s.pending.push({
+    kind: 'ability',
+    player,
+    src,
+    cid: sc.cid,
+    face: sc.face,
+    event: 'spell',
+    text: more ? '次の呪文を唱える' : 'すべて唱えた後、その持ち主は自身の墓地からそのエレメント側を出す',
+    effect: more ? '〈選んだツインパクト呪文の次を唱える〉' : '〈唱えたツインパクトのエレメント側を出す〉',
+    optional: false,
+    auto: false,
+  });
 }
 
 /** 効果プログラムの実行を開始する */
@@ -725,6 +763,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const ids = !n0 ? [] : op.fromBottom ? deck.slice(0, n0) : deck.slice(-(op.perOpp ? n0 * opps(s, ex.player).length : n0)).reverse();
         if (op.to === 'look' || op.to === 'reveal') {
           ex.looked = ids;
+          ex.itChosen = false;
+          ex.lookedFromDeck = true;
           // 表向きにしたカードは「それ」で参照される
           ex.it = op.to === 'reveal' ? [...ids] : [];
           if (op.to === 'reveal') log(s, who, `山札の${op.fromBottom ? '下' : '上'}から${ids.length}枚を表向きにした: ${ids.map((i) => q(nameOf(s, L, i))).join('、')}`);
@@ -741,6 +781,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           }
           // 「それがドラゴンなら」: 置いたカードを「それ」で参照する
           ex.looked = ids;
+          ex.itChosen = false;
+          ex.lookedFromDeck = false;
         }
         break;
       }
@@ -756,11 +798,14 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'lookDeck': {
         const lw = op.who === 'opp' ? oppOf(s, ex) : ex.player;
         ex.looked = [...s.players[lw].deck];
+        ex.itChosen = false;
+        ex.lookedFromDeck = true;
         ex.it = [];
         log(s, ex.player, op.who === 'opp' ? '相手の山札を見た' : '山札を見た');
         break;
       }
       case 'choose': {
+        ex.itChosen = true;
         const t = op.target;
         let cands: number[];
         let cnt: Count | undefined;
@@ -1145,6 +1190,33 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         s.players[ex.player].graveToMana = s.turn;
         log(s, ex.player, 'このターン、自分のカードを墓地に置くかわりにマナゾーンに置く');
         break;
+      case 'castTwinsThenElements': {
+        const twins = (ex.saved ?? []).filter((i) => s.cards[i].zone === 'mana');
+        ex.saved = [];
+        if (!twins.length) break;
+        // 1枚ずつ唱えて、その効果を解決してから次を唱える。すべて唱えた後でエレメント側を出す
+        s.elementPut = [...(s.elementPut ?? []), ...twins];
+        s.twinCastQueue = [...twins];
+        castNextTwin(s, L, ex.player, ex.src);
+        break;
+      }
+      case 'castNextTwin': {
+        castNextTwin(s, L, ex.player, ex.src);
+        break;
+      }
+      case 'putElementSides': {
+        const list = s.elementPut ?? [];
+        s.elementPut = [];
+        for (const i of list) {
+          const c = s.cards[i];
+          const card = L(c.cid);
+          const fi = card ? card.faces.findIndex((f) => !f.isSpell) : -1;
+          if (c.zone !== 'grave' || fi < 0) continue;
+          log(s, c.owner, `${q(card!.faces[fi].name)} を墓地から出した`);
+          moveCard(s, L, i, 'battle', { face: fi });
+        }
+        break;
+      }
       case 'saveAppend':
         ex.saved = [...new Set([...(ex.saved ?? []), ...ex.it])];
         break;
@@ -2114,6 +2186,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
           }
         }
         ex.looked = shown;
+        ex.itChosen = false;
+        ex.lookedFromDeck = true;
         ex.it = founds;
         log(s, ex.player, `山札の上から${shown.length}枚を表向きにした${founds.length ? ` → ${founds.map((f) => q(nameOf(s, L, f))).join('、')}` : ' (見つからなかった)'}`);
         break;
@@ -2210,6 +2284,7 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
         const zone = s.players[who][op.zone];
         const ids = op.n != null ? zone.slice(-op.n) : [...zone];
         ex.looked = ids;
+        ex.lookedFromDeck = op.zone === 'deck';
         ex.it = [];
         // 自分だけが見ている
         const me = s.players[ex.player];
@@ -2362,6 +2437,8 @@ function runExecInner(s: GameState, L: Lookup, ex: Exec) {
       case 'lookHand': {
         const o = oppOf(s, ex);
         ex.looked = [...s.players[o].hand];
+        ex.itChosen = false;
+        ex.lookedFromDeck = false;
         ex.it = [];
         for (const i of ex.looked) if (!s.players[ex.player].peek.includes(i)) s.players[ex.player].peek.push(i);
         log(s, ex.player, `${s.players[o].name} の手札を見た`);

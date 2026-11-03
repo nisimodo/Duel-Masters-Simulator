@@ -1092,6 +1092,8 @@ function sentence(s0: string, ctx: Ctx): Op[] | null {
       { op: 'move', target: { ref: 'it' }, to: 'manaTapped' },
     ];
   if (/^〈手札とシールドを引き直す〉$/.test(s)) return [{ op: 'cycleHand' }, { op: 'cycleShields' }];
+  if (/^〈唱えたツインパクトのエレメント側を出す〉$/.test(s)) return [{ op: 'putElementSides' }];
+  if (/^〈選んだツインパクト呪文の次を唱える〉$/.test(s)) return [{ op: 'castNextTwin' }];
   if (/^〈心絵〉$/.test(s)) return [{ op: 'kokoroe' }];
   if (/^〈各ターン1度〉$/.test(s)) return [{ op: 'oncePerTurn' }];
   // サイクルペディア: 「自分の手札から/墓地から呪文を唱えた時」は、その呪文を唱えたゾーンで分ける
@@ -4330,7 +4332,7 @@ export function parseEffect(text: string): Program {
         { op: 'choose', target: { ref: 'sel', sel: sel(owner), count: { n: 1, upTo: true }, chooser: 'self' }, purpose: 'benefit', prompt: `${owner === 'self' ? '自分' : '相手'}のマナゾーンから唱えるツインパクト呪文を1枚まで選ぶ` },
         { op: 'saveAdd' },
       ];
-      return { ops: [{ op: 'saveClear' }, ...pick('self'), { op: 'forEachOpp', body: pick('opp') }, { op: 'castSavedThenPutElements' }], complete: true, unparsed: [] };
+      return { ops: [{ op: 'saveClear' }, ...pick('self'), { op: 'forEachOpp', body: pick('opp') }, { op: 'castTwinsThenElements' }], complete: true, unparsed: [] };
     }
     // (上の能力の続き: 唱えた呪文がすべて解決した後に、持ち主が実行する)
     if (nt === ELEMENT_FROM_GRAVE) return { ops: [{ op: 'putElementFromGrave' }], complete: true, unparsed: [] };

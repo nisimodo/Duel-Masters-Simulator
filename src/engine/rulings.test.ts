@@ -7,7 +7,7 @@ import { abilitiesIgnored } from './statics';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
-const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～'];
+const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ'];
 const picked = raw.filter((c) => c.f.some((f) => NAMES.includes(f.n)) || NAMES.includes(c.n));
 const vanilla = { id: 'vanilla', n: 'vanilla', img: '', f: [{ n: 'vanilla', t: 'クリーチャー', c: 'N', co: 1, p: '1000', r: ['テスト'], x: [] }] };
 const sa = { id: 'sa', n: 'sa', img: '', f: [{ n: 'sa', t: 'クリーチャー', c: 'F', co: 1, p: '3000', r: ['テスト'], x: ['スピードアタッカー'] }] };
@@ -273,5 +273,112 @@ describe('総合ルールの変更点', () => {
     s = drain(s);
     expect(s.cards[f].zone).toBe('grave');
     expect(s.players[0].lost).toBe(true);
+  });
+  it('ミノガミ&オウ禍武斗: 各プレイヤーのマナのツインパクト呪文を唱え、すべて唱えた後にエレメント側を出す', () => {
+    const mo = idOf('ミノガミ&オウ禍武斗');
+    const twin = idOf('虹出づる繭 ミノガミ');
+    let s = setup([{ p: 0, cid: mo, zone: 'hand' }, { p: 0, cid: twin, zone: 'mana' }, { p: 1, cid: twin, zone: 'mana' }], 9);
+    const m = find(s, 0, 'hand', mo)!;
+    const t0 = find(s, 0, 'mana', twin)!;
+    const t1 = find(s, 1, 'mana', twin)!;
+    s = act(s, 0, { t: 'play', iid: m, face: 0, pay: s.players[0].mana.filter((i) => i !== t0).slice(0, 9) });
+    for (let k = 0; k < 30 && s.pending.length; k++) {
+      const pk = abilityPick(s);
+      if (pk && pk.indices.length >= 2) {
+        s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+        continue;
+      }
+      const top = s.pending[0];
+      // ツインパクトはそれぞれ選ぶ。帝の目覚めで手札に戻すのは選ばない
+      const a: Action =
+        top.kind === 'choice'
+          ? top.mode === 'yesno'
+            ? { t: 'choose', yes: false }
+            : { t: 'choose', picks: (() => { const tw = top.options.filter((i) => (i === t0 || i === t1) && s.cards[i].zone === 'mana').slice(0, 1); return tw.length ? tw : top.options.filter((i) => i !== t0 && i !== t1).slice(0, top.min ?? 0); })() }
+          : { t: 'resolve', use: true };
+      s = act(s, top.player, a);
+    }
+    // 1枚目 (自分の) を唱えて解決し、2枚目 (相手の) を唱える。2枚目の《帝の目覚め》は、解決済みで墓地にある1枚目をマナゾーンに置く
+    expect(s.cards[t0].zone).toBe('mana');
+    // すべて唱えた後、相手のツインパクトは持ち主 (相手) の墓地からエレメント側が出る
+    expect(s.cards[t1].zone).toBe('battle');
+    expect(s.players[1].battle).toContain(t1);
+    expect(L(s.cards[t1].cid)!.faces[s.cards[t1].face].name).toBe('虹出づる繭 ミノガミ');
+    expect(s.log.filter((l) => l.m.includes('帝の目覚め') && l.m.includes('唱える')).length).toBe(2);
+  });
+
+  it('T.2.D.: 表向きにしたツインパクトカードを手札に加えるかマナゾーンに置く', () => {
+    const mo = idOf('ミノガミ&オウ禍武斗');
+    const twin = idOf('虹出づる繭 ミノガミ');
+    let s = setup([{ p: 0, cid: mo, zone: 'hand' }, { p: 0, cid: twin, zone: 'hand' }, { p: 0, cid: 'vanilla', zone: 'hand' }], 4);
+    const m = find(s, 0, 'hand', mo)!;
+    const tw = find(s, 0, 'hand', twin)!;
+    const v = s.players[0].hand.find((i) => s.cards[i].cid === 'vanilla')!;
+    // 山札の上: ツインパクトとふつうのカード
+    for (const i of [v, tw]) {
+      s.players[0].hand.splice(s.players[0].hand.indexOf(i), 1);
+      s.cards[i].zone = 'deck';
+      s.players[0].deck.push(i);
+    }
+    const fi = L(mo)!.faces.findIndex((f) => f.isSpell);
+    s = act(s, 0, { t: 'play', iid: m, face: fi, pay: s.players[0].mana.slice(0, 4) });
+    for (let k = 0; k < 10 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: [] } : { t: 'resolve', use: true });
+    }
+    // 手札に加えなかったツインパクトはマナゾーンへ、ツインパクトでないカードは山札の下へ
+    expect(s.cards[tw].zone).toBe('mana');
+    expect(s.cards[v].zone).toBe('deck');
+    expect(s.players[0].deck[0]).toBe(v);
+  });
+  it('ミノガミ&オウ禍武斗: 1枚ずつ解決してから次を唱え、両方のエレメント側が出る', () => {
+    const mo = idOf('ミノガミ&オウ禍武斗');
+    const twin = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: mo, zone: 'hand' }, { p: 0, cid: twin, zone: 'mana' }, { p: 1, cid: twin, zone: 'mana' }], 9);
+    const t0 = find(s, 0, 'mana', twin)!;
+    const t1 = find(s, 1, 'mana', twin)!;
+    s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', mo)!, face: 0, pay: s.players[0].mana.filter((i) => i !== t0).slice(0, 9) });
+    for (let k = 0; k < 30 && s.pending.length; k++) {
+      const pk = abilityPick(s);
+      if (pk && pk.indices.length >= 2) {
+        s = act(s, pk.player, { t: 'pickAbility', index: pk.indices[0], use: true });
+        continue;
+      }
+      const top = s.pending[0];
+      const a: Action = top.kind === 'choice' ? (top.mode === 'yesno' ? { t: 'choose', yes: true } : { t: 'choose', picks: top.options.filter((i) => i === t0 || i === t1).slice(0, 1).length ? top.options.filter((i) => i === t0 || i === t1).slice(0, 1) : top.options.slice(0, Math.max(1, top.min ?? 0)) }) : { t: 'resolve', use: true };
+      s = act(s, top.player, a);
+    }
+    expect(s.cards[t0].zone).toBe('battle');
+    expect(s.cards[t1].zone).toBe('battle');
+    expect(s.players[0].battle).toContain(t0);
+    expect(s.players[1].battle).toContain(t1);
+    // 1枚目の効果 (山札の上から1枚をマナゾーンへ) が、2枚目を唱える前に解決している
+    const logs = s.log.map((l) => l.m);
+    const c1 = logs.findIndex((m) => m.includes('ハザード・パクト') && m.includes('唱える'));
+    const c2 = logs.findIndex((m, k) => k > c1 && m.includes('ハザード・パクト') && m.includes('唱える'));
+    expect(logs.slice(c1, c2).some((m) => m.includes('マナ'))).toBe(true);
+  });
+  it('T.2.D.: 手札に加えるほうを選んだツインパクトは手札へ、選ばなかったツインパクトはマナゾーンへ', () => {
+    const mo = idOf('ミノガミ&オウ禍武斗');
+    const twin = idOf('虹出づる繭 ミノガミ');
+    const twin2 = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: mo, zone: 'hand' }, { p: 0, cid: twin, zone: 'hand' }, { p: 0, cid: twin2, zone: 'hand' }], 4);
+    const m = find(s, 0, 'hand', mo)!;
+    const a = find(s, 0, 'hand', twin)!;
+    const b = find(s, 0, 'hand', twin2)!;
+    for (const i of [a, b]) {
+      s.players[0].hand.splice(s.players[0].hand.indexOf(i), 1);
+      s.cards[i].zone = 'deck';
+      s.players[0].deck.push(i);
+    }
+    const fi = L(mo)!.faces.findIndex((f) => f.isSpell);
+    s = act(s, 0, { t: 'play', iid: m, face: fi, pay: s.players[0].mana.slice(0, 4) });
+    for (let k = 0; k < 10 && s.pending.length; k++) {
+      const top = s.pending[0];
+      s = act(s, top.player, top.kind === 'choice' ? { t: 'choose', picks: top.options.includes(a) ? [a] : [] } : { t: 'resolve', use: true });
+    }
+    expect(s.cards[a].zone).toBe('hand');
+    expect(s.cards[b].zone).toBe('mana');
+    expect(s.cards[m].zone).toBe('grave');
   });
 });
