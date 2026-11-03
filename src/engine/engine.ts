@@ -3707,6 +3707,8 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
             t.noAttack = true;
             log(s, p, `G・ストライク！ ${q(nameOf(s, L, a.target))} はこのターン攻撃できない`);
           }
+          // ミノガミ ＜サガ.Star＞ 「このクリーチャーを「G・ストライク」で相手に見せた時」
+          fireSelf(s, L, top.iid, Math.max(0, card.faces.findIndex((f) => f.kw.gStrike)), ['gStrikeShown']);
           fireWatchers(s, L, p, null, 'ownGStrike', null);
         } else {
           const fi = a.face ?? card.faces.findIndex((f) => f.kw.shieldTrigger);

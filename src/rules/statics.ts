@@ -529,6 +529,8 @@ export function parseStaticLine(raw: string): StaticSpec[] | null {
   if (/^サバキZ/.test(t0)) return [{ s: 'sabakiZ' }];
   if (/^自分の手札にあるツインパクトカードに、?「S・バック[-－ー:：]ツインパクト」を与える$/.test(t0)) return [{ s: 'sBackTwin' }];
   if (/^自分のマナゾーン(?:にある|の)ツインパクトカードは(?:すべて)?、?すべての文明を持つ$/.test(t0)) return [{ s: 'manaTwinAllCivs' }];
+  // 虹出づる繭 ミノガミ 「自分のマナゾーンにあるツインパクトカードを、すべての文明のカードとして扱う」
+  if (/^自分のマナゾーン(?:にある|の)ツインパクトカードを、?すべての文明のカードとして扱う$/.test(t0)) return [{ s: 'manaTwinAllCivs' }];
   if ((m = t0.match(/^S・バック[-－ー:：]([^(（]+)/))) {
     const ph = m[1].replace(/のカード$/, '');
     const sel = parseSel(/(カード|クリーチャー|呪文)$/.test(ph) ? ph : ph + 'のカード') ?? parseSel(ph + 'カード');
