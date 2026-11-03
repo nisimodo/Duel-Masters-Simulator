@@ -25,6 +25,7 @@ import { CARD_TYPES, emptyQuery, searchCards, type SearchQuery } from '../lib/se
 import { Modal } from '../game/dialogs';
 import { FormatBadge } from '../components/DeckGrid';
 import { DeckImageDialog } from '../components/DeckImageDialog';
+import { DeckCodeDialog, DeckCodeInputDialog } from '../components/DeckCodeDialog';
 import { NARROW, useMedia } from '../lib/useMedia';
 
 const PAGE = 60;
@@ -42,6 +43,8 @@ export default function DeckEditor() {
   const [msg, setMsg] = useState<{ text: string; warn?: string[] } | null>(null);
   // デッキリストの画像のプレビュー
   const [showImage, setShowImage] = useState(false);
+  // デッキコードの表示 / 入力
+  const [codeDialog, setCodeDialog] = useState<'show' | 'input' | null>(null);
   const [dirty, setDirty] = useState(false);
   const narrow = useMedia(NARROW);
   const [tab, setTab] = useState<'search' | 'deck'>('search');
@@ -357,11 +360,37 @@ export default function DeckEditor() {
             <button className="small" disabled={!mainSize(deck)} onClick={() => setShowImage(true)} title="デッキリストを画像にして保存します (保存する前にプレビューを表示します)">
               画像で保存
             </button>
+            <button className="small" disabled={!mainSize(deck)} onClick={() => setCodeDialog('show')} title="このデッキを1行のコードにします (編成画面の「コードを入力」で同じデッキを作れます)">
+              デッキコード
+            </button>
+            <button className="small" onClick={() => setCodeDialog('input')} title="デッキコードからデッキを作ります">
+              コードを入力
+            </button>
             <button className="small" onClick={() => nav('/decks')}>
               一覧へ
             </button>
           </div>
           {showImage && <DeckImageDialog db={db} deck={deck} onClose={() => setShowImage(false)} />}
+          {codeDialog === 'show' && <DeckCodeDialog deck={deck} onClose={() => setCodeDialog(null)} />}
+          {codeDialog === 'input' && (
+            <DeckCodeInputDialog
+              db={db}
+              onClose={() => setCodeDialog(null)}
+              onLoad={(d, notFound) => {
+                update((x) => {
+                  x.type = d.type;
+                  x.name = d.name;
+                  x.main = d.main;
+                  x.hyper = d.hyper;
+                  x.gr = d.gr;
+                  x.partner = d.partner;
+                  x.thumb = d.thumb;
+                });
+                setMsg({ text: notFound.length ? `デッキコードを読み込みました (カードDBに見つからないカード: ${notFound.join('、')})` : 'デッキコードを読み込みました (保存すると反映されます)' });
+                setCodeDialog(null);
+              }}
+            />
+          )}
           {msg && (
             <div className="small">
               <span className="ok">{msg.text}</span>

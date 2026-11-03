@@ -1627,3 +1627,12 @@ button.glow-btn {
     padding: 4px;
   }
 }
+/* デッキコード (1行の長い文字列なので折り返して全部見せる) */
+.deck-code {
+  width: min(560px, 80vw);
+  min-height: 96px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  resize: vertical;
+}

@@ -6,3 +6,4 @@ data/raw/*.html
 .claude/settings.local.json
 scrape.log
 coverage-miss.log
+deck-sim-report.txt

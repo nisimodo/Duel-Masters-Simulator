@@ -5,21 +5,25 @@ import type { CardDB } from '../lib/cards';
 import type { Deck } from '../lib/deck';
 import { DeckContents } from './DeckContents';
 import { DeckImageDialog } from './DeckImageDialog';
+import { DeckCodeDialog } from './DeckCodeDialog';
 
 /** actions: 「インポート」など、画面ごとのボタン (閉じる・画像で保存の前に出す) */
 export function DeckViewDialog({ db, deck, title, onClose, actions }: { db: CardDB; deck: Deck; title?: string; onClose: () => void; actions?: ReactNode }) {
   const [image, setImage] = useState(false);
+  const [code, setCode] = useState(false);
   return (
     <>
       <Modal title={title ?? deck.name} onClose={onClose}>
         <DeckContents db={db} deck={deck} />
         <div className="row">
           {actions}
+          <button onClick={() => setCode(true)}>デッキコード</button>
           <button onClick={() => setImage(true)}>画像で保存</button>
           <button onClick={onClose}>閉じる</button>
         </div>
       </Modal>
       {image && <DeckImageDialog db={db} deck={deck} onClose={() => setImage(false)} />}
+      {code && <DeckCodeDialog deck={deck} onClose={() => setCode(false)} />}
     </>
   );
 }

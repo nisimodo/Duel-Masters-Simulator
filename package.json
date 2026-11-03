@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "deck": "node scripts/deck-code.mjs",
+    "deck:sim": "vitest run src/lib/deckCode.sim.test.ts",
     "cards:scrape": "node scripts/scrape-official.mjs",
     "cards:update": "node scripts/scrape-official.mjs --refresh && node scripts/scrape-regulation.mjs && node scripts/scrape-readings.mjs && node scripts/build-cards.mjs",
     "cards:build": "node scripts/build-cards.mjs",
