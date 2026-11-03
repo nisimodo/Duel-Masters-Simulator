@@ -305,6 +305,17 @@ input[type='radio'] {
   border-radius: 3px;
   padding: 0 3px;
 }
+/* タップしているカード */
+.card .tag.tag-tapped {
+  background: rgba(150, 40, 40, 0.9);
+  color: #fff;
+}
+/* 支払いに使えない (タップしている) マナ */
+.mana-used {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+  cursor: not-allowed;
+}
 .card .pw {
   position: absolute;
   left: 0;

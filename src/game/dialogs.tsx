@@ -53,6 +53,7 @@ export function PayDialog({
   const card = L(s.cards[iid].cid)!;
   const f = card.faces[face];
   const mana = s.players[me].mana.filter((m) => !s.cards[m].tapped);
+  const tappedMana = s.players[me].mana.filter((m) => s.cards[m].tapped);
   const statics = f.statics ?? [];
   const sasaN = statics.some((x) => x.s === 'sasageru');
   const heOn = statics.some((x) => x.s === 'hyperEnergy');
@@ -432,12 +433,22 @@ export function PayDialog({
           </div>
         </div>
       )}
-      <div className="small muted">使うマナをクリックで選択 (コスト軽減などは「支払いを調整して出す」)</div>
+      <div className="small muted">
+        使うマナをクリックで選択 (コスト軽減などは「支払いを調整して出す」)・タップしていないマナ {mana.length}枚
+        {tappedMana.length ? ` / タップ中 ${tappedMana.length}枚 (暗く表示、選べません)` : ''}
+      </div>
       <div className="row">
         {mana.map((m) => (
           <CardImg key={m} card={L(s.cards[m].cid)!} width={56} selected={pay.includes(m)} onClick={() => toggle(m)} onHover={onHover}>
             <DownTag s={s} iid={m} />
           </CardImg>
+        ))}
+        {tappedMana.map((m) => (
+          <div key={m} className="mana-used" title="タップしているので支払いに使えません">
+            <CardImg card={L(s.cards[m].cid)!} width={56} onHover={onHover}>
+              <DownTag s={s} iid={m} />
+            </CardImg>
+          </div>
         ))}
         {!mana.length && <span className="muted">アンタップのマナがありません</span>}
       </div>
@@ -751,8 +762,13 @@ function NamePicker({ db, pending, creature, exclude, onSubmit }: { db: CardDB; 
 }
 
 /** マナゾーンの裏向きのカードに「裏マナ」と出す */
+/** カードの左上の札: 裏向きのマナ・タップしているカード */
 function DownTag({ s, iid }: { s: GameState; iid: number }) {
-  return s.cards[iid].zone === 'mana' && s.cards[iid].manaDown ? <span className="tag">裏マナ</span> : null;
+  const c = s.cards[iid];
+  const down = c.zone === 'mana' && c.manaDown;
+  const tapped = (c.zone === 'mana' || c.zone === 'battle') && c.tapped;
+  if (!down && !tapped) return null;
+  return <span className={`tag${tapped ? ' tag-tapped' : ''}`}>{[down ? '裏マナ' : '', tapped ? 'タップ中' : ''].filter(Boolean).join('・')}</span>;
 }
 
 export function ZoneViewer({
