@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { abilityPick, applyAction, createGame, lose, manaCivs, moveCard } from './engine';
+import { abilityPick, applyAction, attackTargets, createGame, lose, manaCivs, moveCard } from './engine';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { n: string; f: { n: string }[] }[];
@@ -88,7 +88,7 @@ const act = (s: GameState, p: number, a: Action) => {
 };
 const find = (s: GameState, p: number, zone: 'hand' | 'battle' | 'mana' | 'grave' | 'shield', cid: string) => s.players[p][zone].find((i) => s.cards[i].cid === cid);
 /** 保留をすべて処理する。カードの選択は pick が返したカード (返さなければ最小限)。「〜してもよい」は使う */
-function run(s: GameState, pick: (prompt: string, options: number[]) => number[] | undefined = () => undefined) {
+function run(s: GameState, pick: (prompt: string, options: number[]) => number[] | undefined = () => undefined, yes = true) {
   for (let k = 0; k < 40 && s.pending.length; k++) {
     const pk = abilityPick(s);
     if (pk && pk.indices.length >= 2) {
@@ -99,7 +99,7 @@ function run(s: GameState, pick: (prompt: string, options: number[]) => number[]
     const a: Action =
       top.kind === 'choice'
         ? top.mode === 'yesno'
-          ? { t: 'choose', yes: true }
+          ? { t: 'choose', yes }
           : { t: 'choose', yes: true, picks: pick(top.prompt, top.options) ?? top.options.slice(0, top.min), options: [0] }
         : top.kind === 'attackOpt'
           ? { t: 'attackOpt', iid: null }
@@ -180,6 +180,40 @@ describe('始虹帝 ミノガミ', () => {
     expect(s.players[0].deck[0]).toBe(v);
     expect(s.cards[mi].powerMod).toBe(10000);
   });
+  it('マッハファイター: 出たターンでも相手のアンタップのクリーチャーを攻撃できる (プレイヤーは攻撃できない)', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'hand' }, { p: 1, cid: 'vanilla', zone: 'battle' }], 5);
+    const me = find(s, 0, 'hand', id())!;
+    s = run(act(s, 0, { t: 'play', iid: me, face: 0, pay: s.players[0].mana.slice(0, 5) }));
+    const tg = attackTargets(s, L, me);
+    expect(tg.cards).toContain(find(s, 1, 'battle', 'vanilla')!);
+    expect(tg.players).toEqual([]);
+  });
+  it('攻撃する時: ツインパクトが1枚もなければマナゾーンに置かず、パワーも上がらない。3枚とも山札の下へ', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'battle' }, { p: 0, cid: 'sa', zone: 'deckTop' }, { p: 0, cid: 'c4', zone: 'deckTop' }, { p: 0, cid: 'rex', zone: 'deckTop' }], 2);
+    const top3 = s.players[0].deck.slice(-3);
+    const m0 = s.players[0].mana.length;
+    const mi = find(s, 0, 'battle', id())!;
+    s = run(act(s, 0, { t: 'attack', attacker: mi, player: 1 }));
+    expect(s.players[0].mana.length).toBe(m0);
+    expect(s.cards[mi].powerMod).toBe(0);
+    expect([...s.players[0].deck.slice(0, 3)].sort()).toEqual([...top3].sort());
+  });
+  it('攻撃する時: 表向きにしなければ何も起こらない', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'battle' }, { p: 0, cid: 'twA', zone: 'deckTop' }], 2);
+    const deck = [...s.players[0].deck];
+    const mi = find(s, 0, 'battle', id())!;
+    s = run(act(s, 0, { t: 'attack', attacker: mi, player: 1 }), () => undefined, false);
+    expect(s.players[0].deck).toEqual(deck);
+    expect(s.cards[mi].powerMod).toBe(0);
+  });
+  it('攻撃する時: 上がったパワーはこのターンだけ', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'battle' }, { p: 0, cid: 'twA', zone: 'deckTop' }], 2);
+    const mi = find(s, 0, 'battle', id())!;
+    s = run(act(s, 0, { t: 'attack', attacker: mi, player: 1 }));
+    expect(s.cards[mi].powerMod).toBe(5000);
+    s = endTurns(s, 1);
+    expect(s.cards[mi].powerMod).toBe(0);
+  });
   it('無敵虹帝: 負ける時、かわりにマナゾーンのカードを8枚山札の下に置く', () => {
     let s = setup([{ p: 0, cid: id(), zone: 'battle' }], 8);
     const d0 = s.players[0].deck.length;
@@ -188,6 +222,26 @@ describe('始虹帝 ミノガミ', () => {
     expect(s.players[0].lost).toBeFalsy();
     expect(s.players[0].mana.length).toBe(0);
     expect(s.players[0].deck.length).toBe(d0 + 8);
+  });
+  it('無敵虹帝: ダイレクトアタックされても、相手が「ゲームに勝つ」効果を使っても、かわりにマナを山札の下へ。8枚ないと負ける', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'battle' }, { p: 1, cid: 'sa', zone: 'battle' }], 8);
+    for (const sh of s.players[0].shield.splice(0)) {
+      s.cards[sh].zone = 'grave';
+      s.players[0].grave.push(sh);
+    }
+    s.active = 1;
+    s = run(act(s, 1, { t: 'attack', attacker: find(s, 1, 'battle', 'sa')!, player: 0 }));
+    expect(s.players[0].lost).toBeFalsy();
+    expect(s.players[0].mana.length).toBe(0);
+    // マナがないので、もう一度ダイレクトアタックされたら負ける
+    s.cards[find(s, 1, 'battle', 'sa')!].tapped = false;
+    s = run(act(s, 1, { t: 'attack', attacker: find(s, 1, 'battle', 'sa')!, player: 0 }));
+    expect(s.players[0].lost).toBe(true);
+  });
+  it('無敵虹帝: バトルゾーンにいなければ使えない', () => {
+    const s = setup([{ p: 0, cid: id(), zone: 'hand' }], 8);
+    lose(s, 0, 'テスト');
+    expect(s.players[0].lost).toBe(true);
   });
 });
 
