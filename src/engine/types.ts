@@ -278,7 +278,13 @@ export interface PlayerState {
 }
 
 export type Pending =
-  | { kind: 'attackOpt'; player: number; options: number[] }
+  | {
+      kind: 'attackOpt';
+      player: number;
+      options: number[];
+      /** 宣言できる使い方 (革命チェンジ・侵略・D・D・D) */
+      decl?: AttackDecl[];
+    }
   | { kind: 'block'; player: number; blockers: number[]; ninjas: number[]; guards?: number[] }
   | { kind: 'breakSel'; player: number; target: number; count: number }
   | { kind: 'trigger'; player: number; iid: number; strike: boolean; trigger: boolean }
@@ -392,8 +398,10 @@ export interface AttackState {
   preFired?: boolean;
   /** この攻撃中に革命チェンジ・侵略で使った/戻ったカード */
   usedOpts?: number[];
-  /** 攻撃する時の能力の後で、革命チェンジを使うか選んだ (革命チェンジは1回の攻撃で1枚だけ) */
+  /** 攻撃する時の能力の後で、革命チェンジ・侵略・D・D・D を使うか選んだ (革命チェンジは1回の攻撃で1枚だけ) */
   revOffered?: boolean;
+  /** 宣言した革命チェンジ・侵略・D・D・D (この順番で1つずつ処理する) */
+  declQueue?: AttackDecl[];
   /** この攻撃中に使った能力 (「逆転撃」など) */
   used?: string[];
   /** この攻撃でシールドをブレイクした (キリフダッシュ) */
@@ -548,7 +556,7 @@ export type Action =
   /** クロスギアをクリーチャーにクロスする */
   | { t: 'cross'; iid: number; onto: number; pay: number[] }
   | { t: 'attack'; attacker: number; player: number; card?: number | null; force?: boolean }
-  | { t: 'attackOpt'; iid: number | null }
+  | { t: 'attackOpt'; iid: number | null; /** 宣言して、この順番で処理する */ seq?: AttackDecl[] }
   | { t: 'block'; blocker?: number | null; ninja?: number; guard?: number }
   | { t: 'breakSel'; shields: number[] }
   | { t: 'trigger'; use: boolean; face?: number; target?: number | null }
@@ -581,3 +589,6 @@ export interface ActionEnvelope {
   p: number;
   a: Action;
 }
+
+/** 攻撃中に手札などから宣言して使うカード: 革命チェンジ (rev)・侵略 (inv)・D・D・D (ddd) */
+export type AttackDecl = { iid: number; how: 'rev' | 'inv' | 'ddd' };

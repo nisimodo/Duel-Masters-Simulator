@@ -20,6 +20,18 @@ function matchLine(lines: string[], prompt: string): number {
   return -1;
 }
 
+/** 発動する効果が書いてある面 (ツインパクトの呪文側を唱えている時は呪文側) */
+export function activationFace(s: GameState, L: Lookup, pending: Pending | null, iid: number): number {
+  const c = s.cards[iid];
+  if (c.zone === 'battle') return c.face;
+  const card = L(c.cid);
+  if (!card || card.faces.length < 2 || pending?.kind !== 'choice') return 0;
+  const byText = card.faces.findIndex((f) => matchLine(f.text, pending.prompt) >= 0);
+  if (byText >= 0) return byText;
+  if (pending.exec.spellBy != null && pending.exec.src === iid) return Math.max(0, card.faces.findIndex((f) => f.isSpell));
+  return 0;
+}
+
 /** 光っているカードを押した時の、発動する効果の表示 */
 export function ActivationDialog({
   s,
@@ -44,8 +56,8 @@ export function ActivationDialog({
   const [target, setTarget] = useState<number | null>(null);
   const c = s.cards[iid];
   const card = L(c.cid)!;
-  const faceIdx = c.zone === 'battle' ? c.face : 0;
-  const face = faceOf(s, L, iid) ?? card.faces[faceIdx];
+  const faceIdx = activationFace(s, L, pending, iid);
+  const face = c.zone === 'battle' ? (faceOf(s, L, iid) ?? card.faces[faceIdx]) : card.faces[faceIdx];
 
   // 光らせる行と、発動ボタン
   let glow = (_l: string, _i: number) => false;
@@ -76,7 +88,7 @@ export function ActivationDialog({
       buttons.push({ label: 'G・ストライクを使う', action: target != null ? { t: 'trigger', use: true, target } : null });
     }
   } else if (pending.kind === 'attackOpt') {
-    glow = (l) => /^(革命チェンジ|侵略|S級侵略|侵略ZERO|S級不死)/.test(normText(l));
+    glow = (l) => /^(革命チェンジ|侵略|S級侵略|侵略ZERO|S級不死|D・D・D)/.test(normText(l));
     const atk = s.attack ? nameOf(s, L, s.attack.attacker) : '';
     buttons.push({ label: atk ? `${atk} と入れ替えて発動` : '発動', action: { t: 'attackOpt', iid } });
   } else if (pending.kind === 'choice') {

@@ -13,6 +13,7 @@ import { spellEffectLines, stripReminder } from '../lib/triggers';
 import { effectHints, hintsFromText, type EffectHint } from './effects';
 import {
   applyAction,
+  attackDeclOk,
   attackTargets,
   autoPay,
   nameOf,
@@ -36,7 +37,7 @@ import {
 import { matchesCond } from './cond';
 import { activeStatics, canPlayFromZone, costOf } from './statics';
 import { mainOpp, matchesSel, programOf } from './interp';
-import type { Action, GameState } from './types';
+import type { Action, AttackDecl, GameState } from './types';
 import type { Op } from '../rules/ops';
 
 const opps = (s: GameState, p: number) => s.players.map((_, i) => i).filter((i) => i !== p && !s.players[i].lost);
@@ -1018,29 +1019,29 @@ export function cpuDecide(s: GameState, p: number, L: Lookup): Action | null {
       case 'attackOpt': {
         const att = s.attack!.attacker;
         const cur = power(s, L, att, true);
-        let best: number | null = null;
+        const decl = top.decl ?? top.options.map((iid) => ({ iid, how: 'rev' as const }));
+        // D・D・D は使えるものを先に (攻撃中のクリーチャーは変わらない)
+        const seq: AttackDecl[] = [];
+        for (const d of decl) if (d.how === 'ddd' && attackDeclOk(s, L, [...seq, d])) seq.push(d);
+        // 革命チェンジ・侵略は1枚: 入れ替えた後のパワーと「出た時」の効果で選ぶ
+        let best: AttackDecl | null = null;
+        let bestV = 0;
         let bestP = cur;
-        if (on(p, 'rev')) {
-          // 入れ替えた後のパワーと「出た時」(「革命チェンジ」によって出た時・ファイナル革命を含む) の効果で選ぶ
-          let bestV = 0;
-          for (const o of top.options) {
-            const card = L(s.cards[o].cid)!;
-            const f = card.faces.find((x) => x.isCreature) ?? card.faces[0];
-            const v = ((f.power ?? 0) - cur) / 2000 + revEnterValue(s, p, L, f) + (f.kw.invasion ? 5 : 0);
-            if (v > bestV) (best = o), (bestV = v);
-          }
-          return { t: 'attackOpt', iid: best };
-        }
-        for (const o of top.options) {
-          const card = L(s.cards[o].cid)!;
+        for (const d of decl) {
+          if (d.how === 'ddd' || !attackDeclOk(s, L, [...seq, d])) continue;
+          const card = L(s.cards[d.iid].cid)!;
           const f = card.faces.find((x) => x.isCreature) ?? card.faces[0];
-          const pw = f.power ?? 0;
-          if (f.kw.invasion || pw > bestP) {
-            best = o;
-            bestP = pw;
+          if (on(p, 'rev')) {
+            // (「革命チェンジ」によって出た時・ファイナル革命を含む)
+            const v = ((f.power ?? 0) - cur) / 2000 + revEnterValue(s, p, L, f) + (d.how === 'inv' ? 5 : 0);
+            if (v > bestV) (best = d), (bestV = v);
+          } else if (d.how === 'inv' || (f.power ?? 0) > bestP) {
+            best = d;
+            bestP = f.power ?? 0;
           }
         }
-        return { t: 'attackOpt', iid: best };
+        if (best) seq.push(best);
+        return { t: 'attackOpt', iid: null, seq };
       }
       case 'block': {
         const at = s.attack!;

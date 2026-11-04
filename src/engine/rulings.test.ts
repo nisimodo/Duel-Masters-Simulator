@@ -2,12 +2,12 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDB } from '../lib/cards';
-import { abilityPick, applyAction, canAttackWith, createGame, moveCard, removeSeal, settle } from './engine';
+import { abilityPick, applyAction, attackDeclChoices, attackDeclOk, canAttackWith, createGame, moveCard, removeSeal, settle } from './engine';
 import { abilitiesIgnored } from './statics';
 import type { Action, GameState } from './types';
 
 const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
-const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ', 'コンダマ', '剣轟奥義 ドドド・ドギラゴン・ドライブ', '燃える革命 ドギラゴン', 'ボルシャック・ドギラゴン', '燃える侵略 レッドギラゴン'];
+const NAMES = ['怒流牙 佐助の超人', '新世界王 ヴォルゼオス・バラモルド', '王の思念', 'Library of Alexandria', '13番目の計画', '切札電融 モモムゲン', '神聖龍 エモーショナル・ハードコア', 'Black Lotus', 'FORBIDDEN STAR ～世界最後の日～', 'ミノガミ&オウ禍武斗', '虹出づる繭 ミノガミ', '全虹帝 ミノガミ', 'コンダマ', '剣轟奥義 ドドド・ドギラゴン・ドライブ', '燃える革命 ドギラゴン', 'ボルシャック・ドギラゴン', '燃える侵略 レッドギラゴン', '蛇誕怪人ギャスカ', '危険深淵 デンジャラス＝ラッセル'];
 const picked = raw.filter((c) => c.f.some((f) => NAMES.includes(f.n)) || NAMES.includes(c.n));
 const vanilla = { id: 'vanilla', n: 'vanilla', img: '', f: [{ n: 'vanilla', t: 'クリーチャー', c: 'N', co: 1, p: '1000', r: ['テスト'], x: [] }] };
 const sa = { id: 'sa', n: 'sa', img: '', f: [{ n: 'sa', t: 'クリーチャー', c: 'F', co: 1, p: '3000', r: ['テスト'], x: ['スピードアタッカー'] }] };
@@ -20,6 +20,13 @@ const extra = [
   mk('rcE', 'クリーチャー', 'F', 5, '9000', ['革命チェンジ：火のクリーチャー', 'このクリーチャーが出た時、カードを１枚引く。', 'このクリーチャーが攻撃する時、カードを１枚引く。']),
   mk('atkSa', 'クリーチャー', 'F', 1, '3000', ['スピードアタッカー', 'このクリーチャーが攻撃する時、カードを１枚引く。']),
   mk('atkDie', 'クリーチャー', 'F', 1, '3000', ['スピードアタッカー', 'このクリーチャーが攻撃する時、このクリーチャーを破壊する。']),
+  // 宣言の順番のテスト用: 革命チェンジするとドラゴンになる / ドラゴンからしか侵略できない / 侵略するとドラゴンでなくなる / ドラゴンからしか革命チェンジできない
+  { id: 'rcDrg', n: 'rcDrg', img: '', f: [{ n: 'rcDrg', t: 'クリーチャー', c: 'F', co: 6, p: '8000', r: ['アーマード・ドラゴン'], x: ['革命チェンジ：火のクリーチャー', 'このクリーチャーが出た時、カードを１枚引く。'] }] },
+  { id: 'invDrg', n: 'invDrg', img: '', f: [{ n: 'invDrg', t: '進化クリーチャー', c: 'F', co: 7, p: '11000', r: ['ソニック・コマンド'], x: ['侵略：ドラゴン', 'このクリーチャーが出た時、カードを１枚引く。'] }] },
+  { id: 'invF', n: 'invF', img: '', f: [{ n: 'invF', t: '進化クリーチャー', c: 'F', co: 4, p: '6000', r: ['ソニック・コマンド'], x: ['侵略：火のクリーチャー'] }] },
+  { id: 'invToDrg', n: 'invToDrg', img: '', f: [{ n: 'invToDrg', t: '進化クリーチャー', c: 'F', co: 5, p: '7000', r: ['メガ・コマンド・ドラゴン'], x: ['侵略：火のクリーチャー'] }] },
+  { id: 'rcNeedDrg', n: 'rcNeedDrg', img: '', f: [{ n: 'rcNeedDrg', t: 'クリーチャー', c: 'F', co: 6, p: '9000', r: ['テスト'], x: ['革命チェンジ：ドラゴン'] }] },
+  mk('dddF', '呪文', 'F', 2, null, ['D・D・D [ff02]（自分のクリーチャーが攻撃する時、このカードを [ff02]支払って自分の手札から実行してもよい）', 'カードを１枚引く。']),
   mk('neo', 'NEOクリーチャー', 'N', 1, '5000', ['NEO進化：自分のクリーチャー１体の上に置いてもよい。']),
   mk('drawSp', '呪文', 'N', 1, null, ['カードを１枚引く。']),
   { id: 'drgN', n: 'drgN', img: '', f: [{ n: 'drgN', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
@@ -439,7 +446,7 @@ describe('総合ルールの変更点', () => {
         s = act(s, 0, { t: 'choose', yes: true, picks: put ? opts.filter((o) => o === big) : opts, options: [0] });
         continue;
       }
-      s = act(s, top.player, top.kind === 'attackOpt' ? { t: 'attackOpt', iid: null } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : { t: 'resolve', use: true });
+      s = act(s, top.player, top.kind === 'attackOpt' ? { t: 'attackOpt', iid: d } : top.kind === 'breakSel' ? { t: 'breakSel', shields: s.players[top.target].shield.slice(0, top.count) } : { t: 'resolve', use: true });
     }
     expect(s.cards[d].zone).toBe('grave');
     expect(putPrompt).toBe(true);
@@ -518,6 +525,110 @@ describe('総合ルールの変更点', () => {
     expect(s.cards[dn].zone).toBe('battle');
   });
 });
+describe('革命チェンジ・侵略・D・D・D の宣言', () => {
+  /** 攻撃して、宣言の選択まで進める */
+  const toDecl = (s: GameState, attacker: number) => {
+    s = act(s, 0, { t: 'attack', attacker, player: 1 });
+    s = drain(s, (x) => x.pending[0]?.kind === 'attackOpt');
+    expect(s.pending[0]?.kind).toBe('attackOpt');
+    return s;
+  };
+  const finish = (s: GameState) => drain(s);
+  it('革命チェンジ・侵略・D・D・D を同時に宣言して、選んだ順番で1つずつ処理する (前のものの出た時の後に次)', () => {
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: 'rcDrg', zone: 'hand' }, { p: 0, cid: 'invDrg', zone: 'hand' }, { p: 0, cid: 'dddF', zone: 'hand' }, { p: 0, cid: 'sa', zone: 'mana' }, { p: 0, cid: 'sa', zone: 'mana' }], 0);
+    const a = find(s, 0, 'battle', 'atkSa')!;
+    const rc = find(s, 0, 'hand', 'rcDrg')!;
+    const inv = find(s, 0, 'hand', 'invDrg')!;
+    const dd = find(s, 0, 'hand', 'dddF')!;
+    s = toDecl(s, a);
+    const top = s.pending[0];
+    expect(top.kind === 'attackOpt' && top.decl?.map((d) => `${d.iid}:${d.how}`).sort()).toEqual([`${rc}:rev`, `${inv}:inv`, `${dd}:ddd`].sort());
+    s = act(s, 0, { t: 'attackOpt', iid: null, seq: [{ iid: dd, how: 'ddd' }, { iid: rc, how: 'rev' }, { iid: inv, how: 'inv' }] });
+    s = finish(s);
+    const logs = s.log.map((l) => l.m);
+    const idx = (re: RegExp) => logs.findIndex((m) => re.test(m));
+    const iD = idx(/《dddF》 を唱えた/);
+    const iR = idx(/革命チェンジ！/);
+    const iRe = idx(/《rcDrg》 の能力 \(出た時\)/);
+    const iI = idx(/侵略！/);
+    const iIe = idx(/《invDrg》 の能力 \(出た時\)/);
+    const iB = idx(/シールドを\d+枚ブレイク/);
+    expect(iD).toBeGreaterThan(-1);
+    expect([iD, iR, iRe, iI, iIe, iB]).toEqual([...[iD, iR, iRe, iI, iIe, iB]].sort((x, y) => x - y));
+    expect(s.cards[inv].zone).toBe('battle');
+    expect(s.cards[rc].zone).toBe('under');
+    expect(s.cards[a].zone).toBe('hand');
+    expect(s.cards[dd].zone).toBe('grave');
+  });
+  it('革命チェンジ後のクリーチャーが侵略の条件に合わない順番は選べない', () => {
+    // invF (火のクリーチャーから侵略) の後の invF は火なので rcNeedDrg (ドラゴンから革命チェンジ) は使えない
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: 'invF', zone: 'hand' }, { p: 0, cid: 'rcNeedDrg', zone: 'hand' }, { p: 0, cid: 'rcDrg', zone: 'hand' }, { p: 0, cid: 'invDrg', zone: 'hand' }, { p: 0, cid: 'invToDrg', zone: 'hand' }], 0);
+    const a = find(s, 0, 'battle', 'atkSa')!;
+    const invF = find(s, 0, 'hand', 'invF')!;
+    const toD = find(s, 0, 'hand', 'invToDrg')!;
+    const need = find(s, 0, 'hand', 'rcNeedDrg')!;
+    const rcD = find(s, 0, 'hand', 'rcDrg')!;
+    const invD = find(s, 0, 'hand', 'invDrg')!;
+    s = toDecl(s, a);
+    // ドラゴンからしか使えない2枚も、先にドラゴンへ入れ替えれば使えるので選択肢に出る
+    const ch = attackDeclChoices(s, L).map((d) => `${d.iid}:${d.how}`);
+    expect(ch).toContain(`${need}:rev`);
+    expect(ch).toContain(`${invD}:inv`);
+    // 侵略 → (侵略後はドラゴンでない) → ドラゴンからの革命チェンジ: × / 侵略後がドラゴンなら ○
+    expect(attackDeclOk(s, L, [{ iid: invF, how: 'inv' }, { iid: need, how: 'rev' }])).toBe(false);
+    expect(attackDeclOk(s, L, [{ iid: toD, how: 'inv' }, { iid: need, how: 'rev' }])).toBe(true);
+    // 革命チェンジ → (ドラゴンでない) → ドラゴンからの侵略: ×
+    expect(attackDeclOk(s, L, [{ iid: need, how: 'rev' }])).toBe(false);
+    // ドラゴンからの侵略を最初に: ×  / 革命チェンジでドラゴンにしてから: ○
+    expect(attackDeclOk(s, L, [{ iid: invD, how: 'inv' }])).toBe(false);
+    expect(attackDeclOk(s, L, [{ iid: rcD, how: 'rev' }, { iid: invD, how: 'inv' }])).toBe(true);
+    // 侵略後のクリーチャーが革命チェンジの条件に合えば ○ (invDrg → ドラゴンではない: rcNeedDrg ×)
+    expect(attackDeclOk(s, L, [{ iid: rcD, how: 'rev' }, { iid: invD, how: 'inv' }, { iid: need, how: 'rev' }])).toBe(false);
+    // 革命チェンジは1回の攻撃で1枚だけ
+    expect(attackDeclOk(s, L, [{ iid: rcD, how: 'rev' }, { iid: need, how: 'rev' }])).toBe(false);
+    expect(applyAction(s, 0, { t: 'attackOpt', iid: null, seq: [{ iid: invD, how: 'inv' }] }, L).error).toMatch(/順番/);
+  });
+  it('D・D・D (手札を捨てる): 蛇誕怪人ギャスカは火のカードを1枚捨てて手札から出せる', () => {
+    const gy = idOf('蛇誕怪人ギャスカ');
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: gy, zone: 'hand' }, { p: 0, cid: 'sa', zone: 'hand' }], 0);
+    const g = find(s, 0, 'hand', gy)!;
+    const fire = find(s, 0, 'hand', 'sa')!;
+    s = toDecl(s, find(s, 0, 'battle', 'atkSa')!);
+    s = act(s, 0, { t: 'attackOpt', iid: g });
+    s = drain(s, (x) => x.pending[0]?.kind === 'choice');
+    const top = s.pending[0];
+    if (top?.kind === 'choice') s = act(s, 0, { t: 'choose', picks: [fire] });
+    s = finish(s);
+    expect(s.cards[fire].zone).toBe('grave');
+    expect(s.cards[g].zone).toBe('battle');
+  });
+  it('D・D・D (墓地13枚): 危険深淵 デンジャラス＝ラッセルは墓地が13枚あれば宣言できる', () => {
+    const ru = idOf('危険深淵 デンジャラス＝ラッセル');
+    const go = (n: number) => {
+      const s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: ru, zone: 'hand' }], 0);
+      for (let i = 0; i < n; i++) {
+        const c = s.players[0].deck.pop()!;
+        s.cards[c].zone = 'grave';
+        s.players[0].grave.push(c);
+      }
+      let t = act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', 'atkSa')!, player: 1 });
+      t = drain(t, (x) => x.pending[0]?.kind === 'attackOpt');
+      return t;
+    };
+    expect(go(12).pending[0]?.kind === 'attackOpt').toBe(false);
+    let s = go(13);
+    const r = find(s, 0, 'hand', ru)!;
+    const d0 = s.players[0].deck.length;
+    s = act(s, 0, { t: 'attackOpt', iid: r });
+    s = drain(s, (x) => x.pending[0]?.kind === 'choice' && x.pending[0].min === 13);
+    const top = s.pending[0];
+    if (top?.kind === 'choice') s = act(s, 0, { t: 'choose', picks: top.options.slice(0, 13) });
+    s = finish(s);
+    expect(s.players[0].deck.length).toBe(d0 + 13);
+    expect(s.cards[r].zone).toBe('battle');
+  });
+});
+
 describe('革命チェンジ', () => {
   /** 攻撃してから最後まで進める。attackOpt では pickRc が返したカードを使う */
   const attackWith = (s: GameState, attacker: number, pickRc: (options: number[], n: number) => number | null) => {

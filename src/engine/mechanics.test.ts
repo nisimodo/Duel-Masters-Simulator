@@ -1239,7 +1239,7 @@ describe('named mechanics', () => {
     for (let k = 0; k < 6 && s.cards[d].zone === 'hand' && s.pending.length; k++) {
       const top = s.pending[0];
       if (top.player !== 0) break;
-      s = act(s, 0, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: null });
+      s = act(s, 0, top.kind === 'choice' ? { t: 'choose', yes: true, picks: [], options: [0] } : top.kind === 'ability' ? { t: 'resolve', use: true } : { t: 'attackOpt', iid: d });
     }
     expect(s.cards[d].zone).toBe('battle');
     expect(s.players[0].mana.filter((m) => s.cards[m].tapped).length).toBe(2);

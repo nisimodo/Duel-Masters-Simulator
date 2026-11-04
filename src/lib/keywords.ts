@@ -118,9 +118,10 @@ export function parseKeywords(rawLines: string[], type: string): Keywords {
   }
   const revChangeShield = !!rcLine && /^S革命チェンジ/.test(rcLine);
   let invasion: CondSpec | null = null;
-  const invLine = lines.find((l) => /^(S級)?侵略(\[.+?\])?[-ー－]/.test(l) || /^(S級)?侵略ZERO/.test(l));
+  // (「侵略-〜」と「侵略：〜」の両方の書き方がある)
+  const invLine = lines.find((l) => /^(S級)?侵略(\[.+?\])?[-ー－:：]/.test(l) || /^(S級)?侵略ZERO/.test(l));
   if (invLine) {
-    const m = invLine.match(/侵略(?:\[.+?\])?[-ー－](.+?)(\(|$)/);
+    const m = invLine.match(/侵略(?:\[.+?\])?[-ー－:：](.+?)(\(|$)/);
     invasion = parseCond(m ? m[1] : '');
   }
   const evoM = all.match(/進化[-ー－:：]\s*自分の(.+?)(1|2|3)体の上に置/);

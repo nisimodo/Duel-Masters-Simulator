@@ -9,7 +9,7 @@ import type { Card, CardDB } from '../lib/cards';
 import { isModoki } from '../lib/deck';
 import { cpuPlan, hintActions } from '../engine/cpu';
 import { preloadCardImages } from '../lib/preload';
-import { AbilityOrderDialog, ActivationDialog } from './Activation';
+import { AbilityOrderDialog, ActivationDialog, activationFace } from './Activation';
 import { activationOf, orderActivation } from './activationOf';
 import { MoveAnimator } from './MoveAnimator';
 import { hintsFromText, type EffectHint } from '../engine/effects';
@@ -798,7 +798,7 @@ export default function GameView({ room, db, onBackToLobby, onLeave }: { room: R
             </span>
             <span className="activation-cards">
               {activation.cards.map((i) => (
-                <CardImg key={i} card={cardAt(i)} face={s.cards[i].zone === 'battle' ? s.cards[i].face : 0} width={34} glow onHover={hov(i)} onClick={() => setActOpen(i)} />
+                <CardImg key={i} card={cardAt(i)} face={activationFace(s, L, myPending, i)} width={34} glow onHover={hov(i)} onClick={() => setActOpen(i)} />
               ))}
             </span>
             {activation.skip && (

@@ -5,8 +5,8 @@ import { CardBack, CardImg } from '../components/CardView';
 import type { Card, CardDB, Civ } from '../lib/cards';
 import { matchesCond } from '../engine/cond';
 import { faceNameMatches } from '../lib/search';
-import { autoPay, sasageruOf, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
-import type { Action, GameState, Pending } from '../engine/types';
+import { attackDeclOk, autoPay, sasageruOf, crystalOf, faceOf, freeFromHandOk, nameOf, payCovers, payValue, playCost, power, type Lookup } from '../engine/engine';
+import type { Action, AttackDecl, GameState, Pending } from '../engine/types';
 
 export function Modal({ children, onClose, title }: { children: React.ReactNode; onClose?: () => void; title?: string }) {
   return (
@@ -599,15 +599,7 @@ export function PendingDialog({
       );
     }
     case 'attackOpt':
-      return (
-        <Modal title={s.attack!.step === 'opt' ? '侵略' : '革命チェンジ'}>
-          <div className="small">
-            攻撃中: {nameOf(s, L, s.attack!.attacker)} ・ 使うカードを選んでください{s.attack!.step === 'opt' ? '' : ' (1回の攻撃で1枚だけ)'}
-          </div>
-          <div className="row">{pending.options.map((o) => img(o, { onClick: () => onSubmit({ t: 'attackOpt', iid: o }) }))}</div>
-          <button onClick={() => onSubmit({ t: 'attackOpt', iid: null })}>使わない</button>
-        </Modal>
-      );
+      return <AttackDeclDialog s={s} L={L} pending={pending} onSubmit={onSubmit} onHover={onHover} />;
     case 'block': {
       const at = s.attack!;
       // 選ぶ前に破壊されるなどして、もうブロックできないクリーチャーは出さない
@@ -765,6 +757,64 @@ function NamePicker({ db, pending, creature, exclude, onSubmit }: { db: CardDB; 
 
 /** マナゾーンの裏向きのカードに「裏マナ」と出す */
 /** カードの左上の札: 裏向きのマナ・タップしているカード */
+const DECL_LABEL = { rev: '革命チェンジ', inv: '侵略', ddd: 'D・D・D' } as const;
+
+/** 革命チェンジ・侵略・D・D・D をまとめて宣言し、使う順番を決める */
+function AttackDeclDialog({
+  s,
+  L,
+  pending,
+  onSubmit,
+  onHover,
+}: {
+  s: GameState;
+  L: Lookup;
+  pending: Extract<Pending, { kind: 'attackOpt' }>;
+  onSubmit: (a: Action) => void;
+  onHover: (c: Card | null) => void;
+}) {
+  const [seq, setSeq] = useState<AttackDecl[]>([]);
+  const decl = pending.decl ?? pending.options.map((iid) => ({ iid, how: 'rev' as const }));
+  const cards = [...new Set(decl.map((d) => d.iid))];
+  return (
+    <Modal title="革命チェンジ / 侵略 / D・D・D">
+      <div className="small">
+        攻撃中: {nameOf(s, L, s.attack!.attacker)} ・ 使う順番にクリックしてください (革命チェンジは1回の攻撃で1枚だけ)。前に使ったカードで入れ替わったクリーチャーが条件に合わない順番は選べません
+      </div>
+      <div className="row" style={{ alignItems: 'flex-start' }}>
+        {cards.map((iid) => {
+          const at = seq.findIndex((d) => d.iid === iid);
+          return (
+            <div key={iid} className="col" style={{ gap: 4, alignItems: 'center' }}>
+              <CardImg card={L(s.cards[iid].cid)!} width={90} selected={at >= 0} onHover={onHover}>
+                {at >= 0 && <span className="tag">{at + 1}番目</span>}
+              </CardImg>
+              {decl
+                .filter((d) => d.iid === iid)
+                .map((d) => {
+                  const ok = at < 0 && attackDeclOk(s, L, [...seq, d]);
+                  return (
+                    <button key={d.how} className="small" disabled={!ok} onClick={() => setSeq([...seq, d])}>
+                      {DECL_LABEL[d.how]}
+                    </button>
+                  );
+                })}
+            </div>
+          );
+        })}
+      </div>
+      {seq.length > 0 && <div className="small">順番: {seq.map((d, i) => `${i + 1}. ${DECL_LABEL[d.how]} ${nameOf(s, L, d.iid)}`).join(' → ')}</div>}
+      <div className="row">
+        <button className="primary" disabled={!seq.length} onClick={() => onSubmit({ t: 'attackOpt', iid: null, seq })}>
+          この順番で使う
+        </button>
+        {seq.length > 0 && <button onClick={() => setSeq([])}>やり直す</button>}
+        <button onClick={() => onSubmit({ t: 'attackOpt', iid: null, seq: [] })}>使わない</button>
+      </div>
+    </Modal>
+  );
+}
+
 function DownTag({ s, iid }: { s: GameState; iid: number }) {
   const c = s.cards[iid];
   const down = c.zone === 'mana' && c.manaDown;

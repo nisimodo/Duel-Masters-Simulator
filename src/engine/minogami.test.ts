@@ -5,8 +5,9 @@ import { buildDB } from '../lib/cards';
 import { abilityPick, applyAction, attackTargets, createGame, lose, manaCivs, moveCard } from './engine';
 import type { Action, GameState } from './types';
 
-const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { n: string; f: { n: string }[] }[];
-const picked = raw.filter((c) => c.n.includes('ミノガミ'));
+const raw = JSON.parse(fs.readFileSync('public/data/cards.json', 'utf8')).cards as { id: string; n: string; f: { n: string }[] }[];
+// (ミノガミ と、ツインパクトに関わる コンダマ・黒豆だんしゃく / 白米男しゃく)
+const picked = raw.filter((c) => c.n.includes('ミノガミ') || c.id === 'dmbd08-a-005' || c.id === 'dmrp05-009');
 const cr = (id: string, civ: string, co: number, p: string, races: string[] = ['テスト']) => ({ id, n: id, img: '', f: [{ n: id, t: 'クリーチャー', c: civ, co, p, r: races, x: [] }] });
 const twin = (id: string, civ: string, co: number, p: string, spCo: number) => ({
   id,
@@ -563,5 +564,31 @@ describe('始全虹帝 ミノガミ / 自然の肯定 (細かいところ)', () 
     });
     expect(seen).not.toContain(heavy);
     expect(s.cards[cheap].zone).toBe('battle');
+  });
+});
+
+
+describe('白米男しゃく (コンダマがいる時)', () => {
+  it('山札の上をマナゾーンに置いた後、マナゾーンのカードを手札に戻せる。コンダマの能力はその後で解決する', () => {
+    for (const top of ['twA', 'vanilla']) {
+      const kd = idOf('コンダマ');
+      const hk = idOf('白米男しゃく');
+      let s = setup([{ p: 0, cid: kd, zone: 'battle' }, { p: 0, cid: hk, zone: 'hand' }, { p: 0, cid: top, zone: 'deckTop' }], 3);
+      const t0 = s.players[0].deck.at(-1)!;
+      const h0 = s.players[0].hand.length;
+      s = act(s, 0, { t: 'play', iid: find(s, 0, 'hand', hk)!, face: spellFace(hk), pay: s.players[0].mana.slice(0, 3) });
+      // 白米男しゃくの「戻してもよい」が先 (コンダマの能力は呪文の解決の後)
+      const q = s.pending[0];
+      expect(q.kind === 'choice' && q.mode === 'yesno' && /白米男しゃく/.test(q.prompt)).toBe(true);
+      s = act(s, 0, { t: 'choose', yes: true });
+      const pick = s.pending[0];
+      expect(pick.kind === 'choice' && pick.options).toContain(t0);
+      s = act(s, 0, { t: 'choose', picks: [t0] });
+      s = run(s, (_, o) => o.slice(0, 1));
+      expect(s.cards[t0].zone).toBe('hand');
+      expect(s.players[0].hand.length).toBe(h0 - 1 + 1);
+      // ツインパクトをマナゾーンに置いた時だけ、コンダマでマナが1枚アンタップされる
+      expect(s.log.some((l) => /《コンダマ》 の能力/.test(l.m))).toBe(top === 'twA');
+    }
   });
 });

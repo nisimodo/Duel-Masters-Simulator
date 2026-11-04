@@ -8,7 +8,7 @@ import { hintsFromText } from './effects';
 import { condHolds, matchesSel, programOf, resumeExec, runExec, startExec } from './interp';
 import { abilitiesIgnored, kingCellsFor, sealIgnored, spellEffectIgnored, activeStatics, staticCondOk, ALL_CIVS, canPlayFromZone, costOf, effGroups, isSealed, entersManaTapped, notCreatureNow, ownStatics, rainbowMana, staticKws, staticPower, type PowerCtx } from './statics';
 import { EVENT_LABEL, isAutoEffect, RECAST, spellEffectLines, type TrigEvent, type TriggerSpec } from '../lib/triggers';
-import type { Action, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
+import type { Action, AttackDecl, CardInst, GameInit, GameState, Pending, PlayerState, ZoneName } from './types';
 import { normText } from '../rules/text';
 
 export type Lookup = (cid: string) => Card | undefined;
@@ -1302,6 +1302,8 @@ function fireHand(s: GameState, L: Lookup, actor: number, ownEv: TrigEvent | nul
       card?.faces.forEach((f, fi) => {
         for (const spec of f.triggers ?? []) {
           if (!spec.fromHand || !spec.events.includes(ev) || (inGrave && !spec.fromGrave)) continue;
+          // D・D・D は攻撃する時の能力の後で、革命チェンジ・侵略と一緒に宣言して使う
+          if (isDddTrigger(spec)) continue;
           if (!sumCostReachable(s, L, p, programOf(spec.effect).ops)) continue;
           if (spec.subject && subject != null && !matchesSel(s, L, subject, spec.subject)) continue;
           pushAbility(s, L, h, fi, spec, ev, subject);
@@ -1877,12 +1879,17 @@ function advance(s: GameState, L: Lookup): boolean {
       return true;
     }
     if (a.step === 'atkTrig') {
-      // 攻撃する時の能力をすべて解決した後で、革命チェンジ (1回の攻撃で1枚だけ)
+      // 宣言した革命チェンジ・侵略・D・D・D を順番に1つずつ (前のものの出た時の能力などを解決してから)
+      if (a.declQueue?.length) {
+        runAttackDecl(s, L, a.declQueue.shift()!);
+        return true;
+      }
+      // 攻撃する時の能力をすべて解決した後で、革命チェンジ・侵略・D・D・D をまとめて宣言する
       if (!a.revOffered) {
         a.revOffered = true;
-        const rev = attackOptions(s, L, 'rev');
-        if (rev.length) {
-          s.pending.unshift({ kind: 'attackOpt', player: a.owner, options: rev });
+        const decl = attackDeclChoices(s, L);
+        if (decl.length) {
+          s.pending.unshift({ kind: 'attackOpt', player: a.owner, options: [...new Set(decl.map((d) => d.iid))], decl });
           return true;
         }
       }
@@ -2358,27 +2365,209 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   return { players, cards };
 }
 
-/**
- * 攻撃中に手札などから使えるカード。
- * 'inv' = 侵略 (攻撃を宣言した時、攻撃する時の能力より前)
- * 'rev' = 革命チェンジ (攻撃する時の能力を解決した後。1回の攻撃で1枚だけ)
- */
-function attackOptions(s: GameState, L: Lookup, kind: 'inv' | 'rev'): number[] {
+const CIV_OF: Record<string, Civ> = { 光: 'L', 水: 'W', 闇: 'D', 火: 'F', 自然: 'N' };
+
+/** 手札の「自分のクリーチャーが攻撃する時、このカードを [コスト] 支払って自分の手札から実行してもよい」(D・D・D) */
+export function isDddTrigger(spec: TriggerSpec): boolean {
+  return !!spec.fromHand && spec.events.includes('ownAttack') && /このカードを.{0,20}支払って、?自分の手札から実行してもよい/.test(spec.effect.replace(/\s+/g, ''));
+}
+
+/** D・D・D の使い方 (コストを支払う / 手札を1枚捨てる / 墓地のカードを山札の下に置く) */
+export function dddOf(L: Lookup, cid: string): { face: number; cost?: number; discardCiv?: Civ; grave?: number } | null {
+  const card = L(cid);
+  if (!card) return null;
+  for (let fi = 0; fi < card.faces.length; fi++) {
+    const f = card.faces[fi];
+    for (const l of f.text) {
+      const t = normText(l).replace(/\s+/g, '');
+      const dc = t.match(/^D・D・D[:：]?(光|水|闇|火|自然)のカード1枚を自分の手札から捨てる/);
+      if (dc) return { face: fi, discardCiv: CIV_OF[dc[1]] };
+      const gv = t.match(/^D・D・D[:：]?自分の墓地にあるカードを(\d+)枚、?シャッフルして山札の下に置く/);
+      if (gv) return { face: fi, grave: +gv[1] };
+    }
+    for (const spec of f.triggers ?? []) {
+      if (!isDddTrigger(spec)) continue;
+      const m = JSON.stringify(programOf(spec.effect).ops).match(/"op":"payPlay","cost":(\d+)/);
+      if (m) return { face: fi, cost: +m[1] };
+    }
+  }
+  return null;
+}
+
+/** 宣言の順番を確かめるための、攻撃中のクリーチャーの様子 */
+type DeclSim = { card: Card; face: Face; power: number; rev: boolean; mana: number; used: number[] };
+
+function declSimStart(s: GameState, L: Lookup): DeclSim | null {
   const a = s.attack!;
-  const owner = a.owner;
-  const att = L(s.cards[a.attacker].cid);
-  const attFace = faceOf(s, L, a.attacker);
-  if (!att || !attFace) return [];
+  const card = L(s.cards[a.attacker].cid);
+  const face = faceOf(s, L, a.attacker);
+  if (!card || !face) return null;
   // 「パワー8000以上の」は攻撃中の今のパワーで見る
-  const attPower = power(s, L, a.attacker, true);
-  // (S革命チェンジは表向きでシールドゾーンにあるものも)
-  const shieldRc = kind === 'rev' ? s.players[owner].shield.filter((i) => s.cards[i].faceUp && L(s.cards[i].cid)?.faces.some((f) => f.kw.revChangeShield)) : [];
-  return [...s.players[owner].hand, ...shieldRc].filter((h) => {
-    const card = L(s.cards[h].cid);
+  return { card, face, power: power(s, L, a.attacker, true), rev: false, mana: s.players[a.owner].mana.filter((m) => !s.cards[m].tapped).length, used: [] };
+}
+
+/** 宣言を1つ進める。その順番では使えなければ null */
+function declSimStep(s: GameState, L: Lookup, sim: DeclSim, d: AttackDecl): DeclSim | null {
+  if (sim.used.includes(d.iid)) return null;
+  const c = s.cards[d.iid];
+  const card = L(c.cid);
+  if (!card) return null;
+  const used = [...sim.used, d.iid];
+  if (d.how === 'rev' || d.how === 'inv') {
+    // 革命チェンジは1回の攻撃で1枚だけ。侵略は手札からだけ (S革命チェンジは表向きのシールドからも)
+    if (d.how === 'rev' && sim.rev) return null;
+    if (d.how === 'inv' && c.zone !== 'hand') return null;
+    if (c.zone === 'shield' && !card.faces.some((f) => f.kw.revChangeShield)) return null;
+    const fi = card.faces.findIndex((f) => {
+      const cond = d.how === 'rev' ? f.kw.revChange : f.kw.invasion;
+      return !!cond && matchesCond(cond, sim.card, sim.face, sim.power);
+    });
+    if (fi < 0) return null;
+    const nf = card.faces[fi];
+    return { ...sim, card, face: nf, power: nf.power ?? 0, rev: sim.rev || d.how === 'rev', used };
+  }
+  if (c.zone !== 'hand') return null;
+  const dd = dddOf(L, c.cid);
+  if (!dd) return null;
+  const pl = s.players[c.owner];
+  if (dd.cost != null) return sim.mana >= dd.cost ? { ...sim, mana: sim.mana - dd.cost, used } : null;
+  if (dd.grave != null) return pl.grave.length >= dd.grave ? { ...sim, used } : null;
+  // 手札を1枚捨てる (宣言した他のカードは捨てられない)
+  const civ = dd.discardCiv!;
+  return pl.hand.some((h) => h !== d.iid && !used.includes(h) && cardCivs(L, s.cards[h].cid).includes(civ)) ? { ...sim, used } : null;
+}
+
+/** この順番で宣言して使えるか */
+export function attackDeclOk(s: GameState, L: Lookup, seq: AttackDecl[]): boolean {
+  let sim = s.attack ? declSimStart(s, L) : null;
+  for (const d of seq) {
+    if (!sim) return false;
+    sim = declSimStep(s, L, sim, d);
+  }
+  return !!sim;
+}
+
+/** 攻撃中に宣言できる革命チェンジ・侵略・D・D・D (どれかの順番で使えるもの) */
+export function attackDeclChoices(s: GameState, L: Lookup): AttackDecl[] {
+  const a = s.attack;
+  if (!a) return [];
+  const pl = s.players[a.owner];
+  const shieldRc = pl.shield.filter((i) => s.cards[i].faceUp && L(s.cards[i].cid)?.faces.some((f) => f.kw.revChangeShield));
+  const all: AttackDecl[] = [];
+  for (const h of [...pl.hand, ...shieldRc]) {
     // この攻撃中に入れ替えで手札に戻ったカードは、もう一度は使わない (無限ループ防止)
-    if (!card || (a.usedOpts ?? []).includes(h)) return false;
-    return card.faces.some((f) => (kind === 'rev' ? f.kw.revChange && matchesCond(f.kw.revChange, att, attFace, attPower) : f.kw.invasion && matchesCond(f.kw.invasion, att, attFace, attPower)));
-  });
+    if ((a.usedOpts ?? []).includes(h)) continue;
+    const card = L(s.cards[h].cid);
+    if (!card) continue;
+    if (card.faces.some((f) => f.kw.revChange)) all.push({ iid: h, how: 'rev' });
+    if (s.cards[h].zone === 'hand' && card.faces.some((f) => f.kw.invasion)) all.push({ iid: h, how: 'inv' });
+    if (s.cards[h].zone === 'hand' && dddOf(L, s.cards[h].cid)) all.push({ iid: h, how: 'ddd' });
+  }
+  // 革命チェンジ・侵略で入れ替わった後のクリーチャーが条件に合うものもあるので、順番を変えて調べる
+  const start = declSimStart(s, L);
+  const ok = new Set<number>();
+  const dfs = (sim: DeclSim, depth: number) => {
+    all.forEach((d, k) => {
+      const nx = declSimStep(s, L, sim, d);
+      if (!nx) return;
+      ok.add(k);
+      // (D・D・D は攻撃中のクリーチャーを変えないので、その先を調べなくてよい)
+      if (depth < 3 && d.how !== 'ddd') dfs(nx, depth + 1);
+    });
+  };
+  if (start) dfs(start, 0);
+  return all.filter((_, k) => ok.has(k));
+}
+
+const DECL_NAME = { rev: '革命チェンジ', inv: '侵略', ddd: 'D・D・D' } as const;
+
+/** 宣言した革命チェンジ・侵略・D・D・D を1つ処理する (出た時の能力などを解決してから次へ) */
+function runAttackDecl(s: GameState, L: Lookup, d: AttackDecl) {
+  const at = s.attack!;
+  const p = at.owner;
+  const c = s.cards[d.iid];
+  const card = L(c.cid)!;
+  const sim = declSimStart(s, L);
+  // (宣言した後で状況が変わって、もう使えなくなっていたら使わない)
+  if (!sim || !declSimStep(s, L, sim, d)) {
+    log(s, p, `${DECL_NAME[d.how]}: ${q(nameOf(s, L, d.iid))} は今は使えないので使わない`);
+    return;
+  }
+  const oldName = nameOf(s, L, at.attacker);
+  if (d.how === 'ddd') {
+    const dd = dddOf(L, c.cid)!;
+    const nm = q(card.faces[dd.face].name);
+    log(s, p, `D・D・D: ${nm}`);
+    if (dd.cost != null) {
+      startExec(s, L, p, d.iid, [{ op: 'payPlay', cost: dd.cost }], nm);
+    } else if (dd.grave != null) {
+      startExec(
+        s,
+        L,
+        p,
+        d.iid,
+        [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['grave'], kind: 'card' }, count: { n: dd.grave, upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: `D・D・D: 山札の下に置く墓地のカードを${dd.grave}枚選ぶ` },
+          { op: 'shuffleToDeckBottom' },
+          { op: 'payPlay', cost: 0 },
+        ],
+        nm,
+      );
+    } else {
+      startExec(
+        s,
+        L,
+        p,
+        d.iid,
+        [
+          { op: 'choose', target: { ref: 'sel', sel: { owner: 'self', zones: ['hand'], kind: 'card', civs: [dd.discardCiv!], other: true }, count: { n: 1, upTo: false }, chooser: 'self' }, purpose: 'sacrifice', prompt: `D・D・D: 捨てる${CIV_NAME[dd.discardCiv!]}のカードを選ぶ` },
+          { op: 'if', cond: { c: 'itCount', cmp: '>=', n: 1 }, body: [{ op: 'move', target: { ref: 'it' }, to: 'grave' }, { op: 'payPlay', cost: 0 }] },
+        ],
+        nm,
+      );
+    }
+    return;
+  }
+  const attCard = L(s.cards[at.attacker].cid)!;
+  const attFace = faceOf(s, L, at.attacker)!;
+  const attPower = power(s, L, at.attacker, true);
+  at.usedOpts = [...(at.usedOpts ?? []), at.attacker, d.iid];
+  if (d.how === 'rev') {
+    const rc = card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace, attPower));
+    // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す (S革命チェンジで表向きのシールドからなら、そのシールドと入れ替える)
+    const fromShield = c.zone === 'shield';
+    const want = fromShield ? 'shield' : 'hand';
+    if (fromShield) moveCard(s, L, at.attacker, 'shield', { faceUp: true });
+    else moveCard(s, L, at.attacker, 'hand');
+    // 総合ルール 701.26b: 置換効果などで攻撃中のクリーチャーが移動しなければ、入れ替えは行わない (攻撃は続く)
+    if (s.cards[at.attacker].zone !== want) {
+      log(s, p, `革命チェンジ: ${q(oldName)} が${fromShield ? 'シールドゾーン' : '手札'}に移動しなかったので、入れ替えは行わない`);
+      return;
+    }
+    log(s, p, `革命チェンジ！ ${q(oldName)} → ${q(card.faces[rc].name)}`);
+    // 出た時の能力を解決してから次へ (入れ替えたクリーチャーの「攻撃する時」は発動しない)
+    moveCard(s, L, d.iid, 'battle', { tapped: true, face: rc, revChange: true });
+    s.cards[d.iid].sick = false;
+    at.attacker = d.iid;
+    return;
+  }
+  // 侵略: 攻撃中のクリーチャーの上に重ねる
+  const inv = card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace, attPower));
+  const base = at.attacker;
+  const subs = [base, ...s.cards[base].under];
+  log(s, p, `侵略！ ${q(oldName)} → ${q(card.faces[inv].name)}`);
+  detach(s, base);
+  moveCard(s, L, d.iid, 'battle', { tapped: true, face: inv });
+  const nc = s.cards[d.iid];
+  nc.sick = false;
+  for (const x of subs) {
+    s.cards[x].zone = 'under';
+    s.cards[x].parent = d.iid;
+    resetCard(s.cards[x]);
+  }
+  s.cards[base].under = [];
+  nc.under = subs;
+  at.attacker = d.iid;
 }
 
 /** 攻撃する時の能力を発動 (解決後に advance がブロックへ進める) */
@@ -2907,9 +3096,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
         p,
         `${q(nameOf(s, L, a.attacker))} で ${a.card != null ? q(nameOf(s, L, a.card)) : s.players[targetPlayer].name} を攻撃`,
       );
-      const opts = attackOptions(s, L, 'inv');
-      if (opts.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: opts });
-      else queueAttackTriggers(s, L);
+      queueAttackTriggers(s, L);
       return null;
     }
     case 'hyperize': {
@@ -3594,61 +3781,21 @@ export function playCard(s: GameState, p: number, a: Extract<Action, { t: 'play'
 function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Lookup): Result {
   switch (top.kind) {
     case 'attackOpt': {
-      if (a.t !== 'attackOpt') return '革命チェンジ/侵略を使うか選んでください';
-      s.pending.shift();
+      if (a.t !== 'attackOpt') return '革命チェンジ・侵略・D・D・D を使うか選んでください';
       const at = s.attack!;
-      // (攻撃する時の能力の後なら革命チェンジ、攻撃を宣言した時なら侵略)
-      const revPhase = at.step !== 'opt';
-      if (a.iid == null || !top.options.includes(a.iid)) {
-        if (!revPhase) queueAttackTriggers(s, L);
-        return null;
+      const decl = top.decl ?? [];
+      let seq = a.seq ?? [];
+      // (カードだけ選んだ時は、そのカードの使える使い方)
+      if (!a.seq && a.iid != null) {
+        const first = decl.find((d) => d.iid === a.iid && attackDeclOk(s, L, [d]));
+        if (!first) return 'そのカードは今は使えません';
+        seq = [first];
       }
-      const card = L(s.cards[a.iid].cid)!;
-      const attCard = L(s.cards[at.attacker].cid)!;
-      const attFace = faceOf(s, L, at.attacker)!;
-      const attPower = power(s, L, at.attacker, true);
-      const rc = revPhase ? card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace, attPower)) : -1;
-      const inv = revPhase ? -1 : card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace, attPower));
-      const oldName = nameOf(s, L, at.attacker);
-      at.usedOpts = [...(at.usedOpts ?? []), at.attacker, a.iid];
-      if (rc >= 0) {
-        // 革命チェンジ: 攻撃中のクリーチャーを手札に戻し、入れ替えて出す (S革命チェンジで表向きのシールドからなら、そのシールドと入れ替える)
-        const fromShield = s.cards[a.iid].zone === 'shield';
-        const want = fromShield ? 'shield' : 'hand';
-        if (fromShield) moveCard(s, L, at.attacker, 'shield', { faceUp: true });
-        else moveCard(s, L, at.attacker, 'hand');
-        // 総合ルール 701.26b: 置換効果などで攻撃中のクリーチャーが移動しなければ、入れ替えは行わない (攻撃は続く)
-        if (s.cards[at.attacker].zone !== want) {
-          log(s, p, `革命チェンジ: ${q(oldName)} が${fromShield ? 'シールドゾーン' : '手札'}に移動しなかったので、入れ替えは行わない`);
-          return null;
-        }
-        log(s, p, `革命チェンジ！ ${q(oldName)} → ${q(card.faces[rc].name)}`);
-        // 出た時の能力を解決してから、ブロック・攻撃へ進む (チェンジしたクリーチャーの「攻撃する時」は発動しない)
-        moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc, revChange: true });
-        s.cards[a.iid].sick = false;
-        at.attacker = a.iid;
-        return null;
-      } else if (inv >= 0) {
-        // 侵略: 攻撃中のクリーチャーの上に重ねる
-        const base = at.attacker;
-        const subs = [base, ...s.cards[base].under];
-        detach(s, base);
-        moveCard(s, L, a.iid, 'battle', { tapped: true, face: inv });
-        const nc = s.cards[a.iid];
-        nc.sick = false;
-        for (const x of subs) {
-          s.cards[x].zone = 'under';
-          s.cards[x].parent = a.iid;
-          resetCard(s.cards[x]);
-        }
-        s.cards[base].under = [];
-        nc.under = subs;
-        at.attacker = a.iid;
-        log(s, p, `侵略！ ${q(oldName)} → ${q(card.faces[inv].name)}`);
-      }
-      const more = attackOptions(s, L, 'inv');
-      if (more.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: more });
-      else queueAttackTriggers(s, L);
+      if (seq.some((d) => !decl.some((x) => x.iid === d.iid && x.how === d.how))) return '宣言できないカードです';
+      if (!attackDeclOk(s, L, seq)) return 'その順番では使えません (前に使ったカードの後のクリーチャーが条件に合いません)';
+      s.pending.shift();
+      at.declQueue = [...seq];
+      if (seq.length) log(s, p, `宣言: ${seq.map((d) => `${DECL_NAME[d.how]} ${q(nameOf(s, L, d.iid))}`).join(' → ')}`);
       return null;
     }
     case 'block': {
