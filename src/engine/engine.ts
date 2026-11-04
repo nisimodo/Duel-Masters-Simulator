@@ -1877,6 +1877,15 @@ function advance(s: GameState, L: Lookup): boolean {
       return true;
     }
     if (a.step === 'atkTrig') {
+      // 攻撃する時の能力をすべて解決した後で、革命チェンジ (1回の攻撃で1枚だけ)
+      if (!a.revOffered) {
+        a.revOffered = true;
+        const rev = attackOptions(s, L, 'rev');
+        if (rev.length) {
+          s.pending.unshift({ kind: 'attackOpt', player: a.owner, options: rev });
+          return true;
+        }
+      }
       blockStep(s, L);
       return true;
     }
@@ -2349,7 +2358,12 @@ export function attackTargets(s: GameState, L: Lookup, iid: number): { players: 
   return { players, cards };
 }
 
-function attackOptions(s: GameState, L: Lookup): number[] {
+/**
+ * 攻撃中に手札などから使えるカード。
+ * 'inv' = 侵略 (攻撃を宣言した時、攻撃する時の能力より前)
+ * 'rev' = 革命チェンジ (攻撃する時の能力を解決した後。1回の攻撃で1枚だけ)
+ */
+function attackOptions(s: GameState, L: Lookup, kind: 'inv' | 'rev'): number[] {
   const a = s.attack!;
   const owner = a.owner;
   const att = L(s.cards[a.attacker].cid);
@@ -2358,14 +2372,12 @@ function attackOptions(s: GameState, L: Lookup): number[] {
   // 「パワー8000以上の」は攻撃中の今のパワーで見る
   const attPower = power(s, L, a.attacker, true);
   // (S革命チェンジは表向きでシールドゾーンにあるものも)
-  const shieldRc = s.players[owner].shield.filter((i) => s.cards[i].faceUp && L(s.cards[i].cid)?.faces.some((f) => f.kw.revChangeShield));
+  const shieldRc = kind === 'rev' ? s.players[owner].shield.filter((i) => s.cards[i].faceUp && L(s.cards[i].cid)?.faces.some((f) => f.kw.revChangeShield)) : [];
   return [...s.players[owner].hand, ...shieldRc].filter((h) => {
     const card = L(s.cards[h].cid);
     // この攻撃中に入れ替えで手札に戻ったカードは、もう一度は使わない (無限ループ防止)
     if (!card || (a.usedOpts ?? []).includes(h)) return false;
-    return card.faces.some(
-      (f) => (f.kw.revChange && matchesCond(f.kw.revChange, att, attFace, attPower)) || (f.kw.invasion && matchesCond(f.kw.invasion, att, attFace, attPower)),
-    );
+    return card.faces.some((f) => (kind === 'rev' ? f.kw.revChange && matchesCond(f.kw.revChange, att, attFace, attPower) : f.kw.invasion && matchesCond(f.kw.invasion, att, attFace, attPower)));
   });
 }
 
@@ -2895,7 +2907,7 @@ function apply(s: GameState, p: number, a: Action, L: Lookup): Result {
         p,
         `${q(nameOf(s, L, a.attacker))} で ${a.card != null ? q(nameOf(s, L, a.card)) : s.players[targetPlayer].name} を攻撃`,
       );
-      const opts = attackOptions(s, L);
+      const opts = attackOptions(s, L, 'inv');
       if (opts.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: opts });
       else queueAttackTriggers(s, L);
       return null;
@@ -3585,16 +3597,18 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
       if (a.t !== 'attackOpt') return '革命チェンジ/侵略を使うか選んでください';
       s.pending.shift();
       const at = s.attack!;
+      // (攻撃する時の能力の後なら革命チェンジ、攻撃を宣言した時なら侵略)
+      const revPhase = at.step !== 'opt';
       if (a.iid == null || !top.options.includes(a.iid)) {
-        queueAttackTriggers(s, L);
+        if (!revPhase) queueAttackTriggers(s, L);
         return null;
       }
       const card = L(s.cards[a.iid].cid)!;
       const attCard = L(s.cards[at.attacker].cid)!;
       const attFace = faceOf(s, L, at.attacker)!;
       const attPower = power(s, L, at.attacker, true);
-      const rc = card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace, attPower));
-      const inv = card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace, attPower));
+      const rc = revPhase ? card.faces.findIndex((f) => f.kw.revChange && matchesCond(f.kw.revChange, attCard, attFace, attPower)) : -1;
+      const inv = revPhase ? -1 : card.faces.findIndex((f) => f.kw.invasion && matchesCond(f.kw.invasion, attCard, attFace, attPower));
       const oldName = nameOf(s, L, at.attacker);
       at.usedOpts = [...(at.usedOpts ?? []), at.attacker, a.iid];
       if (rc >= 0) {
@@ -3606,15 +3620,14 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         // 総合ルール 701.26b: 置換効果などで攻撃中のクリーチャーが移動しなければ、入れ替えは行わない (攻撃は続く)
         if (s.cards[at.attacker].zone !== want) {
           log(s, p, `革命チェンジ: ${q(oldName)} が${fromShield ? 'シールドゾーン' : '手札'}に移動しなかったので、入れ替えは行わない`);
-          const more = attackOptions(s, L);
-          if (more.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: more });
-          else queueAttackTriggers(s, L);
           return null;
         }
+        log(s, p, `革命チェンジ！ ${q(oldName)} → ${q(card.faces[rc].name)}`);
+        // 出た時の能力を解決してから、ブロック・攻撃へ進む (チェンジしたクリーチャーの「攻撃する時」は発動しない)
         moveCard(s, L, a.iid, 'battle', { tapped: true, face: rc, revChange: true });
         s.cards[a.iid].sick = false;
         at.attacker = a.iid;
-        log(s, p, `革命チェンジ！ ${q(oldName)} → ${q(card.faces[rc].name)}`);
+        return null;
       } else if (inv >= 0) {
         // 侵略: 攻撃中のクリーチャーの上に重ねる
         const base = at.attacker;
@@ -3633,7 +3646,7 @@ function applyPending(s: GameState, p: number, a: Action, top: Pending, L: Looku
         at.attacker = a.iid;
         log(s, p, `侵略！ ${q(oldName)} → ${q(card.faces[inv].name)}`);
       }
-      const more = attackOptions(s, L);
+      const more = attackOptions(s, L, 'inv');
       if (more.length) s.pending.unshift({ kind: 'attackOpt', player: p, options: more });
       else queueAttackTriggers(s, L);
       return null;

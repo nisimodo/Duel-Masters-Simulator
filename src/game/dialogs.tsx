@@ -600,8 +600,10 @@ export function PendingDialog({
     }
     case 'attackOpt':
       return (
-        <Modal title="革命チェンジ / 侵略">
-          <div className="small">攻撃中: {nameOf(s, L, s.attack!.attacker)} ・ 使うカードを選んでください</div>
+        <Modal title={s.attack!.step === 'opt' ? '侵略' : '革命チェンジ'}>
+          <div className="small">
+            攻撃中: {nameOf(s, L, s.attack!.attacker)} ・ 使うカードを選んでください{s.attack!.step === 'opt' ? '' : ' (1回の攻撃で1枚だけ)'}
+          </div>
           <div className="row">{pending.options.map((o) => img(o, { onClick: () => onSubmit({ t: 'attackOpt', iid: o }) }))}</div>
           <button onClick={() => onSubmit({ t: 'attackOpt', iid: null })}>使わない</button>
         </Modal>

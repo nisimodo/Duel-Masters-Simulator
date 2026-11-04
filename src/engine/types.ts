@@ -392,6 +392,8 @@ export interface AttackState {
   preFired?: boolean;
   /** この攻撃中に革命チェンジ・侵略で使った/戻ったカード */
   usedOpts?: number[];
+  /** 攻撃する時の能力の後で、革命チェンジを使うか選んだ (革命チェンジは1回の攻撃で1枚だけ) */
+  revOffered?: boolean;
   /** この攻撃中に使った能力 (「逆転撃」など) */
   used?: string[];
   /** この攻撃でシールドをブレイクした (キリフダッシュ) */

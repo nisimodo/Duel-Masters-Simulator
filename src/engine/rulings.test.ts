@@ -17,6 +17,9 @@ const extra = [
   mk('d2b', 'D2フィールド', 'F', 1, null, []),
   mk('exAtk', 'クリーチャー', 'F', 1, '3000', ['EXライフ', 'スピードアタッカー']),
   mk('rc', 'クリーチャー', 'F', 5, '9000', ['革命チェンジ：火のクリーチャー']),
+  mk('rcE', 'クリーチャー', 'F', 5, '9000', ['革命チェンジ：火のクリーチャー', 'このクリーチャーが出た時、カードを１枚引く。', 'このクリーチャーが攻撃する時、カードを１枚引く。']),
+  mk('atkSa', 'クリーチャー', 'F', 1, '3000', ['スピードアタッカー', 'このクリーチャーが攻撃する時、カードを１枚引く。']),
+  mk('atkDie', 'クリーチャー', 'F', 1, '3000', ['スピードアタッカー', 'このクリーチャーが攻撃する時、このクリーチャーを破壊する。']),
   mk('neo', 'NEOクリーチャー', 'N', 1, '5000', ['NEO進化：自分のクリーチャー１体の上に置いてもよい。']),
   mk('drawSp', '呪文', 'N', 1, null, ['カードを１枚引く。']),
   { id: 'drgN', n: 'drgN', img: '', f: [{ n: 'drgN', t: 'クリーチャー', c: 'F', co: 5, p: '5000', r: ['アーマード・ドラゴン'], x: [] }] },
@@ -515,3 +518,76 @@ describe('総合ルールの変更点', () => {
     expect(s.cards[dn].zone).toBe('battle');
   });
 });
+describe('革命チェンジ', () => {
+  /** 攻撃してから最後まで進める。attackOpt では pickRc が返したカードを使う */
+  const attackWith = (s: GameState, attacker: number, pickRc: (options: number[], n: number) => number | null) => {
+    s = act(s, 0, { t: 'attack', attacker, player: 1 });
+    const offers: { at: number; options: number[] }[] = [];
+    for (let k = 0; k < 40 && s.pending.length; k++) {
+      const top = s.pending[0];
+      if (top.kind === 'attackOpt') {
+        offers.push({ at: s.log.length, options: [...top.options] });
+        s = act(s, 0, { t: 'attackOpt', iid: pickRc(top.options, offers.length) });
+        continue;
+      }
+      s = drain(s, (x) => x.pending[0]?.kind === 'attackOpt');
+    }
+    return { s, offers };
+  };
+  it('チェンジ元の攻撃時効果 → 革命チェンジ → チェンジクリーチャーの出た時効果 → ブレイク の順', () => {
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: 'rcE', zone: 'hand' }], 0);
+    const a = find(s, 0, 'battle', 'atkSa')!;
+    const r = find(s, 0, 'hand', 'rcE')!;
+    const res = attackWith(s, a, (o) => (o.includes(r) ? r : null));
+    s = res.s;
+    const logs = s.log.map((l) => l.m);
+    const idx = (re: RegExp) => logs.findIndex((m) => re.test(m));
+    const atkTrig = idx(/《atkSa》 の能力 \(攻撃する時\)/);
+    const change = idx(/革命チェンジ！/);
+    const enter = idx(/《rcE》 の能力 \(出た時\)/);
+    const brk = idx(/シールドを\d+枚ブレイク/);
+    expect(atkTrig).toBeGreaterThanOrEqual(0);
+    // 革命チェンジを選ぶのは、チェンジ元の攻撃時効果を解決した後
+    expect(res.offers.length).toBe(1);
+    expect(res.offers[0].at).toBeGreaterThan(atkTrig);
+    expect(change).toBeGreaterThan(atkTrig);
+    expect(enter).toBeGreaterThan(change);
+    expect(brk).toBeGreaterThan(enter);
+    // チェンジしたクリーチャーの「攻撃する時」は発動しない
+    expect(idx(/《rcE》 の能力 \(攻撃する時\)/)).toBe(-1);
+    expect(s.cards[r].zone).toBe('battle');
+    expect(s.cards[a].zone).toBe('hand');
+  });
+  it('革命チェンジできるカードが手札に複数あっても、1回の攻撃で革命チェンジできるのは1枚だけ', () => {
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: 'rcE', zone: 'hand' }, { p: 0, cid: 'rc', zone: 'hand' }], 0);
+    const a = find(s, 0, 'battle', 'atkSa')!;
+    const r1 = find(s, 0, 'hand', 'rcE')!;
+    const r2 = find(s, 0, 'hand', 'rc')!;
+    const res = attackWith(s, a, (o) => o[0]);
+    expect(res.offers.length).toBe(1);
+    expect([...res.offers[0].options].sort()).toEqual([r1, r2].sort());
+    s = res.s;
+    expect(s.log.filter((l) => /革命チェンジ！/.test(l.m)).length).toBe(1);
+    expect([s.cards[r1].zone, s.cards[r2].zone].filter((z) => z === 'battle').length).toBe(1);
+  });
+  it('使わないことも選べる (攻撃はそのまま続く)', () => {
+    let s = setup([{ p: 0, cid: 'atkSa', zone: 'battle' }, { p: 0, cid: 'rcE', zone: 'hand' }], 0);
+    const a = find(s, 0, 'battle', 'atkSa')!;
+    const res = attackWith(s, a, () => null);
+    s = res.s;
+    expect(res.offers.length).toBe(1);
+    expect(s.cards[a].zone).toBe('battle');
+    expect(s.log.some((l) => /シールドを\d+枚ブレイク/.test(l.m))).toBe(true);
+  });
+  it('チェンジ元が攻撃時効果で離れたら、革命チェンジはできない', () => {
+    let s = setup([{ p: 0, cid: 'atkDie', zone: 'battle' }, { p: 0, cid: 'rcE', zone: 'hand' }], 0);
+    const a = find(s, 0, 'battle', 'atkDie')!;
+    const res = attackWith(s, a, (o) => o[0]);
+    s = res.s;
+    expect(s.cards[a].zone).toBe('grave');
+    expect(res.offers.length).toBe(0);
+    expect(s.cards[find(s, 0, 'hand', 'rcE')!].zone).toBe('hand');
+    expect(s.attack).toBeNull();
+  });
+});
+
