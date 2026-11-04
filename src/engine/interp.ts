@@ -211,7 +211,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
           if (ref == null || maxCost(L, s.cards[iid].cid) !== maxCost(L, s.cards[ref].cid)) continue;
         }
         if (sel.civShareIt && !(ex.it.length && (L(s.cards[iid].cid)?.civs ?? []).some((cv) => (L(s.cards[ex.it[0]].cid)?.civs ?? []).includes(cv)))) continue;
-        if (sel.costLtCount && !(maxCost(L, s.cards[iid].cid) < (ex.count ?? 0))) continue;
+        if (sel.costLtCount && !kindCosts(L, s.cards[iid].cid, sel).some((c) => c < (ex.count ?? 0))) continue;
         // (選んだカードがなければ、誘発させたカード: 「自分が手札を捨てた時、こうして捨てたカード以下のコスト」)
         if (sel.costLeIt) {
           const ref = ex.it[0] ?? ex.subject;
@@ -226,7 +226,7 @@ function candidates(s: GameState, L: Lookup, ex: Exec, sel: Sel): number[] {
         if (sel.sameNameSubject && !(ex.subject != null && L(s.cards[iid].cid)?.name === L(s.cards[ex.subject].cid)?.name)) continue;
         if (sel.battling && !(s.battleNow && (s.battleNow.att === iid || s.battleNow.def === iid))) continue;
         if (sel.sameTypeIt && !(ex.it.length && sameCardType(L, s.cards[iid].cid, s.cards[ex.it[0]].cid))) continue;
-        if (sel.costLeCount && !(maxCost(L, s.cards[iid].cid) <= (ex.count ?? ex.it.length))) continue;
+        if (sel.costLeCount && !kindCosts(L, s.cards[iid].cid, sel).some((c) => c <= (ex.count ?? ex.it.length))) continue;
         if (sel.raceOfIt) {
           const ref = ex.subject ?? ex.it[0];
           const rr = ref != null ? (faceOf(s, L, ref)?.races ?? L(s.cards[ref].cid)?.faces[0]?.races ?? []) : [];
@@ -557,6 +557,12 @@ function equipWeapon(s: GameState, L: Lookup, ex: Exec, w: number) {
 }
 
 const maxCost = (L: Lookup, cid: string) => Math.max(...(L(cid)?.faces.map((f) => f.cost) ?? [0]));
+/** 「コスト〜のクリーチャー/呪文」で比べるコスト (ツインパクトは条件の種類に合う面のコスト) */
+const kindCosts = (L: Lookup, cid: string, sel: Sel) => {
+  const faces = L(cid)?.faces ?? [];
+  const fit = faces.filter((f) => (sel.kind === 'creature' ? f.isCreature : sel.kind === 'spell' ? f.isSpell : true));
+  return (fit.length ? fit : faces).map((f) => f.cost ?? 0);
+};
 
 // ---------- 実行 ----------
 

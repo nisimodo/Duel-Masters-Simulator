@@ -27,6 +27,9 @@ const extra = [
   twin('twA', 'N', 2, '1000', 1),
   twin('twL', 'L', 2, '1000', 1),
   twin('twBig', 'N', 7, '13000', 2),
+  // クリーチャー側と呪文側でコストが大きく違うツインパクト
+  twin('twCheap', 'N', 2, '2000', 9),
+  twin('twHeavy', 'N', 9, '9000', 1),
 ];
 const db = buildDB([...extra, ...picked] as never, { premium: [], hof: [], premiumCombos: [], premiumHyperCombos: [] }, []);
 const L = (cid: string) => db.byId.get(cid);
@@ -497,5 +500,68 @@ describe('ツインパクトの呪文側を唱えても、クリーチャー側�
     expect(fired[0]).toBeGreaterThan(put);
     expect(s.cards[z].zone).toBe('battle');
     expect(s.cards[tw].zone).toBe('mana');
+  });
+});
+
+describe('始全虹帝 ミノガミ / 自然の肯定 (細かいところ)', () => {
+  const id = () => idOf('始全虹帝 ミノガミ');
+  const cast = (s: GameState, pick?: (prompt: string, options: number[]) => number[] | undefined, yes = true) =>
+    run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', id())!, face: spellFace(id()), pay: s.players[0].mana.slice(0, 8) }), pick, yes);
+  it('唱えている自然の肯定自身はマナゾーンに置かれず墓地へ。墓地から置いたツインパクトはアンタップで置かれる', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'hand' }, { p: 0, cid: 'twA', zone: 'grave' }], 8);
+    const me = find(s, 0, 'hand', id())!;
+    const tw = find(s, 0, 'grave', 'twA')!;
+    s = cast(s, () => [], false);
+    expect(s.cards[me].zone).toBe('grave');
+    expect(s.cards[tw].zone).toBe('mana');
+    expect(s.cards[tw].tapped).toBe(false);
+  });
+  it('ツインパクトは「クリーチャー」側のコストで比べる (クリーチャー側2・呪文側9は出せる、クリーチャー側9・呪文側1は出せない)', () => {
+    // マナは 8 + 2 = 10 枚 → 呪文の後で墓地のツインパクトが増えないように、マナ8枚 + ツインパクト2枚 = 10枚。twHeavy (9) も10枚なら出せるので、マナを8枚にする
+    let s = setup([{ p: 0, cid: id(), zone: 'hand' }, { p: 0, cid: 'twCheap', zone: 'mana' }, { p: 0, cid: 'twHeavy', zone: 'mana' }], 6);
+    expect(s.players[0].mana.length).toBe(8);
+    const cheap = find(s, 0, 'mana', 'twCheap')!;
+    const heavy = find(s, 0, 'mana', 'twHeavy')!;
+    let seen: number[] = [];
+    s = cast(s, (_, o) => {
+      if (!o.includes(cheap)) return undefined;
+      seen = o;
+      return [cheap];
+    });
+    expect(seen).toContain(cheap);
+    expect(seen).not.toContain(heavy);
+    expect(s.cards[cheap].zone).toBe('battle');
+    // バトルゾーンにはクリーチャー側で出る
+    expect(L(s.cards[cheap].cid)!.faces[s.cards[cheap].face].isCreature).toBe(true);
+  });
+  it('出さないことも選べる', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'hand' }, { p: 0, cid: 'twCheap', zone: 'mana' }], 7);
+    const cheap = find(s, 0, 'mana', 'twCheap')!;
+    s = cast(s, () => [], false);
+    expect(s.cards[cheap].zone).toBe('mana');
+    expect(s.players[0].battle).toEqual([]);
+  });
+  it('マナゾーンの始全虹帝 ミノガミを出すと、出た時の能力でツインパクトがアンタップされる', () => {
+    let s = setup([{ p: 0, cid: id(), zone: 'hand' }, { p: 0, cid: id(), zone: 'mana' }, { p: 0, cid: 'twA', zone: 'mana' }], 7);
+    const inMana = find(s, 0, 'mana', id())!;
+    const tw = find(s, 0, 'mana', 'twA')!;
+    s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', id())!, face: spellFace(id()), pay: [tw, ...s.players[0].mana.filter((m) => m !== tw && m !== inMana).slice(0, 7)] }), (_, o) => (o.includes(inMana) ? [inMana] : undefined));
+    expect(s.cards[inMana].zone).toBe('battle');
+    expect(s.cards[tw].tapped).toBe(false);
+  });
+  it('全虹帝 ミノガミの攻撃時も、ツインパクトはクリーチャー側のコストで比べる', () => {
+    // マナのツインパクトは3枚 (twA, twCheap, twHeavy) → コスト2以下のクリーチャー
+    const zen = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: zen, zone: 'battle' }, { p: 0, cid: 'twA', zone: 'mana' }, { p: 0, cid: 'twCheap', zone: 'mana' }, { p: 0, cid: 'twHeavy', zone: 'mana' }], 0);
+    const cheap = find(s, 0, 'mana', 'twCheap')!;
+    const heavy = find(s, 0, 'mana', 'twHeavy')!;
+    let seen: number[] = [];
+    s = run(act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', zen)!, player: 1 }), (_, o) => {
+      if (!o.includes(cheap)) return undefined;
+      seen = o;
+      return [cheap];
+    });
+    expect(seen).not.toContain(heavy);
+    expect(s.cards[cheap].zone).toBe('battle');
   });
 });
