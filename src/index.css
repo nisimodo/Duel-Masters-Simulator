@@ -213,6 +213,35 @@ input[type='radio'] {
   overflow: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
+/* 画像の切り抜き */
+.cropper {
+  align-items: center;
+}
+.cropper-view {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+  outline: 2px solid var(--accent2);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.cropper-view:active {
+  cursor: grabbing;
+}
+.cropper-view img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+.cropper-zoom {
+  width: 100%;
+  max-width: 400px;
+}
+.cropper-zoom input[type='range'] {
+  flex: 1;
+}
 .toast {
   position: fixed;
   bottom: 20px;
