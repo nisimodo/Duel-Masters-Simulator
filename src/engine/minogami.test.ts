@@ -447,3 +447,55 @@ describe('ミノガミ&オウ禍武斗 / T.２.D.', () => {
     expect(s.players[0].deck[0]).toBe(v);
   });
 });
+
+describe('ツインパクトの呪文側を唱えても、クリーチャー側の「出た時」は発動しない', () => {
+  const enterFired = (s: GameState, name: string) => s.log.some((l) => l.m.includes(`《${name}》 の能力 (出た時)`));
+  it('手札から呪文側を唱える (全虹帝 ミノガミ / ハザード・パクト)', () => {
+    const id = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: id, zone: 'hand' }, { p: 0, cid: 'twA', zone: 'grave' }], 3);
+    const tw = find(s, 0, 'grave', 'twA')!;
+    s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', id)!, face: spellFace(id), pay: s.players[0].mana.slice(0, 3) }), (_, o) => o);
+    expect(enterFired(s, '全虹帝 ミノガミ')).toBe(false);
+    expect(s.cards[tw].zone).toBe('grave');
+  });
+  it('手札から呪文側を唱える (始全虹帝 ミノガミ / 自然の肯定)', () => {
+    const id = idOf('始全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: id, zone: 'hand' }], 8);
+    s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', id)!, face: spellFace(id), pay: s.players[0].mana.slice(0, 8) }));
+    expect(enterFired(s, '始全虹帝 ミノガミ')).toBe(false);
+    // 「出た時、マナのツインパクトをアンタップ」が動いていればタップが外れる (自然の肯定でマナから1体出るので、残りはすべてタップしたまま)
+    expect(s.players[0].mana.filter((m) => !s.cards[m].tapped)).toEqual([]);
+  });
+  it('バトルゾーンに置いたまま呪文側を唱える (大虹帝 ミノガミ → 全虹帝 ミノガミ)', () => {
+    const big = idOf('大虹帝 ミノガミ');
+    const zen = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: big, zone: 'battle' }, { p: 0, cid: zen, zone: 'battle' }, { p: 0, cid: 'twA', zone: 'grave' }], 0);
+    const z = find(s, 0, 'battle', zen)!;
+    const tw = find(s, 0, 'grave', 'twA')!;
+    s = run(act(s, 0, { t: 'attack', attacker: find(s, 0, 'battle', big)!, player: 1 }), (_, o) => (o.includes(z) ? [z] : o));
+    expect(s.log.some((l) => l.m.includes('ハザード・パクト'))).toBe(true);
+    expect(enterFired(s, '全虹帝 ミノガミ')).toBe(false);
+    expect(s.cards[tw].zone).toBe('grave');
+  });
+  it('マナゾーンから呪文側を唱える (ミノガミ&オウ禍武斗)。エレメント側が出た時だけ発動する', () => {
+    const og = idOf('ミノガミ&オウ禍武斗');
+    const zen = idOf('全虹帝 ミノガミ');
+    let s = setup([{ p: 0, cid: og, zone: 'hand' }, { p: 0, cid: zen, zone: 'mana' }, { p: 0, cid: 'twA', zone: 'grave' }], 9);
+    const z = find(s, 0, 'mana', zen)!;
+    const tw = find(s, 0, 'grave', 'twA')!;
+    s = run(act(s, 0, { t: 'play', iid: find(s, 0, 'hand', og)!, face: 0, pay: s.players[0].mana.filter((m) => m !== z).slice(0, 9) }), (_, o) => {
+      if (o.includes(z)) return [z];
+      return o;
+    });
+    // 唱えた時点では出た時は発動せず、エレメント側を出した後に1回だけ発動する
+    const logs = s.log.map((l) => l.m);
+    const castDone = logs.findIndex((m) => m.includes('ハザード・パクト') && m.includes('唱える'));
+    const fired = logs.map((m, i) => (m.includes('《全虹帝 ミノガミ》 の能力 (出た時)') ? i : -1)).filter((i) => i >= 0);
+    const put = logs.findIndex((m) => m.includes('全虹帝 ミノガミ') && m.includes('墓地から出した'));
+    expect(castDone).toBeGreaterThanOrEqual(0);
+    expect(fired.length).toBe(1);
+    expect(fired[0]).toBeGreaterThan(put);
+    expect(s.cards[z].zone).toBe('battle');
+    expect(s.cards[tw].zone).toBe('mana');
+  });
+});
