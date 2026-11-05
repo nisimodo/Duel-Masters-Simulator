@@ -10,12 +10,13 @@ export type Civ = 'L' | 'W' | 'D' | 'F' | 'N';
 export const CIVS: Civ[] = ['L', 'W', 'D', 'F', 'N'];
 export const CIV_NAME: Record<Civ, string> = { L: '光', W: '水', D: '闇', F: '火', N: '自然' };
 export const CIV_COLOR: Record<Civ | 'Z', string> = {
-  L: '#e8c840',
-  W: '#3a8fd8',
-  D: '#6b5a7a',
-  F: '#d84a3a',
-  N: '#3fa04a',
-  Z: '#9a9a9a',
+  // 光: 黄色 / 水: 青 / 闇: 灰色 / 火: 赤 / 自然: 緑 / 無色: 白
+  L: '#f2d22e',
+  W: '#2f80e0',
+  D: '#7c7c84',
+  F: '#e03434',
+  N: '#2fa84a',
+  Z: '#ffffff',
 };
 
 interface RawFace {

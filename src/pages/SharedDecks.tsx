@@ -12,7 +12,7 @@ import { DeckViewDialog } from '../components/DeckViewDialog';
 type CivKey = Civ | 'Z';
 const CIVS: CivKey[] = ['L', 'W', 'D', 'F', 'N', 'Z'];
 const civLabel = (c: CivKey) => (c === 'Z' ? '無色' : CIV_NAME[c]);
-const civColor = (c: CivKey) => (c === 'Z' ? '#9aa0b8' : CIV_COLOR[c]);
+const civColor = (c: CivKey) => CIV_COLOR[c];
 
 type Kind = 'original' | 'advance' | 'duepa';
 const KIND_LABEL: Record<Kind, string> = { original: 'オリジナル', advance: 'アドバンス', duepa: 'デュエパ' };
